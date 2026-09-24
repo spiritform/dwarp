@@ -164,8 +164,10 @@
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   .frame img { display: block; }
   .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
-  .frame .src { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; clip-path: inset(0 50% 0 0); }
-  .frame .ctl { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  /* Overlays take the output's width and their own aspect, pinned top-left — so they line up with
+     the output pixel for pixel even when the frame is height-clipped (cover used to re-crop them). */
+  .frame .src { position: absolute; top: 0; left: 0; width: 100%; height: auto; clip-path: inset(0 50% 0 0); }
+  .frame .ctl { position: absolute; top: 0; left: 0; width: 100%; height: auto; background: #000; }
   .frame .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; cursor: ew-resize; touch-action: none; }
   .frame .divider::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
            background: #fff; color: #000; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 13px; }
