@@ -155,6 +155,28 @@ def build_app() -> FastAPI:
         return StreamingResponse(iter([out.stdout]), media_type="image/jpeg",
                                  headers={"Cache-Control": "max-age=3600"})
 
+    @app.get("/api/diff/base")
+    def diff_base(path: str = "", frame: int = 0, width: int = 512, height: int = 512, kind: str = "luma"):
+        """One source frame at render size, as the DepthDiff mask starts from it: the frame itself
+        (luma) or its depth map. The page shapes it into the mask live."""
+        if not path or not os.path.isfile(path):
+            raise HTTPException(404, detail="No video at that path")
+        vf = f"select=eq(n\\,{max(0, frame)}),scale={max(8, width)}:{max(8, height)}:flags=lanczos"
+        out = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", vf, "-frames:v", "1",
+                              "-f", "image2pipe", "-vcodec", "png", "-"], capture_output=True)
+        if out.returncode != 0 or not out.stdout:
+            raise HTTPException(422, detail="Could not read that frame")
+        data = out.stdout
+        if kind == "depth":
+            import io
+            import numpy as np
+            from PIL import Image
+            from engine.warp import depth_map
+            buf = io.BytesIO()
+            depth_map(np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))).convert("RGB").save(buf, "PNG")
+            data = buf.getvalue()
+        return StreamingResponse(iter([data]), media_type="image/png", headers={"Cache-Control": "max-age=600"})
+
     # -------------------------------------------------------------- jobs
     @app.post("/api/jobs", status_code=202)
     async def submit(request: Request):

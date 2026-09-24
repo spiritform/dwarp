@@ -115,6 +115,10 @@
   .invert { flex: none; padding: 0 12px; background: #34333b; border: 1px solid #44434b; border-radius: 8px;
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
+  .ddprev { width: 100%; margin-bottom: 14px; padding: 7px 0; background: #2a2930; border: 1px solid #3a3941;
+            border-radius: 8px; color: #d4d2da; cursor: pointer; font: inherit; font-size: 12px; }
+  .ddprev:hover { background: #34333b; }
+  .ddprev.on { border-color: var(--accent); background: rgba(255,106,61,.16); color: var(--text); }
   .invert.on { border-color: var(--accent); background: rgba(255,106,61,.16); color: var(--text); }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
@@ -333,6 +337,7 @@
             <input type="range" id="ddAmount" min="0" max="2" step="0.05">
           </div>
         </div>
+        <button class="ddprev" id="ddPrevBtn" title="Show the mask for the first frame of the range on the stage; it follows the sliders live">◐ preview mask</button>
       </div>
     </div>
     <div class="pair">
@@ -515,6 +520,7 @@ function paintRange() {
   const [fa, fb] = rangeFrames();
   $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
   updateEst();
+  if (ddPrev) drawDdPreview();
 }
 function bindRange() {
   const range = $('range'); let drag = null;
@@ -660,6 +666,7 @@ function renderControls() {
     const el = $('dd' + k[0].toUpperCase() + k.slice(1));
     el.value = dd[k]; $(el.id + 'V').textContent = (+dd[k]).toFixed(digits);
   }
+  if (ddPrev) dd.src === 'off' ? ddPreview(false) : drawDdPreview();
   renderSeed(); renderPresets(); updateEst();
 }
 
@@ -684,6 +691,72 @@ $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
 $('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); setControlTabs(); save(); };
 $('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.dd.src = d; renderControls(); save(); };
+// ---- DepthDiff preview: the mask for the range's first frame, shaped here (same maths as the
+// engine's diff_mask) so it follows the sliders instantly. The server only supplies the frame
+// (luma) or its depth map, once per clip / frame / size / source.
+var ddPrev = false, ddBase = { key: '', img: null }, ddFetch = null, ddQueued = false;
+function renderSize() {
+  const s = state.clip.source, k = state.size / Math.max(s.width, s.height);
+  return [Math.max(8, Math.round(s.width * k / 8) * 8), Math.max(8, Math.round(s.height * k / 8) * 8)];
+}
+function ddPreview(on, { restore = true } = {}) {
+  ddPrev = on && !!state.clip && state.dd.src !== 'off';
+  $('ddPrevBtn').classList.toggle('on', ddPrev);
+  if (ddPrev) { stopPlay(); drawDdPreview(); return; }
+  if (restore && $('ddPrevWrap')) viewRun ? showRun(viewRun) : clearStage();
+}
+function drawDdPreview() {
+  if (!ddPrev || ddQueued) return;
+  ddQueued = true;
+  requestAnimationFrame(() => { ddQueued = false; paintDdPreview(); });
+}
+function paintDdPreview() {
+  if (!ddPrev) return;
+  const [w, h] = renderSize(), [fa] = rangeFrames(), kind = state.dd.src;
+  const key = [state.clip.path, fa, w, h, kind].join('|');
+  if (ddBase.key !== key) {                // new frame / size / source: fetch, debounced for range drags
+    clearTimeout(ddFetch);
+    ddFetch = setTimeout(async () => {
+      setStatus(kind === 'depth' ? 'computing depth…' : 'loading frame…', 'live');
+      const img = new Image();
+      img.src = `/api/diff/base?${qs({ path: state.clip.path, frame: fa, width: w, height: h, kind })}`;
+      try { await img.decode(); } catch { setStatus('mask preview failed', 'bad'); return; }
+      ddBase = { key, img }; setStatus(`mask preview · frame ${fa + 1}`, 'done');
+      paintDdPreview();
+    }, 250);
+    return;
+  }
+  if (!$('ddPrevWrap')) {
+    $('stage').innerHTML = `<div class="frame" id="ddPrevWrap"><canvas class="out" id="ddPrevCv"></canvas>
+      <span class="tag l">mask · first frame</span><span class="tag r">white repaints · black keeps</span></div>`;
+    $('scrub').hidden = true;
+  }
+  const d = state.dd, cv = $('ddPrevCv');
+  cv.width = w; cv.height = h;
+  const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+  const tc = tmp.getContext('2d', { willReadFrequently: true });
+  tc.drawImage(ddBase.img, 0, 0, w, h);
+  const im = tc.getImageData(0, 0, w, h), px = im.data;
+  const lo = d.black / 255, span = Math.max(d.white / 255 - lo, 1e-4), g = 1 / Math.max(d.gamma, 1e-4);
+  for (let i = 0; i < px.length; i += 4) {
+    let m = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+    if (d.invert) m = 1 - m;
+    m = Math.min(1, Math.max(0, (m - lo) / span));
+    if (d.gamma !== 1) m = Math.pow(m, g);
+    m = Math.min(1, Math.max(0, (m - 0.5) * d.contrast + 0.5));
+    px[i] = px[i + 1] = px[i + 2] = m * 255; px[i + 3] = 255;
+  }
+  tc.putImageData(im, 0, 0);
+  const c = cv.getContext('2d', { willReadFrequently: true });
+  c.drawImage(tmp, 0, 0);                  // unblurred underneath, so blurred edges don't fade to black
+  if (d.blur > 0) { c.filter = `blur(${d.blur / 2}px)`; c.drawImage(tmp, 0, 0); c.filter = 'none'; }
+  if (d.amount !== 1) {
+    const om = c.getImageData(0, 0, w, h), q = om.data;
+    for (let i = 0; i < q.length; i += 4) q[i] = q[i + 1] = q[i + 2] = Math.min(255, q[i] * d.amount);
+    c.putImageData(om, 0, 0);
+  }
+}
+$('ddPrevBtn').onclick = () => ddPreview(!ddPrev);
 $('ddInvert').onclick = () => { state.dd.invert = !state.dd.invert; renderControls(); save(); };
 // DepthDiff mask sliders: [state key, decimals shown]; element ids are dd<Key>
 var DD_SLIDERS = [['black', 0], ['white', 0], ['gamma', 2], ['contrast', 2], ['blur', 0], ['amount', 2]];
@@ -872,6 +945,7 @@ $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { metho
 // ---------------------------------------------------------------- stage
 let split = 0.5, view = 'split';
 async function showRun(runId, { follow = false } = {}) {
+  if (ddPrev) ddPreview(false, { restore: false });
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
   const out = desc.layers.find(l => l.id === 'output');

@@ -461,6 +461,11 @@ class DiffDiffusion:
         return kw
 
 
+def depth_map(img: np.ndarray) -> Image.Image:
+    """The depth hint for one RGB frame, with the cached annotator (DepthDiff preview)."""
+    return _CACHE.setdefault("ann", Annotators(torch.device("cuda")))("depth", img)
+
+
 def free_models():
     _CACHE.clear()
     torch.cuda.empty_cache()
