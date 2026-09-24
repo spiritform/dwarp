@@ -185,14 +185,17 @@
   .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
   .scrub button { background: none; border: 1px solid var(--line); color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
   .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
-  .stage-foot { display: flex; gap: 14px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
+  .stage-foot { display: flex; gap: 8px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
                 background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .stage-foot a { color: var(--accent-2); text-decoration: none; cursor: pointer; }
+  .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 1px solid #3a3941;
+                 border-radius: 7px; padding: 6px 12px; white-space: nowrap; }
+  .stage-foot a:hover { background: #34333b; border-color: #48474f; color: #fff; }
+  .stage-foot #cancelLink { color: #ff9a8a; }
   .stage-foot a.hide { display: none; }
   .stage-foot .spacer { flex: 1; }
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-  .outputs { display: flex; gap: 12px; }
+  .outputs { display: flex; gap: 8px; }
   .enh { position: absolute; right: 18px; bottom: 44px; width: 300px; background: var(--panel); border: 1px solid var(--line);
          border-radius: var(--radius); padding: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 5; }
   .enh h4 { margin: 0 0 12px; font-size: 13px; display: flex; justify-content: space-between; }
