@@ -1098,6 +1098,8 @@ async function startJob(kind) {
         state.spf[built.job.family] = +(per / (built.size / MODES[built.job.family].ref_size) ** 2 / stepsF).toFixed(2); save(); updateEst();
       }
       setStatus(`${name} done · ${total} frames`, 'done'); setButtons(false);
+      // done: show the result — a Single Frame on Output, a Preview / Render on Split
+      if (view === 'src' || view === 'mask') view = kind === 'frame' ? 'out' : 'split';
       await refreshRuns(); if (snap.run_id) showRun(snap.run_id);
     } else if (snap.state === 'failed') {
       es.close(); setStatus(`${name} failed`, 'bad'); setButtons(false);
