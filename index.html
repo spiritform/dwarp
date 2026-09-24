@@ -522,7 +522,7 @@ function checkpointPath() {
   if (!have.length || have.some(c => c.path === want)) return want;
   return have[0].path;
 }
-const isFast = path => /lightning|turbo|hyper|lcm/i.test(path.split('/').pop());
+const isFast = path => /lightning|turbo|hyper|lcm|flash/i.test(path.split('/').pop());
 function renderMode() {
   $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
     `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}">${m.label}</button>`).join('');
@@ -535,7 +535,7 @@ function renderMode() {
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
 }
-// Distilled models (Lightning/Turbo/Hyper/LCM) want few steps and low CFG; others the usual.
+// Distilled models (Lightning/Turbo/Hyper/LCM/Flash) want few steps and low CFG; others the usual.
 function applyModelDefaults() {
   const fast = isFast(checkpointPath());
   state.steps = fast ? 8 : 20; state.cfg = fast ? 2 : 5;

@@ -232,11 +232,46 @@ UNION_CONFIG = dict(
 UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3}
 
 
-def is_union(path: str) -> bool:
-    """A Union ControlNet has a control_add_embedding; read the safetensors header to tell."""
+# SSD-1B (Segmind's distilled SDXL; SDXL Flash Mini is built on it): same channels and ControlNet
+# hookup points as SDXL, but fewer transformer layers and a mid block without attention.
+# diffusers' single-file loader assumes the full SDXL layout, so the UNet is built from this.
+SSD1B_UNET_CONFIG = dict(
+    addition_embed_type="text_time", addition_time_embed_dim=256, attention_head_dim=[5, 10, 20],
+    block_out_channels=[320, 640, 1280], cross_attention_dim=2048,
+    down_block_types=["DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"],
+    up_block_types=["CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "UpBlock2D"],
+    mid_block_type="UNetMidBlock2D", projection_class_embeddings_input_dim=2816, sample_size=128,
+    transformer_layers_per_block=[[1], [2, 2], [4, 4]],
+    reverse_transformer_layers_per_block=[[4, 4, 10], [2, 1, 1], 1], use_linear_projection=True)
+
+
+def _header(path: str) -> bytes:
     with open(path, "rb") as f:
         n = int.from_bytes(f.read(8), "little")
-        return b'"control_add_embedding.' in f.read(n)
+        return f.read(n)
+
+
+def is_union(path: str) -> bool:
+    """A Union ControlNet has a control_add_embedding."""
+    return b'"control_add_embedding.' in _header(path)
+
+
+def is_ssd1b(path: str) -> bool:
+    """Full SDXL has middle_block.0/1/2 (resnet, attention, resnet); SSD-1B only the first."""
+    h = _header(path)
+    return b'"model.diffusion_model.middle_block.0.' in h and b'"model.diffusion_model.middle_block.1.' not in h
+
+
+def load_ssd1b_unet(path: str, dtype):
+    from diffusers import UNet2DConditionModel
+    from diffusers.loaders.single_file_utils import convert_ldm_unet_checkpoint
+    from safetensors.torch import load_file
+    sd = {k: v for k, v in load_file(path).items() if k.startswith("model.diffusion_model.")}
+    with torch.device("meta"):
+        unet = UNet2DConditionModel(**SSD1B_UNET_CONFIG)
+    sd = convert_ldm_unet_checkpoint(sd, unet.config)
+    unet.load_state_dict({k: v.to(dtype) for k, v in sd.items()}, strict=True, assign=True)
+    return unet.eval()
 
 
 def load_union(path: str, dtype):
@@ -270,6 +305,8 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
         kwargs["controlnet"] = nets if len(nets) != 1 else nets[0]
     if job.family != "sdxl":
         kwargs.update(safety_checker=None, requires_safety_checker=False)
+    elif is_ssd1b(job.checkpoint):
+        kwargs["unet"] = load_ssd1b_unet(job.checkpoint, dtype)
     pipe = Pipe.from_single_file(job.checkpoint, **kwargs)
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
     pipe.set_progress_bar_config(disable=True)
