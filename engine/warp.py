@@ -74,6 +74,7 @@ class RenderJob:
     diff_brightness: float = 0.0
     diff_contrast: float = 1.0
     diff_blur: int = 4                   # px
+    diff_amount: float = 1.0             # scales the mask: <1 caps the repaint, >1 pushes it harder
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -211,7 +212,7 @@ def diff_mask(img: torch.Tensor, job: "RenderJob") -> torch.Tensor:
     if job.diff_gamma != 1:
         m = m.pow(1 / max(job.diff_gamma, 1e-4))
     m = ((m - 0.5) * job.diff_contrast + 0.5 + job.diff_brightness).clamp(0, 1)
-    return gaussian_blur(m, int(job.diff_blur)).clamp(0, 1)
+    return (gaussian_blur(m, int(job.diff_blur)) * job.diff_amount).clamp(0, 1)
 
 
 # ------------------------------------------------------------------ ControlNet hints
