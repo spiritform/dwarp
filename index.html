@@ -580,6 +580,7 @@ function bindRange() {
     if (drag === null) return;
     const r = range.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const minGap = 2 / state.clip.source.frames;
+    ddFrame = null;                        // moving the range: the mask preview follows its first frame again
     if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
     else state.range[1] = Math.max(x, state.range[0] + minGap);
     paintRange();
@@ -632,6 +633,7 @@ function bindKeys() {
     const f = frameAt(e), el = $('keyPeek'); if (!el) return;
     el.style.left = Math.min(100 - 5, Math.max(5, pos(e) * 100)) + '%';     // keep it inside the card
     el.querySelector('span').textContent = `${(f / (state.clip.source.fps || 24)).toFixed(1)}s`;
+    if (ddPrev && ddFrame !== f) { ddFrame = f; drawDdPreview(); }   // mask preview follows the scrub
     if (f === peekFrame) return;
     peekFrame = f; clearTimeout(peekTimer);                                  // fetch at most every ~80 ms
     peekTimer = setTimeout(() => {
@@ -678,7 +680,7 @@ $('blend').oninput = e => { state.blend = +e.target.value; paintKeys(); save(); 
 
 async function setClipPath(path, name) {
   const probe = await api(`/api/video/probe?${qs({ path })}`);
-  if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; }
+  if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; ddFrame = null; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
   save(); renderClip();
 }
@@ -835,6 +837,7 @@ $('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.
 // engine's diff_mask) so it follows the sliders instantly. The server only supplies the frame
 // (luma) or its depth map, once per clip / frame / size / source.
 var ddPrev = false, ddBase = { key: '', img: null }, ddFetch = null, ddQueued = false;
+var ddFrame = null;                       // a frame picked by scrubbing the keyframe lane; null = range start
 function renderSize() {
   const s = state.clip.source, k = state.size / Math.max(s.width, s.height);
   return [Math.max(8, Math.round(s.width * k / 8) * 8), Math.max(8, Math.round(s.height * k / 8) * 8)];
@@ -852,7 +855,7 @@ function drawDdPreview() {
 }
 function paintDdPreview() {
   if (!ddPrev) return;
-  const [w, h] = renderSize(), [fa] = rangeFrames(), kind = state.dd.src;
+  const [w, h] = renderSize(), fa = ddFrame ?? rangeFrames()[0], kind = state.dd.src;
   const key = [state.clip.path, fa, w, h, kind].join('|');
   if (ddBase.key !== key) {                // new frame / size / source: fetch, debounced for range drags
     clearTimeout(ddFetch);
@@ -864,16 +867,18 @@ function paintDdPreview() {
         ddPreview(false);                  // don't leave the button lit over a stage that never changed
         setStatus('mask preview failed — if DWARP was just updated, restart the server', 'bad'); return;
       }
-      ddBase = { key, img }; setStatus(`mask preview · frame ${fa + 1}`, 'done');
+      ddBase = { key, img }; setStatus(`mask preview · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`, 'done');
       paintDdPreview();
     }, 250);
     return;
   }
   if (!$('ddPrevWrap')) {
     $('stage').innerHTML = `<div class="frame" id="ddPrevWrap"><canvas class="out" id="ddPrevCv"></canvas>
-      <span class="tag l">mask · first frame</span><span class="tag r">white repaints · black keeps</span></div>`;
+      <span class="tag l" id="ddPrevTag"></span><span class="tag r">white repaints · black keeps</span></div>`;
     $('scrub').hidden = true;
   }
+  $('ddPrevTag').textContent = ddFrame === null ? 'mask · first frame'
+    : `mask · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`;
   const d = state.dd, cv = $('ddPrevCv');
   cv.width = w; cv.height = h;
   const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
