@@ -208,9 +208,12 @@
   .frame .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; cursor: ew-resize; touch-action: none; }
   .frame .divider::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
            background: #fff; color: #000; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 13px; }
-  .frame .tag { position: absolute; bottom: 8px; font-size: 10px; letter-spacing: .8px; text-transform: uppercase;
-           background: rgba(0,0,0,.6); padding: 3px 7px; border-radius: 4px; color: #ddd; }
-  .frame .tag.l { left: 8px; } .frame .tag.r { right: 8px; }
+  /* save: downloads whatever the frame shows; appears on hover */
+  .frame .save { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: grid; place-items: center;
+                 background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; color: #e8e6e3;
+                 cursor: pointer; opacity: 0; transition: opacity .15s; }
+  .frame:hover .save { opacity: 1; }
+  .frame .save:hover { background: rgba(0,0,0,.85); color: #fff; }
   .placeholder { color: var(--faint); text-align: center; }
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
 
@@ -1155,7 +1158,8 @@ function ensureFrameEl(hasInit) {
     <img class="ctl" id="imgCtl" alt="">
     <canvas class="ctl" id="cvMask"></canvas>
     <div class="divider" id="divider"></div>
-    <span class="tag l">source</span><span class="tag r">output</span></div>`;
+    <button class="save" id="frameSave" title="Save this image"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg></button>
+    </div>`;
   const div = $('divider'); let on = false;
   div.addEventListener('pointerdown', e => { e.preventDefault(); on = true; div.setPointerCapture(e.pointerId); });
   div.addEventListener('pointermove', e => {
@@ -1164,7 +1168,24 @@ function ensureFrameEl(hasInit) {
     split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); applyView();
   });
   div.addEventListener('pointerup', () => on = false);
+  $('frameSave').onclick = saveFrame;
   applyView();
+}
+// Download what the frame shows: Output / Split -> the render, Source -> the source frame,
+// Depth / Edge -> that hint, Diff -> the live mask as drawn.
+function saveFrame() {
+  const pad = (n, w) => String(n).padStart(w, '0');
+  const clipName = () => state.clip.name.replace(/\.[^.]+$/, '').replace(/[^\w\-]+/g, '_');
+  const grab = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; a.click(); };
+  if (view === 'mask') {
+    const where = clipMode() ? `${clipName()}_${pad(clipFrame, 4)}` : `run${viewRun}_${pad(frames[frameIdx], 6)}`;
+    return $('cvMask').toBlob(b => { const u = URL.createObjectURL(b); grab(u, `dwarp_${where}_diff.png`); setTimeout(() => URL.revokeObjectURL(u), 5000); });
+  }
+  if (clipMode()) return grab(clipFrameUrl('luma'), `dwarp_${clipName()}_source_${pad(clipFrame, 4)}.jpg`);
+  const n = frames[frameIdx];
+  if (view === 'src') return grab(img(viewRun, 'init', n), `dwarp_run${viewRun}_source_${pad(n, 6)}.jpg`);
+  if (view.startsWith('control_')) return grab(img(viewRun, view, n), `dwarp_run${viewRun}_${view.slice(8)}_${pad(n, 6)}.jpg`);
+  grab(img(viewRun, 'output', n), `dwarp_run${viewRun}_output_${pad(n, 6)}.png`);
 }
 function applyView() {
   if (!$('frame')) return;
@@ -1177,9 +1198,6 @@ function applyView() {
   div.style.display = view === 'split' && !clip ? '' : 'none';
   div.style.left = split * 100 + '%';
   src.style.clipPath = view === 'src' ? 'none' : `inset(0 ${100 - split * 100}% 0 0)`;
-  f.querySelector('.tag.l').textContent = mask ? 'diff · live' : ctl ? controlTabs[view] : 'source';
-  f.querySelector('.tag.l').style.display = view === 'out' ? 'none' : '';
-  f.querySelector('.tag.r').style.display = view === 'src' || ctl || mask || clip ? 'none' : '';
   if (mask) drawMask();
 }
 // Tabs between Source and Output follow the panel's ControlNet / DepthDiff tab: a run's saved
