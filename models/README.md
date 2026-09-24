@@ -29,7 +29,10 @@ Any other SD 1.5 checkpoint works too. DWARP lists every one it finds under `che
 | File | Put it in | Size |
 |---|---|---|
 | [DreamShaperXL_Turbo_v2_1.safetensors](https://huggingface.co/Lykon/dreamshaper-xl-v2-turbo/resolve/main/DreamShaperXL_Turbo_v2_1.safetensors) | `checkpoints/` | 6.9 GB |
-| [diffusion_pytorch_model.fp16.safetensors](https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0/resolve/main/diffusion_pytorch_model.fp16.safetensors) → **rename to** `controlnet-depth-sdxl-1.0.fp16.safetensors` | `controlnet/` | 2.5 GB |
+| [diffusion_pytorch_model_promax.safetensors](https://huggingface.co/xinsir/controlnet-union-sdxl-1.0/resolve/main/diffusion_pytorch_model_promax.safetensors) → **rename to** `controlnet-union-sdxl-1.0-promax.safetensors` | `controlnet/` | 2.5 GB |
+
+The ControlNet is xinsir's Union ProMax: one network that does both depth and soft edge, so
+SDXL gets "depth + edge" in the memory of a single ControlNet.
 
 Turbo, Lightning, Hyper and LCM checkpoints are fast (DWARP sets 8 steps, CFG 2 for them).
 

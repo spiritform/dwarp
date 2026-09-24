@@ -217,15 +217,50 @@ class Annotators:
 
 
 # ------------------------------------------------------------------ diffusion
+# xinsir's ControlNet Union (ProMax) for SDXL: one network, many condition types, selected per
+# image by index. The files ship without a config and diffusers can't infer one, so it lives here.
+UNION_CONFIG = dict(
+    act_fn="silu", addition_embed_type="text_time", addition_embed_type_num_heads=64,
+    addition_time_embed_dim=256, attention_head_dim=[5, 10, 20], block_out_channels=[320, 640, 1280],
+    conditioning_channels=3, conditioning_embedding_out_channels=[16, 32, 96, 256],
+    controlnet_conditioning_channel_order="rgb", cross_attention_dim=2048,
+    down_block_types=["DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"],
+    downsample_padding=1, flip_sin_to_cos=True, freq_shift=0, global_pool_conditions=False,
+    in_channels=4, layers_per_block=2, mid_block_scale_factor=1, norm_eps=1e-5, norm_num_groups=32,
+    projection_class_embeddings_input_dim=2816, resnet_time_scale_shift="default",
+    transformer_layers_per_block=[1, 2, 10], use_linear_projection=True, num_control_type=8)
+UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3}
+
+
+def is_union(path: str) -> bool:
+    """A Union ControlNet has a control_add_embedding; read the safetensors header to tell."""
+    with open(path, "rb") as f:
+        n = int.from_bytes(f.read(8), "little")
+        return b'"control_add_embedding.' in f.read(n)
+
+
+def load_union(path: str, dtype):
+    from diffusers import ControlNetUnionModel
+    from safetensors.torch import load_file
+    with torch.device("meta"):
+        net = ControlNetUnionModel(**UNION_CONFIG)
+    net.load_state_dict({k: v.to(dtype) for k, v in load_file(path).items()}, strict=True, assign=True)
+    return net.eval()
+
+
 def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     from diffusers import ControlNetModel, DPMSolverMultistepScheduler
 
+    paths = list(dict.fromkeys(c.path for c in job.controlnets))
+    union = len(paths) == 1 and is_union(paths[0])
     # disable_mmap: memory-mapping multi-GB checkpoints crashes the process on Windows with an
     # access violation (seen with 7 GB SDXL files on a busy HDD); a plain read into RAM doesn't.
-    nets = [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True) for c in job.controlnets]
+    nets = [load_union(paths[0], dtype)] if union else \
+        [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True) for c in job.controlnets]
     import diffusers
     # No ControlNets = plain img2img: lighter and faster, structure comes from the flow warp alone.
-    name = {("sdxl", True): "StableDiffusionXLControlNetImg2ImgPipeline",
+    name = "StableDiffusionXLControlNetUnionImg2ImgPipeline" if union else \
+           {("sdxl", True): "StableDiffusionXLControlNetImg2ImgPipeline",
             ("sdxl", False): "StableDiffusionXLImg2ImgPipeline",
             ("sd15", True): "StableDiffusionControlNetImg2ImgPipeline",
             ("sd15", False): "StableDiffusionImg2ImgPipeline"}[(job.family, bool(nets))]
@@ -274,14 +309,14 @@ _CACHE: dict = {}
 
 
 def cached_pipeline(job: RenderJob, device, log):
-    key = (job.checkpoint, job.family, tuple(c.path for c in job.controlnets))
+    key = (job.checkpoint, job.family, tuple(dict.fromkeys(c.path for c in job.controlnets)))   # union: depth / depth+edge share one net
     if _CACHE.get("pipe_key") != key:
         _CACHE.pop("pipe", None)
         torch.cuda.empty_cache()
         t = time.time()
         _CACHE["pipe"] = load_pipeline(job, device)
         _CACHE["pipe_key"] = key
-        log(f"loaded {Path(job.checkpoint).name} + {len(job.controlnets)} ControlNet(s) in {time.time() - t:.1f}s")
+        log(f"loaded {Path(job.checkpoint).name} + {len(key[2])} ControlNet(s) in {time.time() - t:.1f}s")
     else:
         log(f"reusing loaded {Path(job.checkpoint).name}")
     return _CACHE["pipe"]
@@ -319,6 +354,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     ann = _CACHE.setdefault("ann", Annotators(device))
 
     embeds = sdxl_embeds(pipe, job, device) if job.family == "sdxl" else None
+    union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
     log(f"style {job.style} on frame 0, {style_next} after; colour match {job.color_match}")
@@ -347,7 +383,13 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
         kw = dict(**text, image=to_image(init),
                   strength=job.style if i == 0 else style_next, num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
-        if job.controlnets:
+        if union:
+            # one network, every hint at once, each tagged with its condition type
+            cn = job.controlnets
+            kw.update(control_image=hints, control_mode=[UNION_MODE[c.kind] for c in cn],
+                      controlnet_conditioning_scale=[c.weight for c in cn],
+                      control_guidance_start=[c.start for c in cn], control_guidance_end=[c.end for c in cn])
+        elif job.controlnets:
             single = len(job.controlnets) == 1
             kw.update(control_image=hints[0] if single else hints,
                       controlnet_conditioning_scale=job.controlnets[0].weight if single else [c.weight for c in job.controlnets],

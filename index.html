@@ -354,7 +354,7 @@ let state = {
   preset: 'raw', prompt: '', style: 0.8, hold: 60, size: 512, steps: 20, cfg: 5,
   mode: 'sd15',
   ckpt: { sd15: '', sdxl: '' },        // '' = the look's own checkpoint (sd15) / mode default (sdxl)
-  cn: { sd15: 'both', sdxl: 'depth' },  // ControlNets per mode: off | depth | both (depth + edge)
+  cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   spf: {},                             // learned seconds/frame at each mode's ref_size
   seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
 };
@@ -556,7 +556,7 @@ function renderControls() {
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
   $('steps').value = state.steps; $('stepsV').textContent = state.steps;
   $('cfg').value = state.cfg; $('cfgV').textContent = (+state.cfg).toFixed(1);
-  // A mode with a single ControlNet (SDXL: depth only, to fit 12 GB) has no "depth + edge".
+  // A mode with a single ControlNet has no "depth + edge".
   const nets = Object.keys(modeCfg().controlnets || {}).length;
   if (nets < 2 && state.cn[state.mode] === 'both') state.cn[state.mode] = 'depth';
   const cn = state.cn[state.mode] || 'both';
@@ -1029,7 +1029,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES }, { checkpoints: CHECKPOINTS }] = await Promise.all([
       api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
-  state.cn = { sd15: 'both', sdxl: 'depth', ...(state.cn || {}) };
+  state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
