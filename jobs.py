@@ -144,6 +144,7 @@ class JobManager:
                 job.progress = frame / total * 100 if total else 0.0
                 self._touch(job)
 
+        t0 = time.time()
         written = render(rj, progress=progress, cancelled=lambda: job.cancel_requested,
                          log=lambda line: self._log(job, line))
         if written and not job.cancel_requested:
@@ -151,3 +152,8 @@ class JobManager:
             self._touch(job)
             assemble(str(run_path), job.payload.get("fps", 24))
             self._log(job, f"assembled video.mp4 ({len(written)} frames)")
+        took = time.time() - t0
+        m, sec = divmod(round(took), 60)
+        h, m = divmod(m, 60)
+        per = f", {took / len(written):.1f}s/frame" if written else ""
+        self._log(job, f"total {f'{h}h ' if h else ''}{m}m {sec:02d}s{per}")
