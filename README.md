@@ -8,18 +8,6 @@ travel with the things they belong to, so the result moves like the footage inst
 
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Test**.
 
-## Homage
-
-DWARP exists because of **[WarpFusion](https://github.com/Sxela/WarpFusion) by Alex Spirin ([Sxela](https://github.com/Sxela))**,
-who pioneered this technique — first as [DiscoDiffusion-Warp](https://github.com/Sxela/DiscoDiffusion-Warp) in 2022,
-then as WarpFusion on Stable Diffusion, and most recently as [VibeWarp](https://github.com/Sxela/VibeWarp).
-The core idea here — warp the previous stylized frame along optical flow, trust it only where a
-forward/backward consistency check agrees, and let diffusion fill the rest — is his.
-
-DWARP is an independent re-implementation of that idea with its own engine and UI; it contains no
-WarpFusion or VibeWarp code. If you want the full, deep, battle-tested toolset, use Sxela's work and
-[support him on Patreon](https://www.patreon.com/sxela).
-
 ## How it works
 
 For every frame:
@@ -59,7 +47,8 @@ checked against its SHA-256.
 
 ## Credits
 
-- Technique: **Alex Spirin / Sxela** — WarpFusion, DiscoDiffusion-Warp, VibeWarp
+Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pioneered this technique with [DiscoDiffusion-Warp](https://github.com/Sxela/DiscoDiffusion-Warp), [WarpFusion](https://github.com/Sxela/WarpFusion) and [VibeWarp](https://github.com/Sxela/VibeWarp) ([Patreon](https://www.patreon.com/sxela)). DWARP is an independent re-implementation and contains none of their code.
+
 - [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [ControlNet](https://github.com/lllyasviel/ControlNet) (Lvmin Zhang), [diffusers](https://github.com/huggingface/diffusers), [controlnet_aux](https://github.com/huggingface/controlnet_aux)
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
