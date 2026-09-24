@@ -721,7 +721,10 @@ function paintDdPreview() {
       setStatus(kind === 'depth' ? 'computing depth…' : 'loading frame…', 'live');
       const img = new Image();
       img.src = `/api/diff/base?${qs({ path: state.clip.path, frame: fa, width: w, height: h, kind })}`;
-      try { await img.decode(); } catch { setStatus('mask preview failed', 'bad'); return; }
+      try { await img.decode(); } catch {
+        ddPreview(false);                  // don't leave the button lit over a stage that never changed
+        setStatus('mask preview failed — if DWARP was just updated, restart the server', 'bad'); return;
+      }
       ddBase = { key, img }; setStatus(`mask preview · frame ${fa + 1}`, 'done');
       paintDdPreview();
     }, 250);
