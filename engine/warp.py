@@ -375,6 +375,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     (out / "frames").mkdir(parents=True, exist_ok=True)
     (out / "src").mkdir(exist_ok=True)
     (out / "debug").mkdir(exist_ok=True)
+    for c in job.controlnets:                   # the hints each frame was steered by, for the viewer
+        (out / "control" / c.kind).mkdir(parents=True, exist_ok=True)
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
     t0 = time.time()
@@ -416,6 +418,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 to_image(init).save(out / "debug" / f"init_{i:06d}.png")
 
         hints = [ann(c.kind, src_np) for c in job.controlnets]
+        for c, h in zip(job.controlnets, hints):
+            h.convert("RGB").save(out / "control" / c.kind / f"{i:06d}.jpg", quality=90)
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
         text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
         kw = dict(**text, image=to_image(init),

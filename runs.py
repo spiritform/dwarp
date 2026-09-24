@@ -1,6 +1,6 @@
 """Run folders on disk.
 
-Engine runs:   renders/<n>/  frames/NNNNNN.png  src/NNNNNN.jpg  debug/  job.json  meta.json
+Engine runs:   renders/<n>/  frames/NNNNNN.png  src/NNNNNN.jpg  control/<kind>/NNNNNN.jpg  debug/  job.json  meta.json
                video.mp4  post/*.mp4  .thumbs/
 Legacy runs:   renders/warpbox/<n>/  (made by VibeWarp) — listed read-only as id "v<n>".
 """
@@ -97,8 +97,21 @@ def init_frames(run_id: str) -> dict[int, Path]:
     return {int(p.stem) - 1: p for p in vf.glob("*.jpg")} if vf.is_dir() else {}
 
 
+# ControlNet hints the engine saved per frame: control/<kind>/NNNNNN.jpg -> layer "control_<kind>"
+CONTROL_LABELS = {"depth": "Depth", "softedge": "Edge", "canny": "Canny", "lineart": "Lineart"}
+
+
+def control_frames(run_id: str, kind: str) -> dict[int, Path]:
+    d = run_dir(run_id) / "control" / kind
+    if kind not in CONTROL_LABELS or is_legacy(run_id) or not d.is_dir():
+        return {}
+    return {int(p.stem): p for p in d.glob("*.jpg")}
+
+
 def layer_path(run_id: str, layer: str, frame: int) -> Path | None:
-    frames = output_frames(run_id) if layer == "output" else init_frames(run_id) if layer == "init" else {}
+    if layer.startswith("control_"):
+        return control_frames(run_id, layer[len("control_"):]).get(frame)
+    frames =output_frames(run_id) if layer == "output" else init_frames(run_id) if layer == "init" else {}
     return frames.get(frame)
 
 
@@ -130,7 +143,8 @@ def describe(run_id: str) -> dict:
     return {"run": run_id, "layers": [
         {"id": "output", "label": "Output", "frames": sorted(out)},
         {"id": "init", "label": "Source", "frames": sorted(init)},
-    ]}
+    ] + [{"id": f"control_{kind}", "label": label, "frames": sorted(frames)}
+         for kind, label in CONTROL_LABELS.items() if (frames := control_frames(run_id, kind))]}
 
 
 def summary(run_id: str) -> dict:

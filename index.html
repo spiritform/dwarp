@@ -147,6 +147,7 @@
   .frame img { display: block; }
   .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
   .frame .src { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; clip-path: inset(0 50% 0 0); }
+  .frame .ctl { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
   .frame .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; cursor: ew-resize; touch-action: none; }
   .frame .divider::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
            background: #fff; color: #000; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 13px; }
@@ -764,6 +765,7 @@ async function showRun(runId, { follow = false } = {}) {
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
   const out = desc.layers.find(l => l.id === 'output');
   const initL = desc.layers.find(l => l.id === 'init');
+  setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   viewRun = runId; frames = newFrames;
@@ -790,6 +792,7 @@ function ensureFrameEl(hasInit) {
   $('stage').innerHTML = `<div class="frame" id="frame">
     <img class="out" id="imgOut" alt="">
     <img class="src" id="imgSrc" alt="">
+    <img class="ctl" id="imgCtl" alt="">
     <div class="divider" id="divider"></div>
     <span class="tag l">source</span><span class="tag r">output</span></div>`;
   const div = $('divider'); let on = false;
@@ -804,22 +807,38 @@ function ensureFrameEl(hasInit) {
 }
 function applyView() {
   if (!$('frame')) return;
-  const src = $('imgSrc'), div = $('divider'), f = $('frame');
-  src.style.display = view === 'out' ? 'none' : '';
+  const src = $('imgSrc'), div = $('divider'), f = $('frame'), ctl = view.startsWith('control_');
+  src.style.display = view === 'out' || ctl ? 'none' : '';
+  $('imgCtl').style.display = ctl ? '' : 'none';
   div.style.display = view === 'split' ? '' : 'none';
   div.style.left = split * 100 + '%';
   src.style.clipPath = view === 'src' ? 'none' : `inset(0 ${100 - split * 100}% 0 0)`;
+  f.querySelector('.tag.l').textContent = ctl ? controlTabs[view] : 'source';
   f.querySelector('.tag.l').style.display = view === 'out' ? 'none' : '';
-  f.querySelector('.tag.r').style.display = view === 'src' ? 'none' : '';
+  f.querySelector('.tag.r').style.display = view === 'src' || ctl ? 'none' : '';
+}
+// ControlNet hint layers (depth, edge…) get their own tabs, only for runs that have them.
+let controlTabs = {};
+function setControlTabs(layers) {
+  const next = Object.fromEntries(layers.map(l => [l.id, l.label]));
+  if (JSON.stringify(next) === JSON.stringify(controlTabs)) return;
+  controlTabs = next;
+  $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
+  for (const [id, label] of Object.entries(controlTabs))
+    $('view').insertAdjacentHTML('beforeend', `<button data-v="${id}" data-ctl title="What the ControlNet saw">${label}</button>`);
+  if (view.startsWith('control_') && !controlTabs[view]) view = 'split';
+  [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
 }
 $('view').onclick = e => {
   const v = e.target.dataset.v; if (!v) return; view = v;
   [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target)); applyView();
+  if (frames.length && $('frame')) paintFrame();
 };
 function paintFrame() {
   const n = frames[frameIdx];
   $('imgOut').src = img(viewRun, 'output', n);
   $('imgSrc').src = img(viewRun, 'init', n);
+  if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
   $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
 }
 $('scrubRange').oninput = e => { frameIdx = +e.target.value; stopPlay(); paintFrame(); };
