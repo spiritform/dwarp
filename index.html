@@ -111,10 +111,11 @@
                               background: var(--accent); margin-left: 6px; vertical-align: 1px; }
   .ddrow { display: flex; gap: 6px; margin-bottom: 14px; }
   .ddrow .seg { flex: 1; }
-  .invert { width: 36px; flex: none; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
-            color: var(--dim); cursor: pointer; font-size: 14px; }
-  .invert:hover { border-color: var(--faint); }
-  .invert.on { border-color: var(--accent); background: rgba(255,106,61,.1); color: var(--text); }
+  /* a lighter grey than the segs so it reads as a switch on the mask, not another source */
+  .invert { flex: none; padding: 0 12px; background: #34333b; border: 1px solid #44434b; border-radius: 8px;
+            color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
+  .invert:hover { background: #3c3b43; }
+  .invert.on { border-color: var(--accent); color: var(--text); }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -290,7 +291,7 @@
     <div id="ddPane" hidden>
       <div class="ddrow">
         <div class="seg" id="ddSel"><button data-d="off">off</button><button data-d="luma">luma</button><button data-d="depth">depth</button></div>
-        <button id="ddInvert" class="invert">⇄</button>
+        <button id="ddInvert" class="invert">⇄ invert</button>
       </div>
       <div id="ddBox">
         <div class="pair">
