@@ -644,7 +644,7 @@ $('prompt').oninput = e => { state.prompt = e.target.value; save(); };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
-$('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); save(); };
+$('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); setControlTabs(); save(); };
 $('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.dd.src = d; renderControls(); save(); };
 $('ddInvert').onchange = e => { state.dd.invert = e.target.checked; renderControls(); save(); };
 $('ddContrast').oninput = e => { state.dd.contrast = +e.target.value; $('ddContrastV').textContent = state.dd.contrast.toFixed(2); save(); };
@@ -881,15 +881,18 @@ function applyView() {
   f.querySelector('.tag.r').style.display = view === 'src' || ctl ? 'none' : '';
 }
 // ControlNet hint layers (depth, edge…) get their own tabs, only for runs that have them.
-let controlTabs = {};
-function setControlTabs(layers) {
-  const next = Object.fromEntries(layers.map(l => [l.id, l.label]));
+// They follow the panel's ControlNet / DepthDiff tab: Depth + Edge, or Diff.
+var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
+function setControlTabs(layers = runLayers) {
+  runLayers = layers;
+  const dd = state.gtab === 'dd';
+  const next = Object.fromEntries(layers.filter(l => (l.id === 'control_diff') === dd).map(l => [l.id, l.label]));
   if (JSON.stringify(next) === JSON.stringify(controlTabs)) return;
   controlTabs = next;
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
   for (const [id, label] of Object.entries(controlTabs))
-    $('view').insertAdjacentHTML('beforeend', `<button data-v="${id}" data-ctl title="What the ControlNet saw">${label}</button>`);
-  if (view.startsWith('control_') && !controlTabs[view]) view = 'split';
+    $('view').insertAdjacentHTML('beforeend', `<button data-v="${id}" data-ctl title="${dd ? 'The DepthDiff mask: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
+  if (view.startsWith('control_') && !controlTabs[view]) { view = 'split'; applyView(); }
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
 }
 $('view').onclick = e => {
