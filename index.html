@@ -138,6 +138,9 @@
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 1px solid var(--line); }
+  /* Test / Render live in the bar under the transport, so they never scroll out of view */
+  .stage-foot .actions { display: flex; gap: 8px; margin-right: 8px; padding-right: 22px; border-right: 1px solid var(--line); }
+  .stage-foot .btn { padding: 7px 0; width: 92px; font-size: 13px; }
   .btn.test { background: var(--panel-2); color: var(--text); }
   .btn.test:hover { border-color: var(--faint); }
   .btn.go { background: var(--accent); color: #1a0d07; border-color: var(--accent); }
@@ -182,7 +185,8 @@
   .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
   .scrub button { background: none; border: 1px solid var(--line); color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
   .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
-  .stage-foot { display: flex; gap: 14px; padding: 8px 18px 10px; color: var(--dim); font-size: 12px; align-items: center; }
+  .stage-foot { display: flex; gap: 14px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
+                background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .stage-foot a { color: var(--accent-2); text-decoration: none; cursor: pointer; }
   .stage-foot a.hide { display: none; }
   .stage-foot .spacer { flex: 1; }
@@ -348,10 +352,6 @@
     <div class="seg" id="size"></div>
   </section>
 
-  <div class="actions">
-    <button class="btn test" id="testBtn">Test</button>
-    <button class="btn go" id="goBtn">Render</button>
-  </div>
 </aside>
 
 <main>
@@ -378,6 +378,10 @@
   </div>
   <details class="err" id="err" hidden><summary id="errSummary"></summary><pre id="errLog"></pre></details>
   <div class="stage-foot">
+    <div class="actions">
+      <button class="btn test" id="testBtn">Test</button>
+      <button class="btn go" id="goBtn">Render</button>
+    </div>
     <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
