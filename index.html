@@ -405,8 +405,8 @@
   <div class="stage-bar">
     <div class="toggle" id="view">
       <button data-v="src">Source</button>
-      <button data-v="out">Output</button>
-      <button data-v="split" class="on">Split</button>
+      <button data-v="out" class="on">Output</button>
+      <button data-v="split">Split</button>
     </div>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
     <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
@@ -1118,7 +1118,7 @@ $('goBtn').onclick = () => startJob('render');
 $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
 
 // ---------------------------------------------------------------- stage
-var split = 0.5, view = 'split';   // var: clipMode() reads view, and it can run before this line
+var split = 0.5, view = 'out';   // var: clipMode() reads view, and it can run before this line
 async function showRun(runId, { follow = false } = {}) {
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
@@ -1127,7 +1127,7 @@ async function showRun(runId, { follow = false } = {}) {
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   viewRun = runId; frames = newFrames;
-  if (switched && (view === 'src' || view === 'mask')) view = 'split';   // a picked run opens on its result
+  if (switched && (view === 'src' || view === 'mask')) view = 'out';     // a picked run opens on its result
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
   if (switched || follow) frameIdx = frames.length - 1;
@@ -1198,7 +1198,7 @@ function setControlTabs(layers = runLayers) {
   $('view').querySelector('[data-v="out"]').hidden = noRun;
   $('view').querySelector('[data-v="split"]').hidden = noRun;
   if (((view.startsWith('control_') || view === 'mask') && !controlTabs[view]) || (noRun && (view === 'out' || view === 'split')))
-    view = noRun ? 'src' : 'split';
+    view = noRun ? 'src' : 'out';
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
   applyView();
 }
