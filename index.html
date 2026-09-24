@@ -370,9 +370,9 @@
 <main>
   <div class="stage-bar">
     <div class="toggle" id="view">
-      <button data-v="split" class="on">Split</button>
-      <button data-v="out">Output</button>
       <button data-v="src">Source</button>
+      <button data-v="out">Output</button>
+      <button data-v="split" class="on">Split</button>
     </div>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
     <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
@@ -1025,8 +1025,8 @@ function setControlTabs(layers = runLayers) {
   if (JSON.stringify(next) === JSON.stringify(controlTabs)) return;
   controlTabs = next;
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
-  for (const [id, label] of Object.entries(controlTabs))
-    $('view').insertAdjacentHTML('beforeend', `<button data-v="${id}" data-ctl title="${dd ? 'The DepthDiff mask: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
+  for (const [id, label] of Object.entries(controlTabs).reverse())   // after Source: source, hints, output, split
+    $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${dd ? 'The DepthDiff mask: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
   if (view.startsWith('control_') && !controlTabs[view]) { view = 'split'; applyView(); }
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
 }
