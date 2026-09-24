@@ -43,7 +43,8 @@
   .brand b { font-size: 15px; letter-spacing: .5px; }
   .brand span { color: var(--faint); font-size: 11px; }
 
-  .label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px;
+  .label, .sublabel, .slider-head b { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+  .label { margin-bottom: 8px;
            display: flex; justify-content: space-between; }
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
 
@@ -77,7 +78,7 @@
 
   /* presets */
   .mode { margin-bottom: 4px; }
-  .sublabel { color: var(--faint); font-size: 11px; margin: 10px 0 -4px; }
+  .sublabel { margin: 12px 0 -4px; }
   select.model { width: 100%; margin-top: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
                  border-radius: 8px; padding: 7px 8px; font: inherit; }
   .preset-model { margin-top: 10px; padding: 9px 11px; border-radius: 8px; background: var(--panel-2);
@@ -97,7 +98,6 @@
   .slider { margin-bottom: 14px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .slider-head b { font-weight: 600; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
   .ends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; margin-top: 3px; }
   input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
