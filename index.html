@@ -869,16 +869,19 @@ function paintDdPreview() {
       }
       ddBase = { key, img }; setStatus(`mask preview · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`, 'done');
       paintDdPreview();
-    }, 250);
+    }, kind === 'depth' ? 250 : 90);      // depth frames cost a model pass; luma is just a frame grab
     return;
   }
   if (!$('ddPrevWrap')) {
     $('stage').innerHTML = `<div class="frame" id="ddPrevWrap"><canvas class="out" id="ddPrevCv"></canvas>
       <span class="tag l" id="ddPrevTag"></span><span class="tag r">white repaints · black keeps</span></div>`;
-    $('scrub').hidden = true;
   }
   $('ddPrevTag').textContent = ddFrame === null ? 'mask · first frame'
     : `mask · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`;
+  // the transport scrubs the source clip while the mask preview is up
+  $('scrub').hidden = false;
+  $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = fa;
+  $('scrubText').textContent = `${fa + 1} / ${state.clip.source.frames}`;
   const d = state.dd, cv = $('ddPrevCv');
   cv.width = w; cv.height = h;
   const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
@@ -1185,9 +1188,13 @@ function paintFrame() {
   if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
   $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
 }
-$('scrubRange').oninput = e => { frameIdx = +e.target.value; stopPlay(); paintFrame(); };
+$('scrubRange').oninput = e => {
+  if (ddPrev) { ddFrame = +e.target.value; drawDdPreview(); return; }   // scrubbing the clip for the mask
+  frameIdx = +e.target.value; stopPlay(); paintFrame();
+};
 function stopPlay() { clearInterval(playing); playing = null; $('playBtn').textContent = '▶'; }
 function togglePlay() {
+  if (ddPrev) return;                      // the mask preview is a still
   if (playing) return stopPlay();
   if (!frames.length) return;
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
@@ -1196,6 +1203,10 @@ function togglePlay() {
 }
 $('playBtn').onclick = togglePlay;
 addEventListener('keydown', e => {
+  if (ddPrev && state.clip && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+    const n = state.clip.source.frames, f = ddFrame ?? rangeFrames()[0];
+    ddFrame = (f + (e.code === 'ArrowRight' ? 1 : -1) + n) % n; drawDdPreview(); return;
+  }
   if (e.target.tagName === 'TEXTAREA' || !frames.length) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
