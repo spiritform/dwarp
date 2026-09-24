@@ -142,7 +142,7 @@
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 1px solid var(--line); }
-  /* Test / Render live in the bar under the transport, so they never scroll out of view */
+  /* Single Frame / Preview / Render live in the bar under the transport, so they never scroll out of view */
   .stage-foot .actions { display: flex; gap: 8px; margin-right: 8px; padding-right: 22px; border-right: 1px solid var(--line); }
   .stage-foot .btn { padding: 6px 14px; font-size: 12px; border-radius: 7px; line-height: normal; }
   .btn.test { background: var(--panel-2); color: var(--text); }
@@ -387,7 +387,8 @@
   <details class="err" id="err" hidden><summary id="errSummary"></summary><pre id="errLog"></pre></details>
   <div class="stage-foot">
     <div class="actions">
-      <button class="btn test" id="testBtn">Test</button>
+      <button class="btn test" id="frameBtn">Single Frame</button>
+      <button class="btn test" id="testBtn">Preview</button>
       <button class="btn go" id="goBtn">Render</button>
     </div>
     <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
@@ -779,7 +780,8 @@ function spf(size) {
   return base * (size / m.ref_size) ** 2 * (state.steps / 20);
 }
 function updateEst() {
-  if (!state.clip) { $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
+  if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
+  $('frameBtn').title = `the range's first frame · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
   const [fa, fb] = rangeFrames();
   const testN = Math.min(TEST.frames, Math.floor((fb - fa) / TEST.nth) + 1);
   const testSize = Math.min(state.size, modeCfg().test_size);
@@ -791,13 +793,14 @@ function updateEst() {
 // ---------------------------------------------------------------- config mapping
 async function buildConfig(kind) {
   const p = currentPreset(), m = modeCfg();
-  const nth = kind === 'test' ? TEST.nth : 1;
+  const nth = kind === 'test' ? TEST.nth : 1;          // kinds: frame (Single Frame) | test (Preview) | render
   const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
   const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
   const [fa, fb] = rangeFrames();
   const start = Math.floor(fa / nth);
   let end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
   if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
+  if (kind === 'frame') end = start;
   end = Math.min(end, probe.max_frame);
 
   // Hold: how tightly ControlNets pin the source's structure. Low = the render
@@ -852,7 +855,7 @@ function paintLog() {
       : /loaded|reusing|extracted|assembled|style [\d.]+ on frame/i.test(l) ? 'hot'
       : /^\s*(SD gradient|Warped frame|CN hint)/.test(l) ? 'dim' : '';
     return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
-  }).join('\n') : '<span class="dim">no log yet — start a Test or Render</span>';
+  }).join('\n') : '<span class="dim">no log yet — start a Single Frame, Preview or Render</span>';
   if (atBottom || !el.dataset.seen) { el.scrollTop = el.scrollHeight; el.dataset.seen = 1; }
 }
 // The latest line worth showing in the status bar while nothing has rendered yet.
@@ -876,21 +879,22 @@ addEventListener('keydown', e => {
 
 // ---------------------------------------------------------------- jobs
 async function startJob(kind) {
+  const name = { frame: 'single frame', test: 'preview', render: 'render' }[kind];   // shown in status + run labels
   if (!state.clip) { setStatus('drop a video first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
-  setStatus(`${kind} · starting…`, 'live');
+  setStatus(`${name} · starting…`, 'live');
   let built;
   try {
     built = await buildConfig(kind);
     const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed };
     delete ui.spf;
-    const label = `${currentPreset().name.toLowerCase()} · ${kind}`;
+    const label = `${currentPreset().name.toLowerCase()} · ${name}`;
     job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
                                    body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
   } catch (e) {
-    setStatus(`${kind} failed to start`, 'bad'); showError(e.message); setButtons(false); return;
+    setStatus(`${name} failed to start`, 'bad'); showError(e.message); setButtons(false); return;
   }
   let labelled = false;
   const times = [];
@@ -910,9 +914,9 @@ async function startJob(kind) {
     }
     const total = snap.total_frames || built.total;
     $('bar').style.width = (snap.progress || 0) + '%';
-    let text = `${kind} · ${lastUseful() || snap.message || snap.stage || snap.state}`;
+    let text = `${name} · ${lastUseful() || snap.message || snap.stage || snap.state}`;
     if (snap.frame && total) {
-      text = `${kind} · frame ${snap.frame}/${total}`;
+      text = `${name} · frame ${snap.frame}/${total}`;
       if (times.length >= 2) {
         const recent = times.slice(-6), per = (recent.at(-1) - recent[0]) / 1000 / (recent.length - 1);
         text += ` · ${per.toFixed(1)} s/f · ${fmtDur(per * (total - snap.frame))} left`;
@@ -925,19 +929,20 @@ async function startJob(kind) {
         const stepsF = built.job.steps / 20;
         state.spf[built.job.family] = +(per / (built.size / MODES[built.job.family].ref_size) ** 2 / stepsF).toFixed(2); save(); updateEst();
       }
-      setStatus(`${kind} done · ${total} frames`, 'done'); setButtons(false);
+      setStatus(`${name} done · ${total} frames`, 'done'); setButtons(false);
       await refreshRuns(); if (snap.run_id) showRun(snap.run_id);
     } else if (snap.state === 'failed') {
-      es.close(); setStatus(`${kind} failed`, 'bad'); setButtons(false);
+      es.close(); setStatus(`${name} failed`, 'bad'); setButtons(false);
       showError(snap.error || 'render failed', (snap.traceback || '') + '\n' + (snap.logs || []).slice(-25).join('\n'));
       refreshRuns();
     } else if (snap.state === 'cancelled') {
-      es.close(); setStatus(`${kind} cancelled at frame ${snap.frame}`); setButtons(false); refreshRuns();
+      es.close(); setStatus(`${name} cancelled at frame ${snap.frame}`); setButtons(false); refreshRuns();
     } else setStatus(text, 'live');
   };
   es.onerror = () => { /* EventSource retries on its own; state arrives on reconnect */ };
 }
-function setButtons(busy) { $('testBtn').disabled = busy; $('goBtn').disabled = busy; }
+function setButtons(busy) { $('frameBtn').disabled = $('testBtn').disabled = $('goBtn').disabled = busy; }
+$('frameBtn').onclick = () => startJob('frame');
 $('testBtn').onclick = () => startJob('test');
 $('goBtn').onclick = () => startJob('render');
 $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
@@ -1086,7 +1091,7 @@ async function refreshRuns() {
   let res;
   try { res = await api(`/api/runs?${runQ()}`); } catch { return; }
   runsCache = res.runs;
-  if (!runsCache.length) { $('runs').innerHTML = '<span class="empty">No runs yet — hit Test</span>'; return; }
+  if (!runsCache.length) { $('runs').innerHTML = '<span class="empty">No runs yet — hit Single Frame or Preview</span>'; return; }
   $('runs').innerHTML = runsCache.map(r => {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
@@ -1168,7 +1173,7 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
 }
 function clearStage() {
   stopPlay(); viewRun = null; frames = [];
-  $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Test</div>';
+  $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
   $('scrub').hidden = true; $('footInfo').textContent = '';
   ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;

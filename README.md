@@ -6,7 +6,7 @@ DWARP repaints each frame with Stable Diffusion, but instead of starting every f
 carries the previous painted frame forward along the video's own motion (optical flow). Brushstrokes
 travel with the things they belong to, so the result moves like the footage instead of flickering.
 
-One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Test**.
+One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Single Frame** or **Preview**.
 
 ## How it works
 
@@ -23,7 +23,7 @@ For every frame:
 - SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
 - Style presets, Style (how much it repaints) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
 - **DepthDiff**: the source's luma or depth decides where the style repaints, per pixel ([differential diffusion](https://differential-diffusion.github.io/)). Keep the subject and dissolve the room, or the other way round. Works together with ControlNet
-- **Test** renders 5 frames (every 2nd) in seconds; **Render** does the whole clip
+- **Single Frame** renders just the first frame; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the whole clip
 - Live split view (source / output), frame scrubber, live log, run history with reload-settings and delete
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
 
