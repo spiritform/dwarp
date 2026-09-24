@@ -22,7 +22,7 @@ For every frame:
 
 - SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
 - Style presets, Style (how much it repaints) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
-- **Test** renders 30 frames at every 2nd frame in seconds; **Render** does the whole clip
+- **Test** renders 5 frames (every 2nd) in seconds; **Render** does the whole clip
 - Live split view (source / output), frame scrubber, live log, run history with reload-settings and delete
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
 
