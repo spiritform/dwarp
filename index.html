@@ -73,7 +73,9 @@
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
   /* prompt travel: keyframe lane under the filmstrip */
-  .keys { position: relative; height: 16px; margin: -4px 10px 8px; border-radius: 4px; background: rgba(255,255,255,.03);
+  .keys-label { color: #a9a7b1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+                margin: 2px 10px 6px; }
+  .keys { position: relative; height: 16px; margin: 0 10px 10px; border-radius: 4px; background: rgba(255,255,255,.03);
           cursor: copy; touch-action: none; }
   .keys:hover { background: rgba(255,255,255,.06); }
   .keys .marks { position: absolute; inset: 0; }
@@ -542,8 +544,9 @@ function renderClip() {
       <div class="sel" id="sel"><div class="h l"></div><div class="h r"></div></div>
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
-    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
+    <div class="keys-label">Prompt keyframes</div>
+    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
   bindRange(); bindKeys();
@@ -593,7 +596,7 @@ function paintKeys() {
   lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
     const k = keyAt(i);
     return `<b class="key ${i === state.keySel ? 'on' : ''}" data-i="${i}" style="left:${k.f / n * 100}%"></b>`;
-  }).join('') + (state.keys.length ? '' : '<span class="hint">prompt keyframes</span>');
+  }).join('') + (state.keys.length ? '' : '<span class="hint">hover to scrub · click to add</span>');
   lane.querySelectorAll('.key').forEach(el => {
     const k = keyAt(+el.dataset.i);
     el.title = `${(k.f / fps).toFixed(1)}s · ${k.prompt || '(empty prompt)'}`;
