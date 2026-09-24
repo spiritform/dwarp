@@ -1,5 +1,5 @@
 {
-  "_comment": "Model files are relative to models_root/<checkpoints|controlnet|upscale_models> (set models_root in config.json).",
+  "_comment": "Model files are relative to models_root/<checkpoints|controlnet|upscale_models> (set models_root in config.json). A ControlNet \"file\" may be a list of candidate names; the first one that exists is used.",
   "modes": {
     "sd15": {
       "label": "SD 1.5",
@@ -58,7 +58,10 @@
           "start": 0.0,
           "end": 1.0,
           "kind": "depth",
-          "file": "SDXL/controlnet-depth-sdxl-1.0/diffusion_pytorch_model.safetensors"
+          "file": [
+            "controlnet-depth-sdxl-1.0.fp16.safetensors",
+            "SDXL/controlnet-depth-sdxl-1.0/diffusion_pytorch_model.safetensors"
+          ]
         }
       }
     }

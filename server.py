@@ -47,7 +47,9 @@ def settings() -> dict:
     d["upscale_dir"] = f"{root}/upscale_models"
     for mode in d.get("modes", {}).values():
         for c in mode.get("controlnets", {}).values():
-            c["path"] = f"{root}/controlnet/{c['file']}"
+            names = c["file"] if isinstance(c["file"], list) else [c["file"]]
+            paths = [f"{root}/controlnet/{n}" for n in names]
+            c["path"] = next((q for q in paths if os.path.isfile(q)), paths[0])
     return d
 
 

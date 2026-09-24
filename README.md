@@ -40,27 +40,22 @@ For every frame:
 
 ## Requirements
 
-- Windows, NVIDIA GPU (8 GB+ VRAM for SD 1.5; 12 GB recommended for SDXL)
-- [ffmpeg](https://ffmpeg.org) on PATH
-- A Stable Diffusion 1.5 (and optionally SDXL) checkpoint plus matching ControlNets — a ComfyUI `models` folder works as-is
+- Windows 10/11 with an NVIDIA GPU: 8 GB+ VRAM for SD 1.5, 12 GB recommended for SDXL
+- ~6 GB of disk for DWARP itself (PyTorch + CUDA), plus your models
 
-## Setup (early — a one-click installer is coming)
+## Install
 
-```bat
-uv venv --python 3.12 .venv
-uv pip install --python .venv\Scripts\python.exe torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt
-```
+1. Download or clone this repo.
+2. Double-click **`install.bat`**. It sets everything up inside the folder: its own Python,
+   PyTorch with CUDA, ffmpeg if you don't have it, and the RIFE weights. It asks once where
+   your models are. Press Enter to use DWARP's own `models` folder, or paste a ComfyUI `models`
+   folder to reuse what you already have.
+3. Add models: see **[models/README.md](models/README.md)** for a short list of links. A single
+   SD 1.5 checkpoint is enough to start.
+4. Double-click **`run.bat`**. DWARP opens at http://localhost:8013.
 
-Point `presets.json` at your models (`checkpoint_dir`, `upscale_dir`, and the ControlNet paths under
-`modes`), put the [RIFE 4.9 weights](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation/releases/download/models/rife49.pth)
-in `models/rife/rife49.pth` for smoothing, then:
-
-```bat
-run.bat
-```
-
-and open http://localhost:8013.
+Re-running `install.bat` is safe: finished steps are skipped. Every download is pinned and
+checked against its SHA-256.
 
 ## Credits
 

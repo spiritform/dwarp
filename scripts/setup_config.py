@@ -14,7 +14,7 @@ if cfg_path.is_file():
 default = HERE / "models"
 print()
 print("  Where are your Stable Diffusion models?")
-print("  Point at a folder that has checkpoints\\, controlnet\\ and upscale_models\\ inside —")
+print("  Point at a folder that has checkpoints\\, controlnet\\ and upscale_models\\ inside -")
 print("  a ComfyUI 'models' folder works as-is (e.g. C:\\ComfyUI\\models).")
 print(f"  Press Enter to use DWARP's own folder: {default}")
 answer = input("  models folder: ").strip().strip('"')
@@ -24,7 +24,7 @@ if root == default:   # our own folder: create the layout so it's obvious where 
     for sub in ("checkpoints", "controlnet", "upscale_models"):
         (root / sub).mkdir(parents=True, exist_ok=True)
 if not (root / "checkpoints").is_dir():
-    print(f"  note: {root} has no checkpoints\\ folder — DWARP will find no models there yet.")
+    print(f"  note: {root} has no checkpoints\\ folder - DWARP will find no models there yet.")
 
 cfg_path.write_text(json.dumps({"models_root": root.as_posix()}, indent=2), encoding="utf-8")
 print(f"  wrote config.json -> {root.as_posix()}")
