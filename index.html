@@ -97,7 +97,16 @@
   /* sliders */
   .slider { margin-bottom: 14px; }
   .cnsel { margin-bottom: 14px; }
-  #holdBox.off { opacity: .35; pointer-events: none; }
+  #holdBox.off, #ddBox.off { opacity: .35; pointer-events: none; }
+  /* ControlNet / DepthDiff: two tabs over one slot; both can be on at once */
+  .gtabs { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .gtabs a { cursor: pointer; color: var(--faint); }
+  .gtabs a.on { color: #a9a7b1; }
+  .gtabs a.live::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+                         background: var(--accent); margin-left: 5px; vertical-align: 2px; }
+  .gtabs i { color: var(--line); font-style: normal; }
+  .check { display: flex; gap: 7px; align-items: center; color: var(--dim); font-size: 12px; cursor: pointer; margin: -4px 0 14px; }
+  .check input { accent-color: var(--accent); margin: 0; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -219,6 +228,11 @@
   .sel-bar .ask { color: var(--text); }
   .run.doomed .thumb { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); opacity: .6; }
   .run.doomed .x { display: none; }
+  /* one-card delete: ✕ arms, ✓ (with "delete?") confirms; Esc / clicking elsewhere disarms */
+  .run.armed .x { display: block; background: var(--bad); color: #fff; }
+  .run .xq { position: absolute; top: 6px; right: 28px; font-size: 10px; background: rgba(0,0,0,.8); color: #fff;
+             padding: 1px 6px; border-radius: 3px; display: none; }
+  .run.armed .xq { display: block; }
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
 
@@ -256,12 +270,30 @@
       <input type="range" id="style" min="0.4" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
-    <div class="label">ControlNet</div>
-    <div class="seg cnsel" id="cnSel"><button data-c="off">off</button><button data-c="depth">depth</button><button data-c="both">depth + edge</button></div>
-    <div class="slider" id="holdBox">
-      <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
-      <input type="range" id="hold" min="0" max="100" step="1">
-      <div class="ends"><span>loose · dissolve</span><span>locked · stable</span></div>
+    <div class="label gtabs" id="gTabs"><a data-t="cn" title="ControlNet: hold the source's shapes">ControlNet</a><i>/</i><a data-t="dd" title="DepthDiff: the source's luma or depth decides where the style repaints">DepthDiff</a></div>
+    <div id="cnPane">
+      <div class="seg cnsel" id="cnSel"><button data-c="off">off</button><button data-c="depth">depth</button><button data-c="both">depth + edge</button></div>
+      <div class="slider" id="holdBox">
+        <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
+        <input type="range" id="hold" min="0" max="100" step="1">
+        <div class="ends"><span>loose · dissolve</span><span>locked · stable</span></div>
+      </div>
+    </div>
+    <div id="ddPane" hidden>
+      <div class="seg cnsel" id="ddSel"><button data-d="off">off</button><button data-d="luma">luma</button><button data-d="depth">depth</button></div>
+      <div id="ddBox">
+        <label class="check"><input type="checkbox" id="ddInvert"><span id="ddInvertT"></span></label>
+        <div class="pair">
+          <div class="slider">
+            <div class="slider-head"><b>Contrast</b><span id="ddContrastV"></span></div>
+            <input type="range" id="ddContrast" min="0.5" max="4" step="0.05">
+          </div>
+          <div class="slider">
+            <div class="slider-head"><b>Blur</b><span id="ddBlurV"></span></div>
+            <input type="range" id="ddBlur" min="0" max="32" step="1">
+          </div>
+        </div>
+      </div>
     </div>
     <div class="pair">
       <div class="slider">
@@ -359,6 +391,8 @@ let state = {
   mode: 'sd15',
   ckpt: { sd15: '', sdxl: '' },        // '' = the look's own checkpoint (sd15) / mode default (sdxl)
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
+  dd: { src: 'off', invert: true, contrast: 1.5, blur: 4 },   // DepthDiff mask
+  gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
   spf: {},                             // learned seconds/frame at each mode's ref_size
   seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
 };
@@ -570,6 +604,20 @@ function renderControls() {
   [...$('cnSel').children].forEach(b => b.classList.toggle('on', b.dataset.c === cn));
   $('holdBox').classList.toggle('off', cn === 'off');
   $('holdBox').title = cn === 'off' ? 'Hold steers the ControlNets — turn one on to use it' : '';
+  const dd = state.dd;
+  [...$('gTabs').querySelectorAll('a')].forEach(a => {
+    a.classList.toggle('on', a.dataset.t === state.gtab);
+    a.classList.toggle('live', a.dataset.t === 'cn' ? cn !== 'off' : dd.src !== 'off');
+  });
+  $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
+  [...$('ddSel').children].forEach(b => b.classList.toggle('on', b.dataset.d === dd.src));
+  $('ddBox').classList.toggle('off', dd.src === 'off');
+  $('ddInvert').checked = dd.invert;
+  $('ddInvertT').textContent = dd.src === 'depth'
+    ? (dd.invert ? 'far repaints most, near keeps the source' : 'near repaints most, far keeps the source')
+    : (dd.invert ? 'dark repaints most, bright keeps the source' : 'bright repaints most, dark keeps the source');
+  $('ddContrast').value = dd.contrast; $('ddContrastV').textContent = (+dd.contrast).toFixed(2);
+  $('ddBlur').value = dd.blur; $('ddBlurV').textContent = dd.blur;
   renderSeed(); renderPresets(); updateEst();
 }
 
@@ -592,6 +640,11 @@ $('prompt').oninput = e => { state.prompt = e.target.value; save(); };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
+$('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); save(); };
+$('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.dd.src = d; renderControls(); save(); };
+$('ddInvert').onchange = e => { state.dd.invert = e.target.checked; renderControls(); save(); };
+$('ddContrast').oninput = e => { state.dd.contrast = +e.target.value; $('ddContrastV').textContent = state.dd.contrast.toFixed(2); save(); };
+$('ddBlur').oninput = e => { state.dd.blur = +e.target.value; $('ddBlurV').textContent = state.dd.blur; save(); };
 $('steps').oninput = e => { state.steps = +e.target.value; $('stepsV').textContent = state.steps; save(); updateEst(); };
 $('cfg').oninput = e => { state.cfg = +e.target.value; $('cfgV').textContent = state.cfg.toFixed(1); save(); };
 $('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); save(); };
@@ -646,6 +699,9 @@ async function buildConfig(kind) {
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets,
+    // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
+    diff_source: state.dd.src, diff_invert: state.dd.invert,
+    diff_contrast: state.dd.contrast, diff_blur: state.dd.blur,
   };
   const fps = (state.clip.source.fps || 24) / nth;
   return { job, total: end - start + 1, size, fps };
@@ -883,7 +939,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd']) if (k in ui) state[k] = ui[k];
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
   if (ui.ckpt) state.ckpt = { ...state.ckpt, ...ui.ckpt };
@@ -906,8 +962,8 @@ async function refreshRuns() {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
-    return `<div class="run ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
-      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<button class="x" title="delete run">✕</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
+    return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">delete?</span><button class="x" title="${r.id === armedId ? 'confirm delete' : 'delete run'}">${r.id === armedId ? '✓' : '✕'}</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
@@ -952,13 +1008,25 @@ function confirmInline(ids, question) {
     $('askYes').onclick = () => done(true); $('askNo').onclick = () => done(false);
   });
 }
-async function deleteRuns(ids) {
+// ---- one-card delete: first click on ✕ arms it (turns into ✓ + "delete?"), second click deletes
+var armedId = null;                      // var: read by the runs template, which can render first
+function armDelete(id) {
+  armedId = id;
+  document.querySelectorAll('.run').forEach(el => {
+    const on = el.dataset.id === id, x = el.querySelector('.x');
+    el.classList.toggle('armed', on);
+    if (x) { x.textContent = on ? '✓' : '✕'; x.title = on ? 'confirm delete' : 'delete run'; }
+  });
+}
+addEventListener('pointerdown', e => { if (armedId && !e.target.closest('.run .x')) armDelete(null); }, true);
+addEventListener('keydown', e => { if (armedId && e.key === 'Escape') armDelete(null); }, true);
+async function deleteRuns(ids, { confirmed = false } = {}) {
   const isLive = id => job && job.run_id === id && !['completed', 'cancelled', 'failed'].includes(job.state);
   ids = ids.filter(id => !isLive(id));
   if (!ids.length) { setStatus('can\'t delete a run that is still rendering', 'bad'); return; }
   const names = ids.map(id => runsCache.find(r => r.id === id)?.label || 'run ' + id);
   const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
-  if (!await confirmInline(ids, `Delete ${what}?`)) return;
+  if (!confirmed && !await confirmInline(ids, `Delete ${what}?`)) return;
   const failed = [];
   for (const id of ids) {
     try { await api(`/api/runs/${id}`, { method: 'DELETE' }); runGen[id] = (runGen[id] || 0) + 1; selected.delete(id); }
@@ -979,7 +1047,10 @@ function clearStage() {
 $('runs').onclick = e => {
   const el = e.target.closest('.run'); if (!el) return;
   const id = el.dataset.id;
-  if (e.target.closest('.x')) { deleteRuns([id]); return; }
+  if (e.target.closest('.x')) {
+    if (armedId === id) { armDelete(null); deleteRuns([id], { confirmed: true }); } else armDelete(id);
+    return;
+  }
   if (e.shiftKey && lastClicked) {
     const ids = runsCache.map(r => r.id), a = ids.indexOf(lastClicked), b = ids.indexOf(id);
     ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => selected.add(x));
@@ -1077,6 +1148,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
       api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
+  state.dd = { src: 'off', invert: true, contrast: 1.5, blur: 4, ...(state.dd || {}) };
+  state.gtab ||= 'cn';
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));

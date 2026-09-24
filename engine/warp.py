@@ -65,6 +65,15 @@ class RenderJob:
     color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
     diff: bool = False                   # differential diffusion: per-pixel strength from the trust
                                          # mask — trusted pixels get style_next, the rest full style
+    # DepthDiff: per-pixel strength from the source frame's luma or depth (0 = keep, 1 = full style)
+    diff_source: str = "off"             # off | luma | depth
+    diff_invert: bool = True             # dark / far areas repaint most
+    diff_black: float = 0.0              # levels, 0..255
+    diff_white: float = 255.0
+    diff_gamma: float = 1.0
+    diff_brightness: float = 0.0
+    diff_contrast: float = 1.0
+    diff_blur: int = 4                   # px
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -177,6 +186,32 @@ def match_color(img: torch.Tensor, ref: torch.Tensor, amount: float) -> torch.Te
     m, s = img.mean((2, 3), keepdim=True), img.std((2, 3), keepdim=True) + 1e-5
     rm, rs = ref.mean((2, 3), keepdim=True), ref.std((2, 3), keepdim=True) + 1e-5
     return torch.lerp(img, ((img - m) / s * rs + rm).clamp(0, 1), amount)
+
+
+# ------------------------------------------------------------------ DepthDiff mask
+def gaussian_blur(m: torch.Tensor, radius: int) -> torch.Tensor:
+    if radius <= 0:
+        return m
+    sigma = max(radius / 2.0, 0.1)
+    x = torch.arange(radius * 2 + 1, dtype=m.dtype, device=m.device) - radius
+    k = torch.exp(-x ** 2 / (2 * sigma ** 2))
+    k = k / k.sum()
+    m = F.pad(m, (radius, radius, radius, radius), mode="reflect")
+    m = F.conv2d(m, k.view(1, 1, 1, -1))
+    return F.conv2d(m, k.view(1, 1, -1, 1))
+
+
+def diff_mask(img: torch.Tensor, job: "RenderJob") -> torch.Tensor:
+    """1x3xHxW 0..1 image -> 1x1xHxW per-pixel strength share, shaped like the DepthDiff node."""
+    m = (0.2126 * img[:, 0] + 0.7152 * img[:, 1] + 0.0722 * img[:, 2]).unsqueeze(1)
+    if job.diff_invert:
+        m = 1 - m
+    b, w = job.diff_black / 255, job.diff_white / 255
+    m = ((m - b) / max(w - b, 1e-4)).clamp(0, 1)
+    if job.diff_gamma != 1:
+        m = m.pow(1 / max(job.diff_gamma, 1e-4))
+    m = ((m - 0.5) * job.diff_contrast + 0.5 + job.diff_brightness).clamp(0, 1)
+    return gaussian_blur(m, int(job.diff_blur)).clamp(0, 1)
 
 
 # ------------------------------------------------------------------ ControlNet hints
@@ -443,6 +478,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     (out / "debug").mkdir(exist_ok=True)
     for c in job.controlnets:                   # the hints each frame was steered by, for the viewer
         (out / "control" / c.kind).mkdir(parents=True, exist_ok=True)
+    if job.diff_source != "off":
+        (out / "control" / "diff").mkdir(parents=True, exist_ok=True)
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
     t0 = time.time()
@@ -473,6 +510,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         src = to_tensor(src_np, device)
 
         amount = None                           # per-pixel strength, as a share of `strength`
+        trust = False                           # job.diff: untrusted pixels get full style
         if prev_out is None:
             init = src
         else:
@@ -482,6 +520,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             mask = soften_mask(consistency(fb, ff), job.mask_dilate, job.mask_blur)
             init = torch.lerp(src, warped, mask * job.flow_blend)
             if job.diff and style_next < job.style:
+                trust = True
                 # trusted -> style_next, untrusted (new content, occlusions) -> full style
                 amount = torch.lerp(torch.ones_like(mask), torch.full_like(mask, style_next / job.style),
                                     mask * job.flow_blend)
@@ -492,17 +531,28 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         hints = [ann(c.kind, src_np) for c in job.controlnets]
         for c, h in zip(job.controlnets, hints):
             h.convert("RGB").save(out / "control" / c.kind / f"{i:06d}.jpg", quality=90)
+        if job.diff_source != "off":
+            if job.diff_source == "depth":      # reuse the depth ControlNet's map when there is one
+                depth = next((h for c, h in zip(job.controlnets, hints) if c.kind == "depth"), None)
+                base = to_tensor(np.asarray((depth or ann("depth", src_np)).convert("RGB")), device)
+            else:
+                base = src
+            dm = diff_mask(base, job)
+            to_image(dm.expand(-1, 3, -1, -1)).save(out / "control" / "diff" / f"{i:06d}.jpg", quality=90)
+            amount = dm if amount is None else amount * dm
+            if amount.min() >= 1:
+                amount = None
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
         text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
         kw = dict(**text, image=to_image(init),
-                  strength=job.style if i == 0 or amount is not None else style_next,
+                  strength=job.style if i == 0 or trust else style_next,
                   num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
         dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
         if amount is not None:
             kw.update(callback_on_step_end=dd, callback_on_step_end_tensor_inputs=["latents"])
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
-        share = style_next / job.style if amount is not None else 1.0
+        share = style_next / job.style if trust else 1.0
         cn = job.controlnets
         starts = [c.start if c.start == 0 else 1 - share + c.start * share for c in cn]
         ends = [1 - share + c.end * share for c in cn]
