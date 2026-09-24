@@ -1,0 +1,14 @@
+# torch comes from the CUDA index; see install.bat
+torch==2.11.0
+torchvision==0.26.0
+diffusers>=0.35
+transformers>=4.46
+accelerate
+safetensors
+controlnet_aux
+opencv-python-headless
+numpy
+pillow
+spandrel
+fastapi
+uvicorn

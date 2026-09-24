@@ -1,0 +1,8 @@
+renders/
+inputs/
+server.log
+__pycache__/
+models/
+.venv/
+server_engine.log
+config.json

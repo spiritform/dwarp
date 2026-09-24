@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DWARP</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --panel: #16161a;
+    --panel-2: #1d1d22;
+    --line: #2a2a31;
+    --text: #e8e6e3;
+    --dim: #8b8993;
+    --faint: #5a5862;
+    --accent: #ff6a3d;
+    --accent-2: #ffb36b;
+    --ok: #7bd88f;
+    --bad: #ff5d6c;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #34333b transparent; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #34333b; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4a4852; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    display: grid; grid-template-columns: 340px 1fr; grid-template-rows: 1fr auto;
+    height: 100vh; overflow: hidden;
+  }
+  button { font: inherit; }
+
+  /* ---------- left: controls ---------- */
+  aside {
+    grid-row: 1 / 3; background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 18px; padding: 18px; overflow-y: auto;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand b { font-size: 15px; letter-spacing: .5px; }
+  .brand span { color: var(--faint); font-size: 11px; }
+
+  .label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px;
+           display: flex; justify-content: space-between; }
+  .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
+
+  /* clip card */
+  .clip { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel-2); }
+  .clip-empty { padding: 26px 12px; text-align: center; color: var(--dim); cursor: pointer; border: 1px dashed var(--line);
+                border-radius: var(--radius); }
+  .clip-empty:hover { border-color: var(--faint); color: var(--text); }
+  .clip-empty small { display: block; color: var(--faint); margin-top: 4px; }
+  .clip-top { display: flex; gap: 10px; padding: 10px; align-items: center; }
+  .clip-thumb { position: relative; flex: none; width: 56px; height: 56px; border: 0; padding: 0; border-radius: 6px;
+                overflow: hidden; background: #000; cursor: pointer; }
+  .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .clip-thumb svg { position: absolute; inset: 0; margin: auto; width: 22px; height: 22px; opacity: 0; transition: opacity .15s; }
+  .clip-thumb::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .15s; }
+  .clip-thumb:hover::after, .clip-thumb:hover svg { opacity: 1; }
+  .clip-thumb svg { z-index: 1; }
+  .clip-top > div { min-width: 0; }
+  .clip-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .clip-meta { color: var(--dim); font-size: 11px; margin-top: 2px; }
+  .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: 5px; overflow: hidden;
+           display: flex; background: #000; touch-action: none; }
+  .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; }
+  .range .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.65); pointer-events: none; }
+  .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; }
+  .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
+  .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
+  .range-text { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; margin: -4px 10px 10px; }
+  .uploading { padding: 10px; color: var(--dim); font-size: 12px; }
+  .uploading i { display: block; height: 3px; background: var(--accent); margin-top: 6px; width: 0; transition: width .2s; }
+
+  /* presets */
+  .mode { margin-bottom: 4px; }
+  .sublabel { color: var(--faint); font-size: 11px; margin: 10px 0 -4px; }
+  select.model { width: 100%; margin-top: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                 border-radius: 8px; padding: 7px 8px; font: inherit; }
+  .preset-model { margin-top: 10px; padding: 9px 11px; border-radius: 8px; background: var(--panel-2);
+                  border-left: 2px solid var(--accent); font-size: 12px; line-height: 1.45; }
+  .preset-model .ckpt { color: var(--accent-2); font-size: 11px; margin-bottom: 4px; }
+  .preset-model .words { color: var(--text); }
+  .preset-model .neg { color: var(--dim); font-size: 11px; margin-top: 5px; }
+  .preset-model .neg b { color: var(--faint); font-weight: 600; margin-right: 4px; }
+
+  textarea {
+    width: 100%; min-height: 70px; resize: vertical; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; font: inherit;
+  }
+  textarea:focus { outline: none; border-color: var(--faint); }
+
+  /* sliders */
+  .slider { margin-bottom: 14px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .slider-head b { font-weight: 600; }
+  .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .ends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; margin-top: 3px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seed { display: flex; gap: 6px; }
+  .seed-tag { display: grid; place-items: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
+              background: var(--panel-2); color: var(--dim); font-size: 12px; flex: none; }
+  .seed input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                border-radius: 8px; padding: 7px 9px; font: inherit; font-variant-numeric: tabular-nums; }
+  .seed input:disabled { color: var(--faint); }
+  .seed button { width: 36px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; color: var(--text); }
+  .seed button:hover { border-color: var(--faint); }
+  .seed button.on { border-color: var(--accent); background: rgba(255,106,61,.1); }
+  .seg button { background: var(--panel-2); color: var(--dim); border: 0; padding: 7px 0; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--line); color: var(--text); }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 1px solid var(--line); }
+  .btn.test { background: var(--panel-2); color: var(--text); }
+  .btn.test:hover { border-color: var(--faint); }
+  .btn.go { background: var(--accent); color: #1a0d07; border-color: var(--accent); }
+  .btn.go:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+  .estimate { grid-column: 1 / 3; color: var(--faint); font-size: 11px; display: flex; justify-content: space-between; }
+
+  /* ---------- right: stage ---------- */
+  main { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .toggle { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .toggle button { background: none; border: 0; color: var(--dim); padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  .toggle button.on { background: var(--line); color: var(--text); }
+  .status { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 6px; vertical-align: 1px; }
+  .status.live .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .status.done .dot { background: var(--ok); }
+  .status.bad { color: var(--bad); } .status.bad .dot { background: var(--bad); }
+
+  .stage-wrap { flex: 1; position: relative; min-height: 0; display: flex; flex-direction: column; }
+  .stage { flex: 1; display: grid; place-items: center; min-height: 0; padding: 20px; }
+  .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
+           background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .frame img { display: block; }
+  .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
+  .frame .src { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; clip-path: inset(0 50% 0 0); }
+  .frame .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; cursor: ew-resize; touch-action: none; }
+  .frame .divider::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+           background: #fff; color: #000; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 13px; }
+  .frame .tag { position: absolute; bottom: 8px; font-size: 10px; letter-spacing: .8px; text-transform: uppercase;
+           background: rgba(0,0,0,.6); padding: 3px 7px; border-radius: 4px; color: #ddd; }
+  .frame .tag.l { left: 8px; } .frame .tag.r { right: 8px; }
+  .placeholder { color: var(--faint); text-align: center; }
+  .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
+
+  .progress { height: 3px; background: var(--line); }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
+  .scrub button { background: none; border: 1px solid var(--line); color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
+  .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+  .stage-foot { display: flex; gap: 14px; padding: 8px 18px 10px; color: var(--dim); font-size: 12px; align-items: center; }
+  .stage-foot a { color: var(--accent-2); text-decoration: none; cursor: pointer; }
+  .stage-foot a.hide { display: none; }
+  .stage-foot .spacer { flex: 1; }
+  .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  .outputs { display: flex; gap: 12px; }
+  .enh { position: absolute; right: 18px; bottom: 44px; width: 300px; background: var(--panel); border: 1px solid var(--line);
+         border-radius: var(--radius); padding: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 5; }
+  .enh h4 { margin: 0 0 12px; font-size: 13px; display: flex; justify-content: space-between; }
+  .enh h4 button { background: none; border: 0; color: var(--dim); cursor: pointer; }
+  .enh .row { margin-bottom: 12px; }
+  .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                border-radius: 8px; padding: 7px 8px; font: inherit; margin-bottom: 6px; }
+  .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
+  .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
+  .enh .btn { width: 100%; }
+
+  .logbtn { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px; padding: 3px 9px;
+            cursor: pointer; font-size: 11px; flex: none; }
+  .logbtn:hover, .logbtn.on { color: var(--text); border-color: var(--faint); }
+  .logbtn.new::after { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent); margin-left: 6px; vertical-align: 1px; }
+  .logpanel { position: absolute; inset: 0; z-index: 4; margin: 0; padding: 16px 18px; overflow: auto;
+              background: rgba(14,14,16,.95); font: 11px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
+              color: #b9b7bf; white-space: pre-wrap; word-break: break-all; }
+  .logpanel .dim { color: var(--faint); }
+  .logpanel .hot { color: var(--accent-2); }
+  .logpanel .bad { color: var(--bad); }
+
+  details.err { margin: 0 18px 10px; color: var(--bad); font-size: 12px; }
+  details.err pre { color: var(--dim); max-height: 160px; overflow: auto; white-space: pre-wrap; font-size: 11px; }
+
+  /* ---------- runs strip ---------- */
+  footer { grid-column: 2; border-top: 1px solid var(--line); background: var(--panel); padding: 10px 18px; min-width: 0; }
+  footer .label { margin-bottom: 6px; }
+  .runs { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; min-height: 104px; }
+  .runs .empty { color: var(--faint); font-size: 12px; align-self: center; }
+  .run { flex: none; width: 124px; cursor: pointer; }
+  .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid var(--line); overflow: hidden; background: #000; position: relative; }
+  .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
+  .run.on .thumb { border-color: var(--accent); }
+  .run .x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: 0;
+            background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 12px; line-height: 20px; padding: 0; }
+  .run .x:hover { background: var(--bad); color: #fff; }
+  .run:hover .x { display: block; }
+  .run.sel .thumb { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }
+  .run.sel .thumb::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+            background: rgba(255,179,107,.25); color: #fff; font-size: 22px; font-weight: 700; }
+  .run.sel .x { display: none; }
+  .sel-bar { display: flex; gap: 12px; text-transform: none; letter-spacing: 0; }
+  .sel-bar a { color: var(--accent-2); cursor: pointer; }
+  .sel-bar a.del { color: var(--bad); }
+  .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .run span { color: var(--faint); font-size: 10px; }
+
+  body.dragging::after { content: "drop video"; position: fixed; inset: 0; display: grid; place-items: center;
+     background: rgba(255,106,61,.12); border: 3px dashed var(--accent); color: var(--accent-2); font-size: 22px; z-index: 10; }
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="brand"><b>DWARP</b><span>diffusion warp</span></div>
+
+  <section>
+    <div id="clipBox"></div>
+    <input type="file" id="fileInput" accept="video/*" hidden>
+  </section>
+
+  <section>
+    <div class="seg mode" id="mode" style="grid-template-columns:1fr 1fr"></div>
+    <div class="sublabel">Model</div>
+    <select class="model" id="model" title="Checkpoint"></select>
+    <div class="sublabel">Style</div>
+    <select class="model" id="presets" title="Style preset"></select>
+    <div class="preset-model" id="presetModel" hidden></div>
+  </section>
+
+  <section>
+    <div class="label">Prompt <em>what's in the clip — the look adds style words</em></div>
+    <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
+  </section>
+
+  <section>
+    <div class="slider">
+      <div class="slider-head"><b>Style</b><span id="styleV"></span></div>
+      <input type="range" id="style" min="0.4" max="1" step="0.01">
+      <div class="ends"><span>keep source</span><span>repaint</span></div>
+    </div>
+    <div class="slider">
+      <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
+      <input type="range" id="hold" min="0" max="100" step="1">
+      <div class="ends"><span>loose · dissolve</span><span>locked · stable</span></div>
+    </div>
+    <div class="pair">
+      <div class="slider">
+        <div class="slider-head"><b>Steps</b><span id="stepsV"></span></div>
+        <input type="range" id="steps" min="4" max="50" step="1">
+      </div>
+      <div class="slider">
+        <div class="slider-head"><b>CFG</b><span id="cfgV"></span></div>
+        <input type="range" id="cfg" min="1" max="12" step="0.5">
+      </div>
+    </div>
+    <div class="label" style="margin-top:4px">Size</div>
+    <div class="seg" id="size"></div>
+    <div class="seed" style="margin-top:14px">
+      <span class="seed-tag">seed</span>
+      <input type="number" id="seed" min="0" max="4294967295" step="1">
+      <button id="seedDice" title="New random seed">🎲</button>
+      <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn test" id="testBtn">Test</button>
+    <button class="btn go" id="goBtn">Render</button>
+  </div>
+</aside>
+
+<main>
+  <div class="stage-bar">
+    <div class="toggle" id="view">
+      <button data-v="split" class="on">Split</button>
+      <button data-v="out">Output</button>
+      <button data-v="src">Source</button>
+    </div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
+    <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
+  </div>
+  <div class="progress"><i id="bar"></i></div>
+  <div class="stage-wrap">
+    <div class="stage" id="stage">
+      <div class="placeholder"><b>Drop a video to start</b>anywhere in this window</div>
+    </div>
+    <pre class="logpanel" id="logPanel" hidden></pre>
+  </div>
+  <div class="scrub" id="scrub" hidden>
+    <button id="playBtn" title="Play frames (space)">▶</button>
+    <input type="range" id="scrubRange" min="0" max="0" value="0">
+    <span id="scrubText"></span>
+  </div>
+  <details class="err" id="err" hidden><summary id="errSummary"></summary><pre id="errLog"></pre></details>
+  <div class="stage-foot">
+    <span id="footInfo"></span>
+    <span class="spacer"></span>
+    <span class="outputs" id="outputs"></span>
+    <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
+    <a id="enhanceLink" class="hide">enhance</a>
+    <a id="makeMp4" class="hide">make mp4</a>
+    <a id="loadRun" class="hide">load settings</a>
+    <a id="openFolder" class="hide">open folder</a>
+    <a id="cancelLink" class="hide">cancel</a>
+  </div>
+  <div class="enh" id="enh" hidden>
+    <h4>Enhance run <span id="enhRun"></span><button id="enhClose">✕</button></h4>
+    <div class="row">
+      <div class="label">Upscale</div>
+      <select id="enhModel"></select>
+      <div class="seg" id="enhScale" style="--n:2"><button data-v="2">2×</button><button data-v="4">4×</button></div>
+      <div class="hint" id="enhScaleHint"></div>
+    </div>
+    <div class="row">
+      <div class="label">Smooth <em>RIFE in-between frames</em></div>
+      <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
+      <div class="hint" id="enhSmoothHint"></div>
+    </div>
+    <button class="btn go" id="enhGo">Enhance</button>
+  </div>
+</main>
+
+<footer>
+  <div class="label"><span>Runs <em id="runsHint">· ctrl/shift-click to select</em></span><span class="sel-bar" id="selBar"></span></div>
+  <div class="runs" id="runs"><span class="empty">No runs yet</span></div>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const qs = o => new URLSearchParams(o).toString();
+const LS_KEY = 'dwarp.state.v1', OLD_LS_KEY = 'warpbox.state.v1';
+const TEST = { frames: 30, nth: 2 };   // test size comes from the mode
+
+let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
+let state = {
+  clip: null,                  // { path, name, source: {width,height,fps,frames,duration} }
+  range: [0, 1],               // fractions of the clip
+  preset: 'raw', prompt: '', style: 0.8, hold: 60, size: 512, steps: 20, cfg: 5,
+  mode: 'sd15',
+  ckpt: { sd15: '', sdxl: '' },        // '' = the look's own checkpoint (sd15) / mode default (sdxl)
+  spf: {},                             // learned seconds/frame at each mode's ref_size
+  seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
+};
+let missingPresets = new Set();
+let job = null;                // active job snapshot
+let viewRun = null;            // run id shown on the stage
+let frames = [];               // output frame numbers of viewRun
+let frameIdx = 0, playing = null, runsCache = [];
+
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {} }
+function load() {
+  try { Object.assign(state, JSON.parse(localStorage.getItem(LS_KEY) || localStorage.getItem(OLD_LS_KEY) || '{}')); } catch {}
+  if (!state.rawDefault) { state.preset = 'raw'; state.rawDefault = true; }
+}
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { const j = await r.json(); msg = Array.isArray(j.detail) ? j.detail.map(d => d.message || JSON.stringify(d)).join('; ') : (j.detail || msg); } catch {}
+    throw new Error(msg);
+  }
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r;
+}
+const runQ = () => qs({ output_dir: INFO.output_dir, batch_name: INFO.batch_name });
+// Run ids are reused after a delete (VibeWarp numbers runs max+1), so image URLs carry a
+// per-page-load token plus a per-run generation bumped on delete — never a stale cached frame.
+const BOOT = Date.now().toString(36), runGen = {};
+const img = (run, layer, frame, thumb) =>
+  `/api/runs/${run}/${thumb ? 'thumbnail' : 'image'}?${qs({ layer, frame, output_dir: INFO.output_dir, batch_name: INFO.batch_name, v: `${BOOT}.${runGen[run] || 0}` })}`;
+
+// ---------------------------------------------------------------- status
+function setStatus(text, cls = '') { $('status').className = 'status ' + cls; $('statusText').textContent = text; }
+function showError(summary, log) {
+  $('err').hidden = !summary; $('errSummary').textContent = summary || ''; $('errLog').textContent = log || '';
+}
+
+// ---------------------------------------------------------------- clip
+function renderClip() {
+  const box = $('clipBox');
+  if (!state.clip) {
+    box.innerHTML = `<div class="clip-empty" id="pick">Drop a video here<small>or click to choose</small></div>`;
+    $('pick').onclick = () => $('fileInput').click();
+    return;
+  }
+  const s = state.clip.source;
+  box.innerHTML = `<div class="clip">
+    <div class="clip-top">
+      <button class="clip-thumb" id="swap" title="Replace video (or drop one anywhere)">
+        <img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+      </button>
+      <div><div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
+      <div class="clip-meta">${s.width}×${s.height} · ${Math.round(s.fps)} fps · ${s.frames} frames · ${s.duration.toFixed(1)}s</div></div>
+    </div>
+    <div class="range" id="range">
+      ${Array.from({ length: 8 }, (_, i) => `<img src="/api/video/thumbnail?${qs({ path: state.clip.path, frame: Math.floor((i + .5) / 8 * (s.frames - 1)) })}" alt="">`).join('')}
+      <div class="shade" id="shadeL" style="left:0"></div>
+      <div class="sel" id="sel"><div class="h l"></div><div class="h r"></div></div>
+      <div class="shade" id="shadeR" style="right:0"></div>
+    </div>
+    <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
+  </div>`;
+  $('swap').onclick = () => $('fileInput').click();
+  bindRange();
+  paintRange();
+}
+
+function rangeFrames() {
+  const n = state.clip.source.frames;
+  return [Math.round(state.range[0] * (n - 1)), Math.round(state.range[1] * (n - 1))];
+}
+function paintRange() {
+  if (!state.clip) return;
+  const [a, b] = state.range, d = state.clip.source.duration;
+  $('sel').style.left = a * 100 + '%'; $('sel').style.width = (b - a) * 100 + '%';
+  $('shadeL').style.width = a * 100 + '%'; $('shadeR').style.width = (1 - b) * 100 + '%';
+  $('rangeA').textContent = (a * d).toFixed(1) + 's'; $('rangeB').textContent = (b * d).toFixed(1) + 's';
+  const [fa, fb] = rangeFrames();
+  $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
+  updateEst();
+}
+function bindRange() {
+  const range = $('range'); let drag = null;
+  range.addEventListener('pointerdown', e => {
+    drag = e.target.classList.contains('l') ? 0 : e.target.classList.contains('r') ? 1 : null;
+    if (drag !== null) range.setPointerCapture(e.pointerId);
+  });
+  range.addEventListener('pointermove', e => {
+    if (drag === null) return;
+    const r = range.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const minGap = 2 / state.clip.source.frames;
+    if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
+    else state.range[1] = Math.max(x, state.range[0] + minGap);
+    paintRange();
+  });
+  range.addEventListener('pointerup', () => { drag = null; save(); });
+  range.addEventListener('dblclick', () => { state.range = [0, 1]; paintRange(); save(); });
+}
+
+async function setClipPath(path, name) {
+  const probe = await api(`/api/video/probe?${qs({ path })}`);
+  if (state.clip?.path !== path) state.range = [0, 1];
+  state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
+  save(); renderClip();
+}
+
+function uploadFile(file) {
+  if (!file) return;
+  $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `/api/upload?${qs({ filename: file.name })}`);
+  xhr.upload.onprogress = e => { if (e.lengthComputable) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
+  xhr.onload = async () => {
+    if (xhr.status >= 300) { setStatus('upload failed: ' + xhr.responseText, 'bad'); renderClip(); return; }
+    const res = JSON.parse(xhr.responseText);
+    try { await setClipPath(res.path, res.name); setStatus('clip loaded'); }
+    catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
+  };
+  xhr.onerror = () => { setStatus('upload failed', 'bad'); renderClip(); };
+  xhr.send(file);
+}
+$('fileInput').onchange = e => uploadFile(e.target.files[0]);
+let dragDepth = 0;
+addEventListener('dragenter', e => { if (e.dataTransfer?.types.includes('Files')) { dragDepth++; document.body.classList.add('dragging'); } });
+addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('video/') || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name));
+  if (f) uploadFile(f); else setStatus('that is not a video file', 'bad');
+});
+
+// ---------------------------------------------------------------- controls
+function currentPreset() { return PRESETS.find(p => p.id === state.preset) || PRESETS[0]; }
+function renderPresets() {
+  // A look's own checkpoint only matters in SD1.5 mode with no model override.
+  const usesLookCkpt = state.mode === 'sd15' && !state.ckpt?.sd15;
+  $('presets').innerHTML = PRESETS.map(p => {
+    const missing = usesLookCkpt && missingPresets.has(p.id);
+    return `<option value="${p.id}" ${missing ? 'disabled' : ''}>${p.name}${missing ? ' (checkpoint missing)' : ''}</option>`;
+  }).join('');
+  $('presets').value = state.preset;
+  const p = currentPreset();
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('presetModel').innerHTML =
+    `<div class="ckpt">${esc(shortName(checkpointPath()))}</div>` +
+    `<div class="words">${p.prompt ? esc(p.prompt) : '<i>no style words — your prompt only</i>'}</div>` +
+    (p.negative ? `<div class="neg"><b>not</b>${esc(p.negative)}</div>` : '');
+  $('presets').title = p.prompt ? `adds: ${p.prompt}${p.negative ? `
+not: ${p.negative}` : ''}` : 'no style words — your prompt only';
+}
+$('presets').onchange = e => { state.preset = e.target.value; renderControls(); save(); };
+
+function modeCfg() { return MODES[state.mode] || MODES.sd15; }
+function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|ckpt)$/, ''); }
+// The checkpoint a render will use: explicit pick, else the look's (SD1.5) / mode default (SDXL).
+function checkpointPath() {
+  const pick = state.ckpt?.[state.mode];
+  if (pick) return pick;
+  return state.mode === 'sdxl' ? `${CKPT_DIR}/${modeCfg().default_checkpoint}` : `${CKPT_DIR}/${currentPreset().checkpoint}`;
+}
+const isFast = path => /lightning|turbo|hyper|lcm/i.test(path.split('/').pop());
+function renderMode() {
+  $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
+    `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}">${m.label}</button>`).join('');
+  const list = CHECKPOINTS.filter(c => c.family === state.mode);
+  const first = state.mode === 'sd15' ? `look default · ${shortName(currentPreset().checkpoint)}`
+                                      : `default · ${shortName(modeCfg().default_checkpoint)}`;
+  $('model').innerHTML = `<option value="">${first}</option>` + list.map(c =>
+    `<option value="${c.path}">${c.name.replace(/\.(safetensors|ckpt)$/, '')}${c.verified ? '' : ' (unverified .ckpt)'}${isFast(c.path) ? ' ⚡' : ''}</option>`).join('');
+  $('model').value = state.ckpt[state.mode] || '';
+  if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
+  $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
+}
+// Distilled models (Lightning/Turbo/Hyper/LCM) want few steps and low CFG; others the usual.
+function applyModelDefaults() {
+  const fast = isFast(checkpointPath());
+  state.steps = fast ? 8 : 20; state.cfg = fast ? 2 : 5;
+}
+$('mode').onclick = e => {
+  const m = e.target.dataset.m; if (!m || m === state.mode) return;
+  state.mode = m;
+  if (!modeCfg().sizes.includes(state.size)) state.size = modeCfg().default_size;
+  applyModelDefaults(); renderControls(); save();
+};
+$('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModelDefaults(); renderControls(); save(); };
+
+function renderControls() {
+  renderMode();
+  $('prompt').value = state.prompt;
+  $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
+  $('hold').value = state.hold; $('holdV').textContent = state.hold;
+  [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
+  $('steps').value = state.steps; $('stepsV').textContent = state.steps;
+  $('cfg').value = state.cfg; $('cfgV').textContent = (+state.cfg).toFixed(1);
+  renderSeed(); renderPresets(); updateEst();
+}
+
+// Seed: locked = every run reuses it (compare settings on identical noise);
+// unlocked = each run rolls a new one. The seed a run actually used is saved with it.
+const randomSeed = () => Math.floor(Math.random() * 4294967295);
+function renderSeed() {
+  $('seed').value = state.seed; $('seed').disabled = !state.seedLock;
+  $('seedLock').textContent = state.seedLock ? '🔒' : '🔓';
+  $('seedLock').classList.toggle('on', state.seedLock);
+  $('seedLock').title = state.seedLock ? 'Locked: every run uses this seed (click to unlock)' : 'Unlocked: a new random seed each run (click to lock)';
+}
+$('seed').onchange = e => {
+  const v = Math.floor(+e.target.value);
+  state.seed = Number.isFinite(v) && v >= 0 ? Math.min(v, 4294967295) : state.seed; renderSeed(); save();
+};
+$('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true; renderSeed(); save(); };
+$('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
+$('prompt').oninput = e => { state.prompt = e.target.value; save(); };
+$('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
+$('steps').oninput = e => { state.steps = +e.target.value; $('stepsV').textContent = state.steps; save(); updateEst(); };
+$('cfg').oninput = e => { state.cfg = +e.target.value; $('cfgV').textContent = state.cfg.toFixed(1); save(); };
+$('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); save(); };
+
+function fmtDur(s) { return s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`; }
+function spf(size) {
+  const m = modeCfg(), base = state.spf[state.mode] || m.spf;
+  return base * (size / m.ref_size) ** 2 * (state.steps / 20);
+}
+function updateEst() {
+  if (!state.clip) { $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
+  const [fa, fb] = rangeFrames();
+  const testN = Math.min(TEST.frames, Math.floor((fb - fa) / TEST.nth) + 1);
+  const testSize = Math.min(state.size, modeCfg().test_size);
+  $('testBtn').title = `${testN} frames · every 2nd · ${testSize}px · ≈ ${fmtDur(testN * spf(testSize))}`;
+  const n = fb - fa + 1;
+  $('goBtn').title = `${n} frames · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
+}
+
+// ---------------------------------------------------------------- config mapping
+async function buildConfig(kind) {
+  const p = currentPreset(), m = modeCfg();
+  const nth = kind === 'test' ? TEST.nth : 1;
+  const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
+  const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
+  const [fa, fb] = rangeFrames();
+  const start = Math.floor(fa / nth);
+  let end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
+  if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
+  end = Math.min(end, probe.max_frame);
+
+  // Hold: how tightly ControlNets pin the source's structure. Low = the render
+  // drifts and dissolves between frames, high = it stays locked to the footage.
+  const h = state.hold / 100;
+  const controlnets = Object.values(m.controlnets || {}).map(c => ({
+    kind: c.kind, path: c.path, start: c.start, end: c.end,
+    weight: +(c.hold[0] + (c.hold[1] - c.hold[0]) * h).toFixed(3),
+  }));
+  const job = {
+    video: state.clip.path,
+    checkpoint: checkpointPath(),
+    family: state.mode,
+    prompt: [state.prompt.trim(), p.prompt].filter(Boolean).join(', ') || 'a painting',
+    negative: ['bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
+    width: probe.render.width, height: probe.render.height,
+    frame_start: start, frame_end: end, nth,
+    style: state.style,                      // first frame; later frames use 0.65x (engine default)
+    steps: state.steps, cfg: state.cfg,
+    // Seed: the lock decides between the chosen seed and a fresh roll for this run.
+    seed: state.seedLock ? state.seed : randomSeed(),
+    controlnets,
+  };
+  const fps = (state.clip.source.fps || 24) / nth;
+  return { job, total: end - start + 1, size, fps };
+}
+
+// ---------------------------------------------------------------- log panel
+let logLines = [];
+const LOG_OPEN_KEY = 'dwarp.logOpen';
+// tqdm redraws with \r and cursor-up escapes; keep only what the line finally says.
+function cleanLine(l) {
+  return l.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r').filter(x => x.trim()).pop() || '';
+}
+function setLog(lines) {
+  logLines = lines.map(cleanLine).filter(Boolean);
+  if ($('logPanel').hidden) { $('logBtn').classList.toggle('new', logLines.length > 0); return; }
+  paintLog();
+}
+function paintLog() {
+  const el = $('logPanel'), atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  el.innerHTML = logLines.length ? logLines.slice(-400).map(l => {
+    const cls = /error|traceback|failed|exception/i.test(l) ? 'bad'
+      : /loaded|reusing|extracted|assembled|style [\d.]+ on frame/i.test(l) ? 'hot'
+      : /^\s*(SD gradient|Warped frame|CN hint)/.test(l) ? 'dim' : '';
+    return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
+  }).join('\n') : '<span class="dim">no log yet — start a Test or Render</span>';
+  if (atBottom || !el.dataset.seen) { el.scrollTop = el.scrollHeight; el.dataset.seen = 1; }
+}
+// The latest line worth showing in the status bar while nothing has rendered yet.
+function lastUseful() {
+  for (let i = logLines.length - 1; i >= 0; i--) {
+    const l = logLines[i].trim().replace(/^\[[\d:]+\]\s*/, '');
+    if (l && !/^Rendering frames|^\s*$/.test(l)) return l.length > 70 ? l.slice(0, 67) + '…' : l;
+  }
+  return '';
+}
+function toggleLog(open = $('logPanel').hidden) {
+  $('logPanel').hidden = !open; $('logBtn').classList.toggle('on', open); $('logBtn').classList.remove('new');
+  try { localStorage.setItem(LOG_OPEN_KEY, open ? '1' : ''); } catch {}
+  if (open) { delete $('logPanel').dataset.seen; paintLog(); }
+}
+$('logBtn').onclick = () => toggleLog();
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'l' || e.key === 'L') toggleLog();
+});
+
+// ---------------------------------------------------------------- jobs
+async function startJob(kind) {
+  if (!state.clip) { setStatus('drop a video first', 'bad'); return; }
+  if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
+  showError(null);
+  setButtons(true);
+  setStatus(`${kind} · starting…`, 'live');
+  let built;
+  try {
+    built = await buildConfig(kind);
+    const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed };
+    delete ui.spf;
+    const label = `${currentPreset().name.toLowerCase()} · ${kind}`;
+    job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                   body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
+  } catch (e) {
+    setStatus(`${kind} failed to start`, 'bad'); showError(e.message); setButtons(false); return;
+  }
+  let labelled = false;
+  const times = [];
+  const es = new EventSource(`/api/jobs/${job.id}/events`);
+  es.onmessage = async ev => {
+    const snap = JSON.parse(ev.data), prevFrame = job?.frame;
+    job = snap;
+    setLog(snap.logs || []);
+    $('cancelLink').classList.toggle('hide', ['completed', 'cancelled', 'failed'].includes(snap.state));
+    if (snap.run_id && !labelled) {
+      labelled = true;
+      viewRun = snap.run_id; refreshRuns();
+    }
+    if (snap.frame !== prevFrame && snap.frame > 0) {
+      times.push(Date.now());
+      if (snap.run_id) showRun(snap.run_id, { follow: true });
+    }
+    const total = snap.total_frames || built.total;
+    $('bar').style.width = (snap.progress || 0) + '%';
+    let text = `${kind} · ${lastUseful() || snap.message || snap.stage || snap.state}`;
+    if (snap.frame && total) {
+      text = `${kind} · frame ${snap.frame}/${total}`;
+      if (times.length >= 2) {
+        const recent = times.slice(-6), per = (recent.at(-1) - recent[0]) / 1000 / (recent.length - 1);
+        text += ` · ${per.toFixed(1)} s/f · ${fmtDur(per * (total - snap.frame))} left`;
+      }
+    }
+    if (snap.state === 'completed') {
+      es.close();
+      if (times.length >= 3) {  // learn this machine's speed for the estimates
+        const per = (times.at(-1) - times[1]) / 1000 / (times.length - 2);
+        const stepsF = built.job.steps / 20;
+        state.spf[built.job.family] = +(per / (built.size / MODES[built.job.family].ref_size) ** 2 / stepsF).toFixed(2); save(); updateEst();
+      }
+      setStatus(`${kind} done · ${total} frames`, 'done'); setButtons(false);
+      await refreshRuns(); if (snap.run_id) showRun(snap.run_id);
+    } else if (snap.state === 'failed') {
+      es.close(); setStatus(`${kind} failed`, 'bad'); setButtons(false);
+      showError(snap.error || 'render failed', (snap.traceback || '') + '\n' + (snap.logs || []).slice(-25).join('\n'));
+      refreshRuns();
+    } else if (snap.state === 'cancelled') {
+      es.close(); setStatus(`${kind} cancelled at frame ${snap.frame}`); setButtons(false); refreshRuns();
+    } else setStatus(text, 'live');
+  };
+  es.onerror = () => { /* EventSource retries on its own; state arrives on reconnect */ };
+}
+function setButtons(busy) { $('testBtn').disabled = busy; $('goBtn').disabled = busy; }
+$('testBtn').onclick = () => startJob('test');
+$('goBtn').onclick = () => startJob('render');
+$('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
+
+// ---------------------------------------------------------------- stage
+let split = 0.5, view = 'split';
+async function showRun(runId, { follow = false } = {}) {
+  let desc;
+  try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
+  const out = desc.layers.find(l => l.id === 'output');
+  const initL = desc.layers.find(l => l.id === 'init');
+  const newFrames = out ? out.frames : [];
+  const switched = viewRun !== runId;
+  viewRun = runId; frames = newFrames;
+  if (!frames.length) return;
+  if (switched || follow) frameIdx = frames.length - 1;
+  frameIdx = Math.min(frameIdx, frames.length - 1);
+  ensureFrameEl(!!initL);
+  $('scrub').hidden = false;
+  $('scrubRange').max = frames.length - 1; $('scrubRange').value = frameIdx;
+  paintFrame();
+  const r = runsCache.find(r => r.id === runId);
+  $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
+  $('mp4Link').classList.toggle('hide', !r?.video_available);
+  if (r?.video_available) $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r.video_modified}`;
+  $('makeMp4').classList.toggle('hide', !!r?.video_available || !!(job && job.run_id === runId && job.state === 'running'));
+  $('openFolder').classList.remove('hide'); $('loadRun').classList.remove('hide');
+  $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
+  if (switched || !follow) renderOutputs(runId);
+  if (switched && !$('enh').hidden) openEnhance();
+  document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));
+}
+function ensureFrameEl(hasInit) {
+  if ($('frame')) return;
+  $('stage').innerHTML = `<div class="frame" id="frame">
+    <img class="out" id="imgOut" alt="">
+    <img class="src" id="imgSrc" alt="">
+    <div class="divider" id="divider"></div>
+    <span class="tag l">source</span><span class="tag r">output</span></div>`;
+  const div = $('divider'); let on = false;
+  div.addEventListener('pointerdown', e => { on = true; div.setPointerCapture(e.pointerId); });
+  div.addEventListener('pointermove', e => {
+    if (!on) return;
+    const r = $('frame').getBoundingClientRect();
+    split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); applyView();
+  });
+  div.addEventListener('pointerup', () => on = false);
+  applyView();
+}
+function applyView() {
+  if (!$('frame')) return;
+  const src = $('imgSrc'), div = $('divider'), f = $('frame');
+  src.style.display = view === 'out' ? 'none' : '';
+  div.style.display = view === 'split' ? '' : 'none';
+  div.style.left = split * 100 + '%';
+  src.style.clipPath = view === 'src' ? 'none' : `inset(0 ${100 - split * 100}% 0 0)`;
+  f.querySelector('.tag.l').style.display = view === 'out' ? 'none' : '';
+  f.querySelector('.tag.r').style.display = view === 'src' ? 'none' : '';
+}
+$('view').onclick = e => {
+  const v = e.target.dataset.v; if (!v) return; view = v;
+  [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target)); applyView();
+};
+function paintFrame() {
+  const n = frames[frameIdx];
+  $('imgOut').src = img(viewRun, 'output', n);
+  $('imgSrc').src = img(viewRun, 'init', n);
+  $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
+}
+$('scrubRange').oninput = e => { frameIdx = +e.target.value; stopPlay(); paintFrame(); };
+function stopPlay() { clearInterval(playing); playing = null; $('playBtn').textContent = '▶'; }
+function togglePlay() {
+  if (playing) return stopPlay();
+  if (!frames.length) return;
+  frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
+  $('playBtn').textContent = '❚❚';
+  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / 12);
+}
+$('playBtn').onclick = togglePlay;
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || !frames.length) return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    stopPlay(); frameIdx = (frameIdx + (e.code === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length;
+    $('scrubRange').value = frameIdx; paintFrame();
+  }
+});
+
+$('openFolder').onclick = () => viewRun && api(`/api/runs/${viewRun}/open`, { method: 'POST' });
+$('makeMp4').onclick = async () => {
+  if (!viewRun) return;
+  $('makeMp4').classList.add('hide'); setStatus('assembling mp4…', 'live');
+  try {
+    const j = await api(`/api/runs/${viewRun}/video?${runQ()}`, { method: 'POST' });
+    const poll = setInterval(async () => {
+      const s = await api(`/api/jobs/${j.id}`);
+      if (['completed', 'failed', 'cancelled'].includes(s.state)) {
+        clearInterval(poll);
+        setStatus(s.state === 'completed' ? 'mp4 ready' : 'mp4 failed', s.state === 'completed' ? 'done' : 'bad');
+        await refreshRuns(); showRun(viewRun);
+      }
+    }, 1000);
+  } catch (e) { setStatus('mp4 failed: ' + e.message, 'bad'); }
+};
+$('loadRun').onclick = async () => {
+  if (!viewRun) return;
+  const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
+  if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg']) if (k in ui) state[k] = ui[k];
+  // Reproduce the run: its actual seed, locked (even if it was a random roll).
+  if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
+  if (ui.ckpt) state.ckpt = { ...state.ckpt, ...ui.ckpt };
+  if (ui.kind === 'render' && ui.size) state.size = ui.size;
+  if (ui.clip && (!state.clip || ui.clip.path !== state.clip.path)) {
+    try { await setClipPath(ui.clip.path, ui.clip.name); state.range = ui.range || [0, 1]; }
+    catch { setStatus('that run\'s clip is gone — settings loaded without it', 'bad'); }
+  }
+  save(); renderClip(); renderControls();
+  setStatus(`loaded settings from run ${viewRun}`, 'done');
+};
+
+// ---------------------------------------------------------------- runs strip
+async function refreshRuns() {
+  let res;
+  try { res = await api(`/api/runs?${runQ()}`); } catch { return; }
+  runsCache = res.runs;
+  if (!runsCache.length) { $('runs').innerHTML = '<span class="empty">No runs yet — hit Test</span>'; return; }
+  $('runs').innerHTML = runsCache.map(r => {
+    const when = new Date(r.modified * 1000);
+    const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
+    const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
+    return `<div class="run ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''}" data-id="${r.id}">
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<button class="x" title="delete run">✕</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
+      <b>${r.label || 'run ' + r.id}</b>
+      <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
+  }).join('');
+}
+// ---- selection + delete
+const selected = new Set();
+let lastClicked = null;
+function renderSelBar() {
+  $('runsHint').style.display = selected.size ? 'none' : '';
+  $('selBar').innerHTML = selected.size
+    ? `<span>${selected.size} selected</span><a id="selAll">all</a><a id="selClear">clear</a><a class="del" id="selDel">delete</a>` : '';
+  if (!selected.size) return;
+  $('selAll').onclick = () => { runsCache.forEach(r => selected.add(r.id)); paintSel(); };
+  $('selClear').onclick = () => { selected.clear(); paintSel(); };
+  $('selDel').onclick = () => deleteRuns([...selected]);
+}
+function paintSel() {
+  document.querySelectorAll('.run').forEach(el => el.classList.toggle('sel', selected.has(el.dataset.id)));
+  renderSelBar();
+}
+async function deleteRuns(ids) {
+  const isLive = id => job && job.run_id === id && !['completed', 'cancelled', 'failed'].includes(job.state);
+  ids = ids.filter(id => !isLive(id));
+  if (!ids.length) { setStatus('can\'t delete a run that is still rendering', 'bad'); return; }
+  const names = ids.map(id => runsCache.find(r => r.id === id)?.label || 'run ' + id);
+  const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
+  if (!confirm(`Delete ${what}? This removes the frames and mp4 from disk.`)) return;
+  const failed = [];
+  for (const id of ids) {
+    try { await api(`/api/runs/${id}`, { method: 'DELETE' }); runGen[id] = (runGen[id] || 0) + 1; selected.delete(id); }
+    catch (e) { failed.push(`${id}: ${e.message}`); }
+  }
+  if (ids.includes(viewRun)) clearStage();
+  await refreshRuns(); renderSelBar();
+  if (!viewRun && runsCache.length) showRun(runsCache[0].id);
+  setStatus(failed.length ? `couldn't delete ${failed.join('; ')}` : `deleted ${what}`, failed.length ? 'bad' : 'done');
+}
+function clearStage() {
+  stopPlay(); viewRun = null; frames = [];
+  $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Test</div>';
+  $('scrub').hidden = true; $('footInfo').textContent = '';
+  ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  $('outputs').innerHTML = ''; $('enh').hidden = true;
+}
+$('runs').onclick = e => {
+  const el = e.target.closest('.run'); if (!el) return;
+  const id = el.dataset.id;
+  if (e.target.closest('.x')) { deleteRuns([id]); return; }
+  if (e.shiftKey && lastClicked) {
+    const ids = runsCache.map(r => r.id), a = ids.indexOf(lastClicked), b = ids.indexOf(id);
+    ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => selected.add(x));
+    paintSel(); return;
+  }
+  lastClicked = id;
+  if (e.ctrlKey || e.metaKey || selected.size) {
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    paintSel(); return;
+  }
+  stopPlay(); showRun(id);
+};
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Delete' && selected.size) deleteRuns([...selected]);
+  if (e.code === 'Escape' && selected.size) { selected.clear(); paintSel(); }
+});
+
+// ---------------------------------------------------------------- enhance (upscale + RIFE)
+let POST_OPTS = null, postJob = null, enhFps = 24;
+const postPrefs = () => (state.post ||= { upscaler: '4x-UltraSharp.pth', scale: 2, smooth: 2 });
+
+async function renderOutputs(runId) {
+  const outs = await api(`/api/runs/${runId}/outputs`).catch(() => []);
+  if (runId !== viewRun) return;
+  $('outputs').innerHTML = outs.map(o => {
+    const label = o.name.replace(/\.mp4$/, '').replace(/_/g, ' ');
+    return `<a href="/api/runs/${runId}/post/${encodeURIComponent(o.name)}?v=${Math.round(o.modified)}" target="_blank" title="${(o.bytes / 1e6).toFixed(1)} MB">▶ ${label}</a>`;
+  }).join('');
+}
+
+function segPick(el, v) { [...el.children].forEach(b => b.classList.toggle('on', b.dataset.v == v)); }
+function paintEnhance() {
+  const p = postPrefs(), r = runsCache.find(r => r.id === viewRun);
+  $('enhModel').value = p.upscaler || '';
+  segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth);
+  $('enhScale').style.opacity = p.upscaler ? 1 : .35;
+  const w = frames.length && $('imgOut')?.naturalWidth, h = $('imgOut')?.naturalHeight;
+  $('enhScaleHint').textContent = !p.upscaler ? 'no upscale' : w ? `${w}×${h} → ${w * p.scale}×${h * p.scale}` : '';
+  const n = r?.frames || frames.length;
+  $('enhSmoothHint').textContent = !POST_OPTS.rife ? 'RIFE weights missing'
+    : `${enhFps.toFixed(0)} → ${(enhFps * p.smooth).toFixed(0)} fps · ${n} → ${(n - 1) * p.smooth + 1} frames`;
+  $('enhGo').disabled = !!postJob || (!p.upscaler && p.smooth === 1) || (job && !['completed', 'cancelled', 'failed'].includes(job.state));
+  $('enhGo').textContent = postJob ? 'working…' : 'Enhance';
+}
+async function openEnhance() {
+  if (!viewRun) return;
+  $('enhRun').textContent = runsCache.find(r => r.id === viewRun)?.label || 'run ' + viewRun;
+  $('enhModel').innerHTML = '<option value="">none</option>' +
+    POST_OPTS.upscalers.map(u => `<option value="${u}">${u.replace(/\.(pth|safetensors|pt|ckpt)$/, '')}</option>`).join('');
+  if (postPrefs().upscaler && !POST_OPTS.upscalers.includes(postPrefs().upscaler)) postPrefs().upscaler = POST_OPTS.upscalers[0] || '';
+  const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
+  enhFps = (ui.clip?.source?.fps || 24) / (ui.kind === 'test' ? 2 : 1);
+  $('enh').hidden = false; paintEnhance();
+}
+$('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hidden = true);
+$('enhClose').onclick = () => $('enh').hidden = true;
+$('enhModel').onchange = e => { postPrefs().upscaler = e.target.value; save(); paintEnhance(); };
+$('enhScale').onclick = e => { if (e.target.dataset.v) { postPrefs().scale = +e.target.dataset.v; save(); paintEnhance(); } };
+$('enhSmooth').onclick = e => { if (e.target.dataset.v) { postPrefs().smooth = +e.target.dataset.v; save(); paintEnhance(); } };
+$('enhGo').onclick = async () => {
+  const p = postPrefs(), runId = viewRun;
+  try {
+    postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth }) });
+  } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }
+  $('enh').hidden = true; followPost(runId);
+};
+function followPost(runId) {
+  setButtons(true); paintEnhanceSafe();
+  $('cancelLink').classList.remove('hide');
+  $('cancelLink').onclick = () => postJob && api(`/api/post/${postJob.id}/cancel`, { method: 'POST' }).catch(() => {});
+  const tick = async () => {
+    try { postJob = await api(`/api/post/${postJob.id}`); } catch { setTimeout(tick, 2000); return; }
+    $('bar').style.width = postJob.progress + '%';
+    if (postJob.state === 'running' || postJob.state === 'queued') {
+      setStatus(`enhance · ${postJob.message}`, 'live'); setTimeout(tick, 1000); return;
+    }
+    const done = postJob.state === 'completed';
+    setStatus(done ? `enhance ${postJob.message}` : `enhance ${postJob.state}`, done ? 'done' : postJob.state === 'failed' ? 'bad' : '');
+    if (postJob.state === 'failed') showError(postJob.error, postJob.traceback);
+    postJob = null; setButtons(false); $('cancelLink').classList.add('hide');
+    $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
+    if (viewRun === runId) renderOutputs(runId);
+  };
+  tick();
+}
+function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
+
+// ---------------------------------------------------------------- boot
+(async function boot() {
+  load();
+  try {
+    [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES }, { checkpoints: CHECKPOINTS }] = await Promise.all([
+      api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
+  state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
+  if (!MODES[state.mode]) state.mode = 'sd15';
+  } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
+  POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
+  if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
+  renderControls();
+  // grey out presets whose checkpoint isn't on disk
+  await Promise.all(PRESETS.map(async p => {
+    const r = await api(`/api/fs/exists?${qs({ path: `${CKPT_DIR}/${p.checkpoint}` })}`).catch(() => ({ exists: false }));
+    if (!r.exists) missingPresets.add(p.id);
+  }));
+  renderPresets();
+  if (state.clip) {
+    try { await setClipPath(state.clip.path, state.clip.name).then(() => {}); }
+    catch { state.clip = null; save(); }
+  }
+  renderClip();
+  await refreshRuns();
+  if (runsCache.length) showRun(runsCache[0].id);
+  // re-attach to a render that is still running (e.g. after a page reload)
+  const jobs = await api('/api/jobs').catch(() => []);
+  const running = jobs.find(j => !['completed', 'cancelled', 'failed'].includes(j.state));
+  if (running) {
+    job = running; setButtons(true); $('cancelLink').classList.remove('hide');
+    const es = new EventSource(`/api/jobs/${running.id}/events`);
+    es.onmessage = ev => {
+      const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; setLog(snap.logs || []);
+      $('bar').style.width = (snap.progress || 0) + '%';
+      if (snap.frame !== prev && snap.frame > 0 && snap.run_id) showRun(snap.run_id, { follow: true });
+      if (['completed', 'cancelled', 'failed'].includes(snap.state)) {
+        es.close(); setButtons(false); $('cancelLink').classList.add('hide');
+        setStatus(`render ${snap.state}`, snap.state === 'completed' ? 'done' : snap.state === 'failed' ? 'bad' : '');
+        refreshRuns(); return;
+      }
+      setStatus(snap.frame ? `render · frame ${snap.frame}/${snap.total_frames}` : `render · ${lastUseful() || snap.message}`, 'live');
+    };
+  }
+  try { if (localStorage.getItem(LOG_OPEN_KEY)) toggleLog(true); } catch {}
+  if (POST_OPTS.active) { postJob = POST_OPTS.active; followPost(postJob.run_id); }
+})();
+</script>
+</body>
+</html>

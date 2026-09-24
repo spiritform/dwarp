@@ -1,0 +1,120 @@
+{
+  "_comment": "Model files are relative to models_root/<checkpoints|controlnet|upscale_models> (set models_root in config.json).",
+  "modes": {
+    "sd15": {
+      "label": "SD 1.5",
+      "model_version": "control_multi_v15",
+      "sizes": [
+        384,
+        512,
+        768
+      ],
+      "default_size": 512,
+      "test_size": 384,
+      "ref_size": 512,
+      "spf": 2.2,
+      "controlnets": {
+        "depth": {
+          "kind": "depth",
+          "hold": [
+            0.3,
+            1.0
+          ],
+          "start": 0.0,
+          "end": 1.0,
+          "file": "control_v11f1p_sd15_depth_fp16.safetensors"
+        },
+        "softedge": {
+          "kind": "softedge",
+          "hold": [
+            0.15,
+            1.0
+          ],
+          "start": 0.0,
+          "end": 0.7,
+          "file": "control_v11p_sd15_softedge_fp16.safetensors"
+        }
+      }
+    },
+    "sdxl": {
+      "label": "SDXL",
+      "model_version": "control_multi_sdxl",
+      "sizes": [
+        768,
+        1024,
+        1280
+      ],
+      "default_size": 1024,
+      "test_size": 768,
+      "ref_size": 1024,
+      "spf": 118,
+      "default_checkpoint": "SDXL/dreamshaperXL_v21TurboDPMSDE.safetensors",
+      "controlnets": {
+        "depth": {
+          "hold": [
+            0.3,
+            0.9
+          ],
+          "start": 0.0,
+          "end": 1.0,
+          "kind": "depth",
+          "file": "SDXL/controlnet-depth-sdxl-1.0/diffusion_pytorch_model.safetensors"
+        },
+        "canny": {
+          "hold": [
+            0.1,
+            0.7
+          ],
+          "start": 0.0,
+          "end": 0.7,
+          "kind": "canny",
+          "file": "SDXL/controlnet-canny-sdxl-1.0/diffusion_pytorch_model_V2.safetensors"
+        }
+      }
+    }
+  },
+  "presets": [
+    {
+      "id": "oil",
+      "name": "Oil paint",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "thick impasto oil painting, swirling expressive brushstrokes, vivid colors, by van gogh",
+      "negative": "photo, realistic, smooth"
+    },
+    {
+      "id": "anime",
+      "name": "Anime",
+      "checkpoint": "flat2DAnimerge_v45Sharp.safetensors",
+      "prompt": "anime screencap, cel shading, clean lineart, flat colors, studio ghibli",
+      "negative": "photo, realistic, 3d render"
+    },
+    {
+      "id": "charcoal",
+      "name": "Charcoal",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "charcoal sketch on rough paper, smudged graphite, high contrast, black and white",
+      "negative": "color, photo, realistic"
+    },
+    {
+      "id": "watercolor",
+      "name": "Watercolor",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "loose watercolor painting, wet bleeding pigment, paper texture, soft washes",
+      "negative": "photo, realistic, sharp"
+    },
+    {
+      "id": "comic",
+      "name": "Comic",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "comic book illustration, bold ink outlines, halftone dots, flat colors",
+      "negative": "photo, realistic, blurry"
+    },
+    {
+      "id": "raw",
+      "name": "Raw",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "",
+      "negative": ""
+    }
+  ]
+}

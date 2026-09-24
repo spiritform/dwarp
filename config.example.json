@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to config.json. models_root is a folder with checkpoints/, controlnet/ and upscale_models/ inside \u2014 a ComfyUI models folder works as-is.",
+  "models_root": "C:/ComfyUI/models"
+}

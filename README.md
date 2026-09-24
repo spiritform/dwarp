@@ -1,0 +1,75 @@
+# DWARP
+
+**Diffusion warp** — turn a video into a painted, drawn or dreamed version of itself, frame by frame, locally on your GPU.
+
+DWARP repaints each frame with Stable Diffusion, but instead of starting every frame from scratch it
+carries the previous painted frame forward along the video's own motion (optical flow). Brushstrokes
+travel with the things they belong to, so the result moves like the footage instead of flickering.
+
+One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Test**.
+
+## Homage
+
+DWARP exists because of **[WarpFusion](https://github.com/Sxela/WarpFusion) by Alex Spirin ([Sxela](https://github.com/Sxela))**,
+who pioneered this technique — first as [DiscoDiffusion-Warp](https://github.com/Sxela/DiscoDiffusion-Warp) in 2022,
+then as WarpFusion on Stable Diffusion, and most recently as [VibeWarp](https://github.com/Sxela/VibeWarp).
+The core idea here — warp the previous stylized frame along optical flow, trust it only where a
+forward/backward consistency check agrees, and let diffusion fill the rest — is his.
+
+DWARP is an independent re-implementation of that idea with its own engine and UI; it contains no
+WarpFusion or VibeWarp code. If you want the full, deep, battle-tested toolset, use Sxela's work and
+[support him on Patreon](https://www.patreon.com/sxela).
+
+## How it works
+
+For every frame:
+
+1. **Flow** — [RAFT](https://github.com/princeton-vl/RAFT) optical flow between the previous and current source frame, both directions.
+2. **Warp** — the previous *stylized* frame is pushed forward along that flow.
+3. **Trust** — a forward/backward consistency check masks out occlusions, new content and off-screen areas; those fall back to the raw source frame.
+4. **Repaint** — img2img from that blend, steered by ControlNets (depth + soft edge) computed on the source frame. The first frame gets the full style strength; later frames a lower one, so they refine what's carried forward instead of re-rolling it.
+5. **Colour** — each frame's colour statistics are pulled toward frame 0 to stop feedback drift.
+
+## Features
+
+- SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
+- Style presets, Style (how much it repaints) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
+- **Test** renders 30 frames at every 2nd frame in seconds; **Render** does the whole clip
+- Live split view (source / output), frame scrubber, live log, run history with reload-settings and delete
+- **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
+
+## Requirements
+
+- Windows, NVIDIA GPU (8 GB+ VRAM for SD 1.5; 12 GB recommended for SDXL)
+- [ffmpeg](https://ffmpeg.org) on PATH
+- A Stable Diffusion 1.5 (and optionally SDXL) checkpoint plus matching ControlNets — a ComfyUI `models` folder works as-is
+
+## Setup (early — a one-click installer is coming)
+
+```bat
+uv venv --python 3.12 .venv
+uv pip install --python .venv\Scripts\python.exe torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+```
+
+Point `presets.json` at your models (`checkpoint_dir`, `upscale_dir`, and the ControlNet paths under
+`modes`), put the [RIFE 4.9 weights](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation/releases/download/models/rife49.pth)
+in `models/rife/rife49.pth` for smoothing, then:
+
+```bat
+run.bat
+```
+
+and open http://localhost:8013.
+
+## Credits
+
+- Technique: **Alex Spirin / Sxela** — WarpFusion, DiscoDiffusion-Warp, VibeWarp
+- [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [ControlNet](https://github.com/lllyasviel/ControlNet) (Lvmin Zhang), [diffusers](https://github.com/huggingface/diffusers), [controlnet_aux](https://github.com/huggingface/controlnet_aux)
+- [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
+- [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
+- [spandrel](https://github.com/chaiNNer-org/spandrel) for loading upscale models
+
+## License
+
+MIT — see [LICENSE](LICENSE).
