@@ -493,7 +493,7 @@ addEventListener('drop', e => {
 function currentPreset() { return PRESETS.find(p => p.id === state.preset) || PRESETS[0]; }
 function renderPresets() {
   // A look's own checkpoint only matters in SD1.5 mode with no model override.
-  const usesLookCkpt = state.mode === 'sd15' && !state.ckpt?.sd15;
+  const usesLookCkpt = false;   // missing look checkpoints fall back (see checkpointPath)
   $('presets').innerHTML = PRESETS.map(p => {
     const missing = usesLookCkpt && missingPresets.has(p.id);
     return `<option value="${p.id}" ${missing ? 'disabled' : ''}>${p.name}${missing ? ' (checkpoint missing)' : ''}</option>`;
@@ -516,7 +516,11 @@ function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|
 function checkpointPath() {
   const pick = state.ckpt?.[state.mode];
   if (pick) return pick;
-  return state.mode === 'sdxl' ? `${CKPT_DIR}/${modeCfg().default_checkpoint}` : `${CKPT_DIR}/${currentPreset().checkpoint}`;
+  const want = state.mode === 'sdxl' ? `${CKPT_DIR}/${modeCfg().default_checkpoint}` : `${CKPT_DIR}/${currentPreset().checkpoint}`;
+  // Defaults name the author's models; on other machines fall back to the first of the family.
+  const have = CHECKPOINTS.filter(c => c.family === state.mode);
+  if (!have.length || have.some(c => c.path === want)) return want;
+  return have[0].path;
 }
 const isFast = path => /lightning|turbo|hyper|lcm/i.test(path.split('/').pop());
 function renderMode() {

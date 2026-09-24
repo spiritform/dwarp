@@ -1,6 +1,5 @@
-# torch comes from the CUDA index; see install.bat
-torch==2.11.0
-torchvision==0.26.0
+# PyTorch is installed separately from the CUDA index (see install.bat):
+#   torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
 diffusers>=0.35
 transformers>=4.46
 accelerate

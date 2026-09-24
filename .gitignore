@@ -6,3 +6,4 @@ models/
 .venv/
 server_engine.log
 config.json
+tools/
