@@ -75,6 +75,10 @@ class RenderJob:
     diff_contrast: float = 1.0
     diff_blur: int = 4                   # px
     diff_amount: float = 1.0             # scales the mask: <1 caps the repaint, >1 pushes it harder
+    # prompt travel: [[source_frame, prompt], ...]; from each keyframe the render morphs into its
+    # prompt over prompt_blend source frames (0 = hard cut). Empty = job.prompt throughout.
+    prompt_keys: list = field(default_factory=list)
+    prompt_blend: int = 12
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -353,7 +357,7 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
         pipe.to(device)
     else:
         # 12 GB budget: UNet + ControlNets + VAE stay resident (~7.8 GB fp16); the two text
-        # encoders (1.6 GB) live on the CPU and visit the GPU once per job (see sdxl_embeds).
+        # encoders (1.6 GB) live on the CPU and visit the GPU once per job (see encode_prompts).
         # Tiled VAE keeps the fp32-upcast decode from spiking. Spilling into shared memory
         # (the Windows driver does that silently) made frames 3-4x slower.
         for part in (pipe.unet, getattr(pipe, "controlnet", None), pipe.vae):   # text encoders stay on the CPU
@@ -364,19 +368,41 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     return pipe
 
 
-def sdxl_embeds(pipe, job: RenderJob, device) -> dict:
-    """Encode the prompt once per job, then send the text encoders back to the CPU."""
-    pipe.text_encoder.to(device)
-    pipe.text_encoder_2.to(device)
+def encode_prompts(pipe, job: RenderJob, device, prompts: list[str]) -> list[dict]:
+    """Encode each prompt once per job. SDXL's text encoders visit the GPU just for this."""
+    sdxl = job.family == "sdxl"
+    if sdxl:
+        pipe.text_encoder.to(device)
+        pipe.text_encoder_2.to(device)
+    out = []
     with torch.inference_mode():
-        pe, npe, ppe, nppe = pipe.encode_prompt(
-            prompt=job.prompt, device=device, num_images_per_prompt=1,
-            do_classifier_free_guidance=job.cfg > 1, negative_prompt=job.negative or None)
-    pipe.text_encoder.to("cpu")
-    pipe.text_encoder_2.to("cpu")
-    torch.cuda.empty_cache()
-    return dict(prompt_embeds=pe, negative_prompt_embeds=npe, pooled_prompt_embeds=ppe,
-                negative_pooled_prompt_embeds=nppe)
+        for p in prompts:
+            if sdxl:
+                pe, npe, ppe, nppe = pipe.encode_prompt(
+                    prompt=p, device=device, num_images_per_prompt=1,
+                    do_classifier_free_guidance=job.cfg > 1, negative_prompt=job.negative or None)
+                out.append(dict(prompt_embeds=pe, negative_prompt_embeds=npe, pooled_prompt_embeds=ppe,
+                                negative_pooled_prompt_embeds=nppe))
+            else:
+                pe, npe = pipe.encode_prompt(p, device, 1, job.cfg > 1, job.negative or None)
+                out.append(dict(prompt_embeds=pe, negative_prompt_embeds=npe))
+    if sdxl:
+        pipe.text_encoder.to("cpu")
+        pipe.text_encoder_2.to("cpu")
+        torch.cuda.empty_cache()
+    return out
+
+
+def travel(keys: list, embeds: list[dict], blend: int, f: int) -> tuple[dict, str]:
+    """Conditioning at source frame f: the last keyframe at or before f, morphing in from the
+    previous one over `blend` frames. Returns the embeds and a short description for the log."""
+    j = max([k for k, (kf, _) in enumerate(keys) if kf <= f] or [0])
+    if j == 0 or blend <= 0 or f >= keys[j][0] + blend:
+        return embeds[j], f"prompt {j + 1}"
+    w = (f - keys[j][0]) / blend
+    a, b = embeds[j - 1], embeds[j]
+    return ({k: None if a[k] is None else torch.lerp(a[k], b[k], w) for k in a},
+            f"prompt {j} -> {j + 1} {w:.0%}")
 
 
 # Models survive between jobs: the pipeline for the last (checkpoint, family, ControlNets),
@@ -501,7 +527,12 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     flow = _CACHE.get("flow")
     ann = _CACHE.setdefault("ann", Annotators(device))
 
-    embeds = sdxl_embeds(pipe, job, device) if job.family == "sdxl" else None
+    keys = sorted([int(f), str(p)] for f, p in job.prompt_keys) or [[0, job.prompt]]
+    # SD1.5 without travel keeps passing the text itself; everything else goes through embeds
+    embeds = encode_prompts(pipe, job, device, [p for _, p in keys])         if job.family == "sdxl" or len(keys) > 1 else None
+    if len(keys) > 1:
+        log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {job.prompt_blend}")
+    last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
@@ -549,7 +580,13 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if amount.min() >= 1:
                 amount = None
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
-        text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
+        if embeds is None:
+            text = dict(prompt=job.prompt, negative_prompt=job.negative or None)
+        else:
+            text, cond = travel(keys, embeds, job.prompt_blend, (job.frame_start + i) * max(1, job.nth))
+            if len(keys) > 1 and cond != last_cond and not cond.endswith("%"):
+                log(f"frame {i + 1}: {cond}")
+            last_cond = cond
         kw = dict(**text, image=to_image(init),
                   strength=job.style if i == 0 or trust else style_next,
                   num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)

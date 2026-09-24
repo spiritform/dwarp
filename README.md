@@ -22,6 +22,7 @@ For every frame:
 
 - SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
 - Style presets, Style (how much it repaints) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
+- **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
 - **DepthDiff**: the source's luma or depth decides where the style repaints, per pixel ([differential diffusion](https://differential-diffusion.github.io/)). Keep the subject and dissolve the room, or the other way round. Works together with ControlNet
 - **Single Frame** renders just the first frame; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the whole clip
 - Live split view (source / output), frame scrubber, live log, run history with reload-settings and delete

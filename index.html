@@ -72,6 +72,35 @@
   .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; }
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
+  /* prompt travel: keyframe lane under the filmstrip */
+  .keys { position: relative; height: 16px; margin: -4px 10px 8px; border-radius: 4px; background: rgba(255,255,255,.03);
+          cursor: copy; touch-action: none; }
+  .keys:hover { background: rgba(255,255,255,.06); }
+  .keys .marks { position: absolute; inset: 0; }
+  .keys .key, .keys .ghost, .keybar .dot { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px;
+               border-radius: 50%; background: #8b8993; cursor: grab; box-sizing: border-box; }
+  .keys .key:first-of-type { margin-left: 0; }
+  .keys .key.on, .keybar .dot { background: var(--accent); }
+  /* hover: a ghost (+) follows the pointer; press to drop a keyframe there */
+  .keys .ghost { display: none; background: none; border: 1.5px solid #a9a7b1; pointer-events: none;
+                 color: #d4d2da; font-size: 11px; line-height: 9px; text-align: center; }
+  .keys .ghost::before { content: "+"; }
+  .keys:hover .ghost.show { display: block; }
+  /* scrub peek: the source frame under the pointer, floating over the filmstrip */
+  .keys .peek { position: absolute; bottom: 20px; width: 112px; margin-left: -56px; display: none; pointer-events: none;
+                border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: #000; z-index: 3;
+                box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+  .keys .peek img { display: block; width: 100%; }
+  .keys .peek span { position: absolute; left: 4px; bottom: 3px; font-size: 10px; color: #fff; background: rgba(0,0,0,.6);
+                     padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+  .keys.peeking .peek { display: block; }
+  .keybar .dot { position: static; display: inline-block; margin: 0; flex: none; cursor: default; }
+  .keys .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 10px; pointer-events: none; }
+  .keybar { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--dim); font-size: 11px; }
+  .keybar b { color: #a9a7b1; font-weight: 600; }
+  .keybar a { color: #ff9a8a; cursor: pointer; }
+  .keybar .slider { flex: 1; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .keybar .slider span { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .range-text { display: flex; justify-content: space-between; color: #a9a7b1; font-size: 11px; margin: -4px 10px 10px; }
   .uploading { padding: 10px; color: var(--dim); font-size: 12px; }
   .uploading i { display: block; height: 3px; background: var(--accent); margin-top: 6px; width: 0; transition: width .2s; }
@@ -289,6 +318,12 @@
   <section>
     <div class="label">Prompt <em>what's in the clip — the look adds style words</em></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
+    <div class="keybar" id="keyBar" hidden>
+      <span class="dot"></span><b id="keyWhich"></b><a id="keyDel" title="Delete this keyframe">delete</a>
+      <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
+        <span>blend</span><input type="range" id="blend" min="0" max="48" step="1"><span id="blendV"></span>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -444,6 +479,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
+  keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   spf: {},                             // learned seconds/frame at each mode's ref_size
   seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
 };
@@ -506,10 +542,11 @@ function renderClip() {
       <div class="sel" id="sel"><div class="h l"></div><div class="h r"></div></div>
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
+    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
-  bindRange();
+  bindRange(); bindKeys();
   paintRange();
 }
 
@@ -525,6 +562,7 @@ function paintRange() {
   $('rangeA').textContent = (a * d).toFixed(1) + 's'; $('rangeB').textContent = (b * d).toFixed(1) + 's';
   const [fa, fb] = rangeFrames();
   $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
+  paintKeys();
   updateEst();
   if (ddPrev) drawDdPreview();
 }
@@ -546,9 +584,97 @@ function bindRange() {
   range.addEventListener('dblclick', () => { state.range = [0, 1]; paintRange(); save(); });
 }
 
+// ---- prompt travel: keyframes on a lane under the filmstrip. The base prompt is keyframe 1 at
+// frame 0 (fixed); each added keyframe says "from here, morph into this prompt" over Blend frames.
+function keyAt(i) { return i < 0 ? { f: 0, prompt: state.prompt } : state.keys[i]; }
+function paintKeys() {
+  const lane = $('keyMarks'); if (!lane || !state.clip) return;
+  const n = Math.max(1, state.clip.source.frames - 1), fps = state.clip.source.fps || 24;
+  lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
+    const k = keyAt(i);
+    return `<b class="key ${i === state.keySel ? 'on' : ''}" data-i="${i}" style="left:${k.f / n * 100}%"></b>`;
+  }).join('') + (state.keys.length ? '' : '<span class="hint">prompt keyframes</span>');
+  lane.querySelectorAll('.key').forEach(el => {
+    const k = keyAt(+el.dataset.i);
+    el.title = `${(k.f / fps).toFixed(1)}s · ${k.prompt || '(empty prompt)'}`;
+  });
+  const on = state.keys.length > 0;
+  $('keyBar').hidden = !on;
+  if (on) {
+    const k = keyAt(state.keySel), all = state.keys.length + 1;
+    $('keyWhich').textContent = `keyframe ${state.keySel + 2}/${all} · ${(k.f / fps).toFixed(1)}s`;
+    $('keyDel').style.display = state.keySel >= 0 ? '' : 'none';
+    $('blend').value = state.blend; $('blendV').textContent = `${state.blend} f · ${(state.blend / fps).toFixed(1)}s`;
+  }
+}
+function selectKey(i) { state.keySel = i; $('prompt').value = keyAt(i).prompt; paintKeys(); save(); }
+function sortKeys() {                      // keep keyframes in time order, selection following its keyframe
+  const sel = state.keys[state.keySel];
+  state.keys.sort((a, b) => a.f - b.f);
+  state.keySel = sel ? state.keys.indexOf(sel) : -1;
+}
+function bindKeys() {
+  // Hover / drag on empty lane = scrub (frame peek follows the pointer); a clean click adds a keyframe
+  // there; dragging an existing keyframe moves it.
+  const lane = $('keys'); let drag = null, press = null, peekTimer = null, peekFrame = -1;
+  const pos = e => { const r = lane.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  const frameAt = e => Math.round(pos(e) * (state.clip.source.frames - 1));
+  const peek = e => {
+    const f = frameAt(e), el = $('keyPeek'); if (!el) return;
+    el.style.left = Math.min(100 - 5, Math.max(5, pos(e) * 100)) + '%';     // keep it inside the card
+    el.querySelector('span').textContent = `${(f / (state.clip.source.fps || 24)).toFixed(1)}s`;
+    if (f === peekFrame) return;
+    peekFrame = f; clearTimeout(peekTimer);                                  // fetch at most every ~80 ms
+    peekTimer = setTimeout(() => {
+      el.querySelector('img').src = `/api/video/thumbnail?${qs({ path: state.clip.path, frame: f })}`;
+    }, 80);
+  };
+  lane.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const hit = e.target.closest('.key');
+    if (hit) {
+      const i = +hit.dataset.i; selectKey(i);
+      if (i >= 0) { drag = i; lane.setPointerCapture(e.pointerId); }
+      return;
+    }
+    press = { x: e.clientX, f: frameAt(e) }; lane.setPointerCapture(e.pointerId);
+  });
+  lane.addEventListener('pointermove', e => {
+    const ghost = $('keyGhost');
+    const scrubbing = press && Math.abs(e.clientX - press.x) > 4;
+    if (ghost) {                           // the (+) under the pointer; hidden over a keyframe or while scrubbing
+      ghost.style.left = pos(e) * 100 + '%';
+      ghost.classList.toggle('show', drag === null && !scrubbing && !e.target.closest('.key'));
+    }
+    lane.classList.toggle('peeking', drag === null);
+    if (drag === null) peek(e);
+    if (drag !== null) { state.keys[drag].f = Math.max(1, frameAt(e)); paintKeys(); lane.classList.add('peeking'); peek(e); }
+  });
+  lane.addEventListener('pointerleave', () => { if (!press && drag === null) lane.classList.remove('peeking'); });
+  lane.addEventListener('pointerup', e => {
+    if (drag !== null) { drag = null; sortKeys(); paintKeys(); save(); return; }
+    if (!press) return;
+    const click = Math.abs(e.clientX - press.x) <= 4, f = press.f;
+    press = null;
+    if (!click) return;                    // that was a scrub
+    if (f === 0) return selectKey(-1);
+    // a new keyframe starts from the prompt in effect there, ready to edit
+    const before = [-1, ...state.keys.keys()].map(keyAt).filter(k => k.f <= f).pop();
+    state.keys.push({ f, prompt: before.prompt });
+    state.keySel = state.keys.length - 1; sortKeys();
+    selectKey(state.keySel); $('prompt').focus();
+  });
+}
+$('keyDel').onclick = () => {
+  if (state.keySel < 0) return;
+  state.keys.splice(state.keySel, 1); state.keySel = Math.min(state.keySel, state.keys.length - 1);
+  selectKey(state.keys.length ? state.keySel : -1);
+};
+$('blend').oninput = e => { state.blend = +e.target.value; paintKeys(); save(); };
+
 async function setClipPath(path, name) {
   const probe = await api(`/api/video/probe?${qs({ path })}`);
-  if (state.clip?.path !== path) state.range = [0, 1];
+  if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
   save(); renderClip();
 }
@@ -641,7 +767,7 @@ $('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModel
 
 function renderControls() {
   renderMode();
-  $('prompt').value = state.prompt;
+  $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
@@ -691,7 +817,11 @@ $('seed').onchange = e => {
 };
 $('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true; renderSeed(); save(); };
 $('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
-$('prompt').oninput = e => { state.prompt = e.target.value; save(); };
+$('prompt').oninput = e => {
+  if (state.keySel >= 0 && state.keys[state.keySel]) state.keys[state.keySel].prompt = e.target.value;
+  else state.prompt = e.target.value;
+  paintKeys(); save();
+};
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
@@ -799,6 +929,7 @@ function updateEst() {
 }
 
 // ---------------------------------------------------------------- config mapping
+function withLook(text) { return [text.trim(), currentPreset().prompt].filter(Boolean).join(', ') || 'a painting'; }
 async function buildConfig(kind) {
   const p = currentPreset(), m = modeCfg();
   const nth = kind === 'test' ? TEST.nth : 1;          // kinds: frame (Single Frame) | test (Preview) | render
@@ -825,7 +956,10 @@ async function buildConfig(kind) {
     video: state.clip.path,
     checkpoint: checkpointPath(),
     family: state.mode,
-    prompt: [state.prompt.trim(), p.prompt].filter(Boolean).join(', ') || 'a painting',
+    prompt: withLook(state.prompt),
+    // prompt travel: every keyframe's prompt gets the look's style words too
+    prompt_keys: state.keys.length ? [[0, withLook(state.prompt)], ...state.keys.map(k => [k.f, withLook(k.prompt)])] : [],
+    prompt_blend: state.blend,
     negative: ['bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: probe.render.width, height: probe.render.height,
     frame_start: start, frame_end: end, nth,
@@ -1081,7 +1215,8 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend']) if (k in ui) state[k] = ui[k];
+  state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
   if (ui.ckpt) state.ckpt = { ...state.ckpt, ...ui.ckpt };
@@ -1292,6 +1427,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
   state.gtab ||= 'cn';
+  state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
