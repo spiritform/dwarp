@@ -842,8 +842,12 @@ function renderSize() {
 // Source and Diff are about the input: they scrub the whole clip, run or no run. Output / Split /
 // Depth / Edge are about a run and scrub its frames.
 function clipMode() { return !!state.clip && (!viewRun || view === 'src' || view === 'mask'); }
+function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip; }
+function toSource() {                      // e.g. scrubbing away from a Single Frame result
+  view = 'src'; setControlTabs(); setupTransport();
+}
 function setupTransport() {
-  if (clipMode()) {
+  if (clipMode() || oneFrameRun()) {
     $('scrub').hidden = false;
     $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
   } else if (frames.length) {
@@ -1211,11 +1215,13 @@ function paintFrame() {
     $('imgOut').src = img(viewRun, 'output', n);
     $('imgSrc').src = img(viewRun, 'init', n);
     if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
-    $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
+    $('scrubText').textContent = oneFrameRun() ? `${clipFrame + 1} / ${state.clip.source.frames}`
+                                               : `${frameIdx + 1} / ${frames.length}`;
   }
   if (view === 'mask') drawMask();
 }
 $('scrubRange').oninput = e => {
+  if (oneFrameRun()) toSource();           // scrubbing away from a Single Frame result: back to Source
   if (clipMode()) { clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
@@ -1230,7 +1236,8 @@ function togglePlay() {
 }
 $('playBtn').onclick = togglePlay;
 addEventListener('keydown', e => {
-  if (clipMode() && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+  if ((clipMode() || oneFrameRun()) && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+    if (oneFrameRun()) toSource();
     const n = state.clip.source.frames;
     clipFrame = (clipFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
     $('scrubRange').value = clipFrame; paintFrame(); return;
