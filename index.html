@@ -195,7 +195,9 @@
   .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 1px solid #3a3941;
                  border-radius: 7px; padding: 6px 12px; white-space: nowrap; }
   .stage-foot a:hover { background: #34333b; border-color: #48474f; color: #fff; }
-  .stage-foot #cancelLink { color: #ff9a8a; }
+  /* ✕ next to Render, only while something is running */
+  .stage-foot #cancelLink { color: #ff9a8a; padding: 6px 10px; }
+  .stage-foot #cancelLink:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
   .stage-foot a.hide { display: none; }
   .stage-foot .spacer { flex: 1; }
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -391,13 +393,13 @@
       <button class="btn test" id="frameBtn">Single Frame</button>
       <button class="btn test" id="testBtn">Preview</button>
       <button class="btn go" id="goBtn">Render</button>
+      <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
     <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
     <a id="loadRun" class="hide">load settings</a>
     <a id="openFolder" class="hide">open folder</a>
-    <a id="cancelLink" class="hide">cancel</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
