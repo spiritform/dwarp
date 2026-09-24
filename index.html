@@ -400,7 +400,7 @@
     <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
-    <a id="loadRun" class="hide">load settings</a>
+    <a id="loadRun" class="hide" title="Copy this run's settings (look, prompt, sliders, model, seed, clip) into the panel">copy settings</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
@@ -1088,10 +1088,10 @@ $('loadRun').onclick = async () => {
   if (ui.kind === 'render' && ui.size) state.size = ui.size;
   if (ui.clip && (!state.clip || ui.clip.path !== state.clip.path)) {
     try { await setClipPath(ui.clip.path, ui.clip.name); state.range = ui.range || [0, 1]; }
-    catch { setStatus('that run\'s clip is gone — settings loaded without it', 'bad'); }
+    catch { setStatus('that run\'s clip is gone — settings copied without it', 'bad'); }
   }
   save(); renderClip(); renderControls();
-  setStatus(`loaded settings from run ${viewRun}`, 'done');
+  setStatus(`copied settings from run ${viewRun}`, 'done');
 };
 
 // ---------------------------------------------------------------- runs strip
