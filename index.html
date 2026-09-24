@@ -216,6 +216,9 @@
   .sel-bar { display: flex; gap: 12px; text-transform: none; letter-spacing: 0; }
   .sel-bar a { color: var(--accent-2); cursor: pointer; }
   .sel-bar a.del { color: var(--bad); }
+  .sel-bar .ask { color: var(--text); }
+  .run.doomed .thumb { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); opacity: .6; }
+  .run.doomed .x { display: none; }
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
 
@@ -903,7 +906,7 @@ async function refreshRuns() {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
-    return `<div class="run ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''}" data-id="${r.id}">
+    return `<div class="run ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
       <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<button class="x" title="delete run">✕</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
@@ -913,6 +916,7 @@ async function refreshRuns() {
 const selected = new Set();
 let lastClicked = null;
 function renderSelBar() {
+  if (pendingAsk) return;                  // an inline delete question owns the bar
   $('runsHint').style.display = selected.size ? 'none' : '';
   $('selBar').innerHTML = selected.size
     ? `<span>${selected.size} selected</span><a id="selAll">all</a><a id="selClear">clear</a><a class="del" id="selDel">delete</a>` : '';
@@ -925,13 +929,36 @@ function paintSel() {
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('sel', selected.has(el.dataset.id)));
   renderSelBar();
 }
+// Inline yes/no in the Runs header (no system dialog). The runs at stake are outlined in red.
+var pendingAsk = null, doomedIds = [];   // var: read by renderSelBar/refreshRuns, which can run first
+function confirmInline(ids, question) {
+  pendingAsk?.(false);
+  doomedIds = ids;
+  document.querySelectorAll('.run').forEach(el => el.classList.toggle('doomed', ids.includes(el.dataset.id)));
+  $('runsHint').style.display = 'none';
+  $('selBar').innerHTML = `<span class="ask" title="Removes the frames and mp4 from disk"></span><a class="del" id="askYes">delete</a><a id="askNo">keep</a>`;
+  $('selBar').querySelector('.ask').textContent = question;
+  return new Promise(resolve => {
+    const done = yes => {
+      if (pendingAsk !== done) return;
+      pendingAsk = null; doomedIds = []; removeEventListener('keydown', key, true);
+      document.querySelectorAll('.run.doomed').forEach(el => el.classList.remove('doomed'));
+      renderSelBar(); resolve(yes);
+    };
+    const key = e => {
+      if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(e.key === 'Enter'); }
+    };
+    pendingAsk = done; addEventListener('keydown', key, true);
+    $('askYes').onclick = () => done(true); $('askNo').onclick = () => done(false);
+  });
+}
 async function deleteRuns(ids) {
   const isLive = id => job && job.run_id === id && !['completed', 'cancelled', 'failed'].includes(job.state);
   ids = ids.filter(id => !isLive(id));
   if (!ids.length) { setStatus('can\'t delete a run that is still rendering', 'bad'); return; }
   const names = ids.map(id => runsCache.find(r => r.id === id)?.label || 'run ' + id);
   const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
-  if (!confirm(`Delete ${what}? This removes the frames and mp4 from disk.`)) return;
+  if (!await confirmInline(ids, `Delete ${what}?`)) return;
   const failed = [];
   for (const id of ids) {
     try { await api(`/api/runs/${id}`, { method: 'DELETE' }); runGen[id] = (runGen[id] || 0) + 1; selected.delete(id); }
