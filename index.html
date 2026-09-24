@@ -169,7 +169,8 @@
   .stage { flex: 1; display: grid; place-items: center; min-height: 0; padding: 20px; }
   .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
-  .frame img { display: block; }
+  .frame img { display: block; -webkit-user-drag: none; }
+  .frame { user-select: none; -webkit-user-select: none; }   /* dragging the split must not select / drag the images */
   .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
   /* Overlays take the output's width and their own aspect, pinned top-left — so they line up with
      the output pixel for pixel even when the frame is height-clipped (cover used to re-crop them). */
@@ -989,7 +990,7 @@ function ensureFrameEl(hasInit) {
     <div class="divider" id="divider"></div>
     <span class="tag l">source</span><span class="tag r">output</span></div>`;
   const div = $('divider'); let on = false;
-  div.addEventListener('pointerdown', e => { on = true; div.setPointerCapture(e.pointerId); });
+  div.addEventListener('pointerdown', e => { e.preventDefault(); on = true; div.setPointerCapture(e.pointerId); });
   div.addEventListener('pointermove', e => {
     if (!on) return;
     const r = $('frame').getBoundingClientRect();
