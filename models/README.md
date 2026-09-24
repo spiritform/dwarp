@@ -24,17 +24,22 @@ Runs well on 8 GB GPUs. Download these into the folders below. **Keep the file n
 
 Any other SD 1.5 checkpoint works too. DWARP lists every one it finds under `checkpoints/`.
 
-## SDXL (optional, ~9.4 GB, 12 GB GPU recommended)
+## SDXL (optional, ~7 GB, 12 GB GPU recommended)
 
 | File | Put it in | Size |
 |---|---|---|
-| [DreamShaperXL_Turbo_v2_1.safetensors](https://huggingface.co/Lykon/dreamshaper-xl-v2-turbo/resolve/main/DreamShaperXL_Turbo_v2_1.safetensors) | `checkpoints/` | 6.9 GB |
+| [SDXL-Flash_Mini.safetensors](https://huggingface.co/sd-community/sdxl-flash-mini/resolve/main/SDXL-Flash_Mini.safetensors) | `checkpoints/` | 4.5 GB |
 | [diffusion_pytorch_model_promax.safetensors](https://huggingface.co/xinsir/controlnet-union-sdxl-1.0/resolve/main/diffusion_pytorch_model_promax.safetensors) → **rename to** `controlnet-union-sdxl-1.0-promax.safetensors` | `controlnet/` | 2.5 GB |
 
 The ControlNet is xinsir's Union ProMax: one network that does both depth and soft edge, so
 SDXL gets "depth + edge" in the memory of a single ControlNet.
 
-Turbo, Lightning, Hyper and LCM checkpoints are fast (DWARP sets 8 steps, CFG 2 for them).
+SDXL Flash Mini is a slimmed-down SDXL: about 3x faster and 2.5 GB lighter on the GPU than
+full-size SDXL checkpoints, with the same ControlNet. For a full-size model with a truer palette, add
+[DreamShaperXL_Turbo_v2_1.safetensors](https://huggingface.co/Lykon/dreamshaper-xl-v2-turbo/resolve/main/DreamShaperXL_Turbo_v2_1.safetensors)
+(6.9 GB) and pick it from the model list.
+
+Turbo, Lightning, Hyper, LCM and Flash checkpoints are fast (DWARP sets 8 steps, CFG 2 for them).
 
 ## Upscaling (optional)
 

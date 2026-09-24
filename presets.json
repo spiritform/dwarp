@@ -48,7 +48,7 @@
       "test_size": 768,
       "ref_size": 1024,
       "spf": 28,
-      "default_checkpoint": "SDXL/dreamshaperXL_v21TurboDPMSDE.safetensors",
+      "default_checkpoint": "SDXL-Flash_Mini.safetensors",
       "controlnets": {
         "depth": {
           "kind": "depth",

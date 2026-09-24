@@ -516,11 +516,12 @@ function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|
 function checkpointPath() {
   const pick = state.ckpt?.[state.mode];
   if (pick) return pick;
-  const want = state.mode === 'sdxl' ? `${CKPT_DIR}/${modeCfg().default_checkpoint}` : `${CKPT_DIR}/${currentPreset().checkpoint}`;
-  // Defaults name the author's models; on other machines fall back to the first of the family.
+  const want = state.mode === 'sdxl' ? modeCfg().default_checkpoint : currentPreset().checkpoint;
+  // Defaults are file names, found in any subfolder; if missing, fall back to the first of the family.
   const have = CHECKPOINTS.filter(c => c.family === state.mode);
-  if (!have.length || have.some(c => c.path === want)) return want;
-  return have[0].path;
+  const base = want.split('/').pop().toLowerCase();
+  const hit = have.find(c => c.path.split('/').pop().toLowerCase() === base);
+  return hit ? hit.path : have.length ? have[0].path : `${CKPT_DIR}/${want}`;
 }
 const isFast = path => /lightning|turbo|hyper|lcm|flash/i.test(path.split('/').pop());
 function renderMode() {
