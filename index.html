@@ -855,6 +855,7 @@ function showClip() {
   ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
+  updateEst();                             // Single Frame's tooltip names the frame it will render
 }
 function drawMask() {
   if (maskQueued) return;
@@ -927,7 +928,7 @@ function spf(size) {
 }
 function updateEst() {
   if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
-  $('frameBtn').title = `the range's first frame · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
+  $('frameBtn').title = `${clipMode() ? 'the frame under the transport' : "the range's first frame"} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
   const [fa, fb] = rangeFrames();
   const testN = Math.min(TEST.frames, Math.floor((fb - fa) / TEST.nth) + 1);
   const testSize = Math.min(state.size, modeCfg().test_size);
@@ -944,7 +945,9 @@ async function buildConfig(kind) {
   const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
   const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
   const [fa, fb] = rangeFrames();
-  const start = Math.floor(fa / nth);
+  // Single Frame in clip view renders the frame under the transport (with the prompt keyframe in
+  // effect there); otherwise it's the range's first frame
+  let start = kind === 'frame' && clipMode() ? clipFrame : Math.floor(fa / nth);
   let end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
   if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
   if (kind === 'frame') end = start;
@@ -1125,6 +1128,7 @@ async function showRun(runId, { follow = false } = {}) {
   if (switched || !follow) renderOutputs(runId);
   if (switched && !$('enh').hidden) openEnhance();
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));
+  updateEst();
 }
 function ensureFrameEl(hasInit) {
   if ($('frame')) return;
