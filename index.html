@@ -74,7 +74,8 @@
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
   /* prompt travel: keyframe lane under the filmstrip */
   .keys-label { color: #a9a7b1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
-                margin: 2px 10px 6px; }
+                margin: 2px 10px 6px; display: flex; justify-content: space-between; }
+  .keys-label a { color: #ff9a8a; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
   .keys { position: relative; height: 16px; margin: 0 10px 10px; border-radius: 4px; background: rgba(255,255,255,.03);
           cursor: copy; touch-action: none; }
   .keys:hover { background: rgba(255,255,255,.06); }
@@ -309,23 +310,23 @@
   </section>
 
   <section>
+    <div class="label">Prompt <em>what's in the clip — the look adds style words</em></div>
+    <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
+    <div class="keybar" id="keyBar" hidden>
+      <span class="dot"></span><b id="keyWhich"></b>
+      <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
+        <span>blend</span><input type="range" id="blend" min="0" max="48" step="1"><span id="blendV"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <div class="seg mode" id="mode" style="grid-template-columns:1fr 1fr"></div>
     <div class="sublabel">Model</div>
     <select class="model" id="model" title="Checkpoint"></select>
     <div class="sublabel">Style</div>
     <select class="model" id="presets" title="Style preset"></select>
     <div class="preset-model" id="presetModel" hidden></div>
-  </section>
-
-  <section>
-    <div class="label">Prompt <em>what's in the clip — the look adds style words</em></div>
-    <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
-    <div class="keybar" id="keyBar" hidden>
-      <span class="dot"></span><b id="keyWhich"></b><a id="keyDel" title="Delete this keyframe">delete</a>
-      <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
-        <span>blend</span><input type="range" id="blend" min="0" max="48" step="1"><span id="blendV"></span>
-      </div>
-    </div>
   </section>
 
   <section>
@@ -545,7 +546,7 @@ function renderClip() {
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
-    <div class="keys-label">Prompt keyframes</div>
+    <div class="keys-label"><span>Prompt keyframes</span><a id="keyDel" title="Delete the selected keyframe">delete</a></div>
     <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
@@ -602,11 +603,11 @@ function paintKeys() {
     el.title = `${(k.f / fps).toFixed(1)}s · ${k.prompt || '(empty prompt)'}`;
   });
   const on = state.keys.length > 0;
+  $('keyDel').style.visibility = state.keySel >= 0 ? 'visible' : 'hidden';
   $('keyBar').hidden = !on;
   if (on) {
     const k = keyAt(state.keySel), all = state.keys.length + 1;
     $('keyWhich').textContent = `keyframe ${state.keySel + 2}/${all} · ${(k.f / fps).toFixed(1)}s`;
-    $('keyDel').style.display = state.keySel >= 0 ? '' : 'none';
     $('blend').value = state.blend; $('blendV').textContent = `${state.blend} f · ${(state.blend / fps).toFixed(1)}s`;
   }
 }
@@ -620,6 +621,11 @@ function bindKeys() {
   // Hover / drag on empty lane = scrub (frame peek follows the pointer); a clean click adds a keyframe
   // there; dragging an existing keyframe moves it.
   const lane = $('keys'); let drag = null, press = null, peekTimer = null, peekFrame = -1;
+  $('keyDel').onclick = () => {
+    if (state.keySel < 0) return;
+    state.keys.splice(state.keySel, 1); state.keySel = Math.min(state.keySel, state.keys.length - 1);
+    selectKey(state.keys.length ? state.keySel : -1);
+  };
   const pos = e => { const r = lane.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
   const frameAt = e => Math.round(pos(e) * (state.clip.source.frames - 1));
   const peek = e => {
@@ -668,11 +674,6 @@ function bindKeys() {
     selectKey(state.keySel); $('prompt').focus();
   });
 }
-$('keyDel').onclick = () => {
-  if (state.keySel < 0) return;
-  state.keys.splice(state.keySel, 1); state.keySel = Math.min(state.keySel, state.keys.length - 1);
-  selectKey(state.keys.length ? state.keySel : -1);
-};
 $('blend').oninput = e => { state.blend = +e.target.value; paintKeys(); save(); };
 
 async function setClipPath(path, name) {
