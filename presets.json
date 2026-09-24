@@ -59,16 +59,6 @@
           "end": 1.0,
           "kind": "depth",
           "file": "SDXL/controlnet-depth-sdxl-1.0/diffusion_pytorch_model.safetensors"
-        },
-        "canny": {
-          "hold": [
-            0.1,
-            0.7
-          ],
-          "start": 0.0,
-          "end": 0.7,
-          "kind": "canny",
-          "file": "SDXL/controlnet-canny-sdxl-1.0/diffusion_pytorch_model_V2.safetensors"
         }
       }
     }

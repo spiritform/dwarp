@@ -96,6 +96,8 @@
 
   /* sliders */
   .slider { margin-bottom: 14px; }
+  .cnsel { margin-bottom: 14px; }
+  #holdBox.off { opacity: .35; pointer-events: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -250,7 +252,9 @@
       <input type="range" id="style" min="0.4" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
-    <div class="slider">
+    <div class="label">ControlNet</div>
+    <div class="seg cnsel" id="cnSel"><button data-c="off">off</button><button data-c="depth">depth</button><button data-c="both">depth + edge</button></div>
+    <div class="slider" id="holdBox">
       <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
       <input type="range" id="hold" min="0" max="100" step="1">
       <div class="ends"><span>loose · dissolve</span><span>locked · stable</span></div>
@@ -350,6 +354,7 @@ let state = {
   preset: 'raw', prompt: '', style: 0.8, hold: 60, size: 512, steps: 20, cfg: 5,
   mode: 'sd15',
   ckpt: { sd15: '', sdxl: '' },        // '' = the look's own checkpoint (sd15) / mode default (sdxl)
+  cn: { sd15: 'both', sdxl: 'depth' },  // ControlNets per mode: off | depth | both (depth + edge)
   spf: {},                             // learned seconds/frame at each mode's ref_size
   seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
 };
@@ -547,6 +552,15 @@ function renderControls() {
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
   $('steps').value = state.steps; $('stepsV').textContent = state.steps;
   $('cfg').value = state.cfg; $('cfgV').textContent = (+state.cfg).toFixed(1);
+  // A mode with a single ControlNet (SDXL: depth only, to fit 12 GB) has no "depth + edge".
+  const nets = Object.keys(modeCfg().controlnets || {}).length;
+  if (nets < 2 && state.cn[state.mode] === 'both') state.cn[state.mode] = 'depth';
+  const cn = state.cn[state.mode] || 'both';
+  $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 2 : 3}, 1fr)`;
+  $('cnSel').querySelector('[data-c="both"]').hidden = nets < 2;
+  [...$('cnSel').children].forEach(b => b.classList.toggle('on', b.dataset.c === cn));
+  $('holdBox').classList.toggle('off', cn === 'off');
+  $('holdBox').title = cn === 'off' ? 'Hold steers the ControlNets — turn one on to use it' : '';
   renderSeed(); renderPresets(); updateEst();
 }
 
@@ -567,6 +581,7 @@ $('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true
 $('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
 $('prompt').oninput = e => { state.prompt = e.target.value; save(); };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
 $('steps').oninput = e => { state.steps = +e.target.value; $('stepsV').textContent = state.steps; save(); updateEst(); };
 $('cfg').oninput = e => { state.cfg = +e.target.value; $('cfgV').textContent = state.cfg.toFixed(1); save(); };
@@ -602,7 +617,10 @@ async function buildConfig(kind) {
   // Hold: how tightly ControlNets pin the source's structure. Low = the render
   // drifts and dissolves between frames, high = it stays locked to the footage.
   const h = state.hold / 100;
-  const controlnets = Object.values(m.controlnets || {}).map(c => ({
+  // ControlNet choice: off = none, depth = the depth net only, both = every net of the mode.
+  const cnSel = state.cn[state.mode] || 'both';
+  const controlnets = Object.values(m.controlnets || {}).filter(c =>
+    cnSel === 'both' || (cnSel === 'depth' && c.kind === 'depth')).map(c => ({
     kind: c.kind, path: c.path, start: c.start, end: c.end,
     weight: +(c.hold[0] + (c.hold[1] - c.hold[0]) * h).toFixed(3),
   }));
@@ -838,7 +856,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn']) if (k in ui) state[k] = ui[k];
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
   if (ui.ckpt) state.ckpt = { ...state.ckpt, ...ui.ckpt };
@@ -1007,6 +1025,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES }, { checkpoints: CHECKPOINTS }] = await Promise.all([
       api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
+  state.cn = { sd15: 'both', sdxl: 'depth', ...(state.cn || {}) };
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));

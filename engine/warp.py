@@ -220,19 +220,52 @@ class Annotators:
 def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     from diffusers import ControlNetModel, DPMSolverMultistepScheduler
 
-    nets = [ControlNetModel.from_single_file(c.path, torch_dtype=dtype) for c in job.controlnets]
-    if job.family == "sdxl":
-        from diffusers import StableDiffusionXLControlNetImg2ImgPipeline as Pipe
-    else:
-        from diffusers import StableDiffusionControlNetImg2ImgPipeline as Pipe
-    kwargs = dict(controlnet=nets if len(nets) != 1 else nets[0], torch_dtype=dtype)
+    # disable_mmap: memory-mapping multi-GB checkpoints crashes the process on Windows with an
+    # access violation (seen with 7 GB SDXL files on a busy HDD); a plain read into RAM doesn't.
+    nets = [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True) for c in job.controlnets]
+    import diffusers
+    # No ControlNets = plain img2img: lighter and faster, structure comes from the flow warp alone.
+    name = {("sdxl", True): "StableDiffusionXLControlNetImg2ImgPipeline",
+            ("sdxl", False): "StableDiffusionXLImg2ImgPipeline",
+            ("sd15", True): "StableDiffusionControlNetImg2ImgPipeline",
+            ("sd15", False): "StableDiffusionImg2ImgPipeline"}[(job.family, bool(nets))]
+    Pipe = getattr(diffusers, name)
+    kwargs = dict(torch_dtype=dtype, disable_mmap=True)
+    if nets:
+        kwargs["controlnet"] = nets if len(nets) != 1 else nets[0]
     if job.family != "sdxl":
         kwargs.update(safety_checker=None, requires_safety_checker=False)
     pipe = Pipe.from_single_file(job.checkpoint, **kwargs)
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
     pipe.set_progress_bar_config(disable=True)
-    pipe.enable_model_cpu_offload() if job.family == "sdxl" else pipe.to(device)
+    if job.family != "sdxl":
+        pipe.to(device)
+    else:
+        # 12 GB budget: UNet + ControlNets + VAE stay resident (~7.8 GB fp16); the two text
+        # encoders (1.6 GB) live on the CPU and visit the GPU once per job (see sdxl_embeds).
+        # Tiled VAE keeps the fp32-upcast decode from spiking. Spilling into shared memory
+        # (the Windows driver does that silently) made frames 3-4x slower.
+        for part in (pipe.unet, getattr(pipe, "controlnet", None), pipe.vae):   # text encoders stay on the CPU
+            if part is not None:
+                part.to(device)
+        pipe.vae.enable_tiling()
+        torch.cuda.empty_cache()
     return pipe
+
+
+def sdxl_embeds(pipe, job: RenderJob, device) -> dict:
+    """Encode the prompt once per job, then send the text encoders back to the CPU."""
+    pipe.text_encoder.to(device)
+    pipe.text_encoder_2.to(device)
+    with torch.inference_mode():
+        pe, npe, ppe, nppe = pipe.encode_prompt(
+            prompt=job.prompt, device=device, num_images_per_prompt=1,
+            do_classifier_free_guidance=job.cfg > 1, negative_prompt=job.negative or None)
+    pipe.text_encoder.to("cpu")
+    pipe.text_encoder_2.to("cpu")
+    torch.cuda.empty_cache()
+    return dict(prompt_embeds=pe, negative_prompt_embeds=npe, pooled_prompt_embeds=ppe,
+                negative_pooled_prompt_embeds=nppe)
 
 
 # Models survive between jobs: the pipeline for the last (checkpoint, family, ControlNets),
@@ -285,6 +318,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     flow = _CACHE.get("flow")
     ann = _CACHE.setdefault("ann", Annotators(device))
 
+    embeds = sdxl_embeds(pipe, job, device) if job.family == "sdxl" else None
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
     log(f"style {job.style} on frame 0, {style_next} after; colour match {job.color_match}")
@@ -310,7 +344,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
 
         hints = [ann(c.kind, src_np) for c in job.controlnets]
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
-        kw = dict(prompt=job.prompt, negative_prompt=job.negative or None, image=to_image(init),
+        text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
+        kw = dict(**text, image=to_image(init),
                   strength=job.style if i == 0 else style_next, num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
         if job.controlnets:
             single = len(job.controlnets) == 1
@@ -329,6 +364,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         to_image(res).save(path)
         written.append(path)
         prev_src, prev_out = src, res
+        # Hand this frame's scratch memory back every frame. Without it the caching allocator's
+        # footprint crept up until the Windows driver spilled into system RAM (30 s -> 235 s/frame).
+        del result, init, hints, kw
+        torch.cuda.empty_cache()
         log(f"frame {i + 1}/{total}: {time.time() - tf:.1f}s")
         progress("rendering", i + 1, total, f"frame {i + 1}/{total}")
 
