@@ -187,7 +187,6 @@
   .toggle button { background: none; border: 0; color: var(--dim); padding: 5px 12px; border-radius: 6px; cursor: pointer; }
   .toggle button.on { background: var(--line); color: var(--text); }
 
-  .cliptog button.on { background: rgba(255,106,61,.16); color: var(--text); }
   .status { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 6px; vertical-align: 1px; }
@@ -404,7 +403,6 @@
 
 <main>
   <div class="stage-bar">
-    <div class="toggle cliptog"><button id="clipTab" title="Show the source clip: scrub it, check the live Diff, pick a frame for Single Frame">Clip</button></div>
     <div class="toggle" id="view">
       <button data-v="src">Source</button>
       <button data-v="out">Output</button>
@@ -841,19 +839,28 @@ function renderSize() {
   const s = state.clip.source, k = state.size / Math.max(s.width, s.height);
   return [Math.max(8, Math.round(s.width * k / 8) * 8), Math.max(8, Math.round(s.height * k / 8) * 8)];
 }
-function clipMode() { return !viewRun && !!state.clip; }
+// Source and Diff are about the input: they scrub the whole clip, run or no run. Output / Split /
+// Depth / Edge are about a run and scrub its frames.
+function clipMode() { return !!state.clip && (!viewRun || view === 'src' || view === 'mask'); }
+function setupTransport() {
+  if (clipMode()) {
+    $('scrub').hidden = false;
+    $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
+  } else if (frames.length) {
+    $('scrub').hidden = false;
+    $('scrubRange').max = frames.length - 1; $('scrubRange').value = frameIdx;
+  }
+}
 function clipFrameUrl(kind) {
   const [w, h] = renderSize();
   return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind })}`;
 }
-$('clipTab').onclick = () => showClip();
 function showClip() {
   if (!state.clip) return clearStage();
   stopPlay(); viewRun = null; frames = [];
   clipFrame = Math.min(clipFrame, state.clip.source.frames - 1);
-  ensureFrameEl(); setControlTabs();
-  $('scrub').hidden = false;
-  $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
+  if (view !== 'mask') view = 'src';
+  ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
   $('footInfo').textContent = `${state.clip.name} · source`;
   ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
@@ -1105,7 +1112,7 @@ $('goBtn').onclick = () => startJob('render');
 $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
 
 // ---------------------------------------------------------------- stage
-let split = 0.5, view = 'split';
+var split = 0.5, view = 'split';   // var: clipMode() reads view, and it can run before this line
 async function showRun(runId, { follow = false } = {}) {
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
@@ -1114,13 +1121,13 @@ async function showRun(runId, { follow = false } = {}) {
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   viewRun = runId; frames = newFrames;
+  if (switched && (view === 'src' || view === 'mask')) view = 'split';   // a picked run opens on its result
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
   if (switched || follow) frameIdx = frames.length - 1;
   frameIdx = Math.min(frameIdx, frames.length - 1);
   ensureFrameEl(!!initL);
-  $('scrub').hidden = false;
-  $('scrubRange').max = frames.length - 1; $('scrubRange').value = frameIdx;
+  setupTransport();
   paintFrame();
   const r = runsCache.find(r => r.id === runId);
   $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
@@ -1174,25 +1181,25 @@ function applyView() {
 var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
 function setControlTabs(layers = runLayers) {
   runLayers = layers;
-  const clip = clipMode(), dd = state.gtab === 'dd';
-  $('clipTab').classList.toggle('on', clip); $('clipTab').disabled = !state.clip;
+  const noRun = !viewRun, dd = state.gtab === 'dd';
   const entries = dd ? (state.clip && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
-                     : (clip ? [] : layers.filter(l => l.id !== 'control_diff').map(l => [l.id, l.label]));
+                     : (noRun ? [] : layers.filter(l => l.id !== 'control_diff').map(l => [l.id, l.label]));
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
   for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
     $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${id === 'mask'
       ? 'The DepthDiff mask from the current sliders, live: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
-  $('view').querySelector('[data-v="out"]').hidden = clip;
-  $('view').querySelector('[data-v="split"]').hidden = clip;
-  if (((view.startsWith('control_') || view === 'mask') && !controlTabs[view]) || (clip && (view === 'out' || view === 'split')))
-    view = clip ? 'src' : 'split';
+  $('view').querySelector('[data-v="out"]').hidden = noRun;
+  $('view').querySelector('[data-v="split"]').hidden = noRun;
+  if (((view.startsWith('control_') || view === 'mask') && !controlTabs[view]) || (noRun && (view === 'out' || view === 'split')))
+    view = noRun ? 'src' : 'split';
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
   applyView();
 }
 $('view').onclick = e => {
   const v = e.target.dataset.v; if (!v) return; view = v;
-  [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target)); applyView();
+  [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target));
+  stopPlay(); applyView(); setupTransport();
   if ((frames.length || clipMode()) && $('frame')) paintFrame();
 };
 function paintFrame() {
