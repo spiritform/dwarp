@@ -502,7 +502,9 @@ Progress = Callable[[str, int, int, str], None]      # stage, frame, total, mess
 
 
 def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Callable[[], bool] = lambda: False,
-           log: Callable[[str], None] = print) -> list[Path]:
+           log: Callable[[str], None] = print, live: Callable[[], dict | None] = lambda: None) -> list[Path]:
+    """`live` is polled before every frame; it returns None, or new prompt travel sent while the
+    job runs ({"prompt_keys": [[frame, prompt], ...], "prompt_blend": n}) for the frames still to come."""
     device = torch.device("cuda")
     out = Path(job.out_dir)
     (out / "frames").mkdir(parents=True, exist_ok=True)
@@ -528,10 +530,21 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     ann = _CACHE.setdefault("ann", Annotators(device))
 
     keys = sorted([int(f), str(p)] for f, p in job.prompt_keys) or [[0, job.prompt]]
-    # SD1.5 without travel keeps passing the text itself; everything else goes through embeds
-    embeds = encode_prompts(pipe, job, device, [p for _, p in keys])         if job.family == "sdxl" or len(keys) > 1 else None
+    blend = job.prompt_blend
+    # Encoded prompts by text, so a live edit only encodes what's new. SD1.5 without travel keeps
+    # passing the text itself until a live edit arrives; everything else goes through embeds.
+    encoded: dict[str, dict] = {}
+
+    def embeds_for(ks):
+        new = list(dict.fromkeys(p for _, p in ks if p not in encoded))
+        if new:
+            encoded.update(zip(new, encode_prompts(pipe, job, device, new)))
+        return [encoded[p] for _, p in ks]
+
+    embeds = embeds_for(keys) if job.family == "sdxl" or len(keys) > 1 else None
     if len(keys) > 1:
-        log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {job.prompt_blend}")
+        log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {blend}")
+    edits = []                                  # live prompt edits, kept in job.json next to the start state
     last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
@@ -542,6 +555,17 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         if cancelled():
             log("cancelled")
             break
+        upd = live()
+        if upd:
+            keys = sorted([int(f), str(p)] for f, p in upd.get("prompt_keys") or []) or keys
+            blend = int(upd.get("prompt_blend", blend))
+            te = time.time()
+            embeds = embeds_for(keys)
+            edits.append({"from_frame": i, "prompt_keys": keys, "prompt_blend": blend})
+            (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
+            log(f"live prompts from frame {i + 1}: {len(keys)} keyframe{'s' * (len(keys) > 1)} at source frames "
+                f"{[f for f, _ in keys]}, blend {blend} ({time.time() - te:.1f}s)")
+            last_cond = None
         tf = time.time()
         src_np = load_rgb(sp)
         src = to_tensor(src_np, device)
@@ -583,7 +607,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         if embeds is None:
             text = dict(prompt=job.prompt, negative_prompt=job.negative or None)
         else:
-            text, cond = travel(keys, embeds, job.prompt_blend, (job.frame_start + i) * max(1, job.nth))
+            text, cond = travel(keys, embeds, blend, (job.frame_start + i) * max(1, job.nth))
             if len(keys) > 1 and cond != last_cond and not cond.endswith("%"):
                 log(f"frame {i + 1}: {cond}")
             last_cond = cond

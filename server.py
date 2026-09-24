@@ -222,6 +222,19 @@ def build_app() -> FastAPI:
             raise HTTPException(404, detail="Unknown job")
         return job.snapshot()
 
+    @app.post("/api/jobs/{job_id}/prompts")
+    async def job_prompts(job_id: str, request: Request):
+        """Live prompt travel: the running render uses these from its next frame on."""
+        body = await request.json()
+        job = jobs.set_prompts(job_id, {"prompt_keys": body.get("prompt_keys") or [],
+                                        "prompt_blend": int(body.get("prompt_blend", 12))})
+        if not job:
+            raise HTTPException(404, detail="Unknown job")
+        if isinstance(body.get("ui"), dict) and job.state not in TERMINAL:   # the run remembers its latest prompts
+            ui = runs.read_meta(job.run_id).get("ui") or {}
+            runs.write_meta(job.run_id, ui=ui | body["ui"])
+        return job.snapshot()
+
     @app.get("/api/jobs/{job_id}/events")
     async def job_events(job_id: str):
         job = jobs.get(job_id)
@@ -290,7 +303,7 @@ def build_app() -> FastAPI:
             raise HTTPException(422, detail="Old VibeWarp runs can't be re-assembled here")
         if not runs.output_frames(run_id):
             raise HTTPException(422, detail="This run has no frames")
-        return jobs.submit("video", run_id, {"fps": run_fps(run_id)}).snapshot()
+        return jobs.submit("video", run_id, {"fps": runs.fps(run_id)}).snapshot()
 
     @app.put("/api/runs/{run_id}/label")
     async def set_label(run_id: str, request: Request):
@@ -316,14 +329,6 @@ def build_app() -> FastAPI:
         return {"ok": True}
 
     # -------------------------------------------------------------- post-process
-    def run_fps(run_id: str) -> float:
-        meta = runs.read_meta(run_id)
-        if meta.get("fps"):
-            return float(meta["fps"])
-        ui = meta.get("ui") or {}
-        src = ((ui.get("clip") or {}).get("source") or {}).get("fps") or 24
-        return src / (2 if ui.get("kind") == "test" else 1)
-
     @app.get("/api/post/options")
     def post_options():
         return {"upscalers": post.list_upscalers(settings().get("upscale_dir", "")),
@@ -347,7 +352,7 @@ def build_app() -> FastAPI:
                 raise HTTPException(422, detail=f"Unknown upscaler {name}")
             up_path = os.path.join(up_dir, name)
         try:
-            return post.start(path, "warpbox", fps=run_fps(run_id), smooth=smooth, upscaler_path=up_path, scale=scale)
+            return post.start(path, "warpbox", fps=runs.fps(run_id), smooth=smooth, upscaler_path=up_path, scale=scale)
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc))
 

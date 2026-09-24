@@ -148,6 +148,16 @@ def describe(run_id: str) -> dict:
          for kind, label in CONTROL_LABELS.items() if (frames := control_frames(run_id, kind))]}
 
 
+def fps(run_id: str, meta: dict | None = None) -> float:
+    """The run's playback rate: saved at submit; older runs derive it from the clip (Preview = every 2nd frame)."""
+    meta = read_meta(run_id) if meta is None else meta
+    if meta.get("fps"):
+        return float(meta["fps"])
+    ui = meta.get("ui") or {}
+    src = ((ui.get("clip") or {}).get("source") or {}).get("fps") or 24
+    return src / (2 if ui.get("kind") == "test" else 1)
+
+
 def summary(run_id: str) -> dict:
     path = run_dir(run_id)
     frames = output_frames(run_id)
@@ -159,7 +169,7 @@ def summary(run_id: str) -> dict:
         "frames": len(frames), "last_frame": max(frames) if frames else None,
         "prompt": (meta.get("ui") or {}).get("prompt", ""),
         "video_available": bool(video), "video_modified": video.stat().st_mtime if video else None,
-        "legacy": is_legacy(run_id),
+        "legacy": is_legacy(run_id), "fps": fps(run_id, meta),
     }
 
 

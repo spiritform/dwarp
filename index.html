@@ -609,6 +609,30 @@ function paintKeys() {
     $('keyWhich').textContent = `keyframe ${state.keySel + 2}/${all} · ${(k.f / fps).toFixed(1)}s`;
     $('blend').value = state.blend; $('blendV').textContent = `${state.blend} f · ${(state.blend / fps).toFixed(1)}s`;
   }
+  pushPrompts();
+}
+// Live prompts: while a Preview / Render of this clip runs, prompt, keyframe and blend edits go to it
+// and take effect from its next frame (the engine re-encodes only prompts it hasn't seen).
+var live = null, liveTimer = null;         // live: { id, video, sent } of the running job
+function promptTravel(kind) {
+  return {
+    // every keyframe's prompt gets the look's style words too
+    prompt_keys: state.keys.length ? [[0, withLook(state.prompt)], ...state.keys.map(k => [k.f, withLook(k.prompt)])] : [],
+    prompt_blend: kind === 'frame' ? 0 : state.blend,   // a single still shows the keyframe's own prompt, never a mix
+  };
+}
+function pushPrompts() {
+  if (!live || state.clip?.path !== live.video) return;
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => {
+    const pt = promptTravel('render');
+    if (!pt.prompt_keys.length) pt.prompt_keys = [[0, withLook(state.prompt)]];
+    const sent = JSON.stringify(pt);
+    if (!live || sent === live.sent) return;
+    live.sent = sent;
+    api(`/api/jobs/${live.id}/prompts`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...pt, ui: { prompt: state.prompt, keys: state.keys, blend: state.blend } }) }).catch(() => {});
+  }, 500);
 }
 function selectKey(i) { state.keySel = i; $('prompt').value = keyAt(i).prompt; paintKeys(); save(); }
 function sortKeys() {                      // keep keyframes in time order, selection following its keyframe
@@ -986,9 +1010,7 @@ async function buildConfig(kind) {
     checkpoint: checkpointPath(),
     family: state.mode,
     prompt: withLook(state.prompt),
-    // prompt travel: every keyframe's prompt gets the look's style words too
-    prompt_keys: state.keys.length ? [[0, withLook(state.prompt)], ...state.keys.map(k => [k.f, withLook(k.prompt)])] : [],
-    prompt_blend: kind === 'frame' ? 0 : state.blend,   // a single still shows the keyframe's own prompt, never a mix
+    ...promptTravel(kind),
     negative: ['bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: probe.render.width, height: probe.render.height,
     frame_start: start, frame_end: end, nth,
@@ -1023,7 +1045,7 @@ function paintLog() {
   const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   el.innerHTML = logLines.length ? logLines.slice(-400).map(l => {
     const cls = /error|traceback|failed|exception/i.test(l) ? 'bad'
-      : /loaded|reusing|extracted|assembled|style [\d.]+ on frame/i.test(l) ? 'hot'
+      : /loaded|reusing|extracted|assembled|live prompts|style [\d.]+ on frame/i.test(l) ? 'hot'
       : /^\s*(SD gradient|Warped frame|CN hint)/.test(l) ? 'dim' : '';
     return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
   }).join('\n') : '<span class="dim">no log yet — start a Single Frame, Preview or Render</span>';
@@ -1069,6 +1091,11 @@ async function startJob(kind) {
   }
   let labelled = false;
   const times = [];
+  if (kind !== 'frame') {
+    const pt = { prompt_keys: built.job.prompt_keys.length ? built.job.prompt_keys : [[0, built.job.prompt]],
+                 prompt_blend: built.job.prompt_blend };
+    live = { id: job.id, video: built.job.video, sent: JSON.stringify(pt) };
+  }
   const es = new EventSource(`/api/jobs/${job.id}/events`);
   es.onmessage = async ev => {
     const snap = JSON.parse(ev.data), prevFrame = job?.frame;
@@ -1093,6 +1120,7 @@ async function startJob(kind) {
         text += ` · ${per.toFixed(1)} s/f · ${fmtDur(per * (total - snap.frame))} left`;
       }
     }
+    if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) live = null;
     if (snap.state === 'completed') {
       es.close();
       if (times.length >= 3) {  // learn this machine's speed for the estimates
@@ -1133,11 +1161,12 @@ async function showRun(runId, { follow = false } = {}) {
   if (switched && (view === 'src' || view === 'mask')) view = 'out';     // a picked run opens on its result
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
-  if (switched || follow) frameIdx = frames.length - 1;
+  // following a render jumps to each new frame, unless it's playing: then the loop just grows
+  if (switched || (follow && !playing)) frameIdx = frames.length - 1;
   frameIdx = Math.min(frameIdx, frames.length - 1);
   ensureFrameEl(!!initL);
   setupTransport();
-  paintFrame();
+  if (!(follow && playing)) paintFrame();
   const r = runsCache.find(r => r.id === runId);
   $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
   $('mp4Link').classList.toggle('hide', !r?.video_available);
@@ -1235,8 +1264,10 @@ function paintFrame() {
     $('imgOut').src = img(viewRun, 'output', n);
     $('imgSrc').src = img(viewRun, 'init', n);
     if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
+    // a run still rendering counts toward its full length, not just the frames so far
+    const rendering = job && job.run_id === viewRun && !['completed', 'cancelled', 'failed'].includes(job.state);
     $('scrubText').textContent = oneFrameRun() ? `${clipFrame + 1} / ${state.clip.source.frames}`
-                                               : `${frameIdx + 1} / ${frames.length}`;
+                                               : `${frameIdx + 1} / ${rendering && job.total_frames || frames.length}`;
   }
   if (view === 'mask') drawMask();
 }
@@ -1252,7 +1283,8 @@ function togglePlay() {
   if (!frames.length) return;
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
   $('playBtn').textContent = '❚❚';
-  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / 12);
+  const fps = runsCache.find(r => r.id === viewRun)?.fps || 24;    // the run's own rate, same as its mp4
+  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / fps);
 }
 $('playBtn').onclick = togglePlay;
 addEventListener('keydown', e => {

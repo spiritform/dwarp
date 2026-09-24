@@ -28,6 +28,7 @@ class Job:
         self.logs: list[str] = []
         self.error = self.traceback = None
         self.cancel_requested = False
+        self.live_prompts: dict | None = None   # prompt travel sent mid-run, picked up before the next frame
         self.created_at, self.started_at, self.finished_at = _now(), None, None
         self.revision = 0
 
@@ -73,6 +74,19 @@ class JobManager:
                     job.message = "cancelled before starting"
                 self._touch(job)
         return job
+
+    def set_prompts(self, job_id: str, prompts: dict) -> Job | None:
+        job = self._jobs.get(job_id)
+        if job and job.kind == "render" and job.state not in TERMINAL:
+            with self._cond:
+                job.live_prompts = prompts      # a newer edit replaces one not yet picked up
+                self._touch(job)
+        return job
+
+    def _take_prompts(self, job: Job) -> dict | None:
+        with self._cond:
+            prompts, job.live_prompts = job.live_prompts, None
+            return prompts
 
     def wait_for_change(self, job: Job, revision: int, timeout: float = 15.0) -> dict:
         with self._cond:
@@ -146,7 +160,7 @@ class JobManager:
 
         t0 = time.time()
         written = render(rj, progress=progress, cancelled=lambda: job.cancel_requested,
-                         log=lambda line: self._log(job, line))
+                         log=lambda line: self._log(job, line), live=lambda: self._take_prompts(job))
         if written and not job.cancel_requested:
             job.stage, job.message = "assembling", "assembling mp4"
             self._touch(job)
