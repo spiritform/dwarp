@@ -197,6 +197,8 @@
   .stage-foot a:hover { background: #34333b; border-color: #48474f; color: #fff; }
   /* ✕ next to Render, only while something is running */
   .stage-foot #cancelLink { color: #ff9a8a; padding: 6px 10px; }
+  .stage-foot a.icon { display: grid; place-items: center; padding: 5px 8px; }
+  .stage-foot a.icon.hide { display: none; }
   .stage-foot #cancelLink:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
   .stage-foot a.hide { display: none; }
   .stage-foot .spacer { flex: 1; }
@@ -399,10 +401,10 @@
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
     <a id="loadRun" class="hide">load settings</a>
-    <a id="openFolder" class="hide">open folder</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
+    <a id="openFolder" class="hide icon" title="Open the run's folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></a>
   </div>
   <div class="enh" id="enh" hidden>
     <h4>Enhance run <span id="enhRun"></span><button id="enhClose">✕</button></h4>
