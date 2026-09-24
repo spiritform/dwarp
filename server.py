@@ -156,17 +156,29 @@ def build_app() -> FastAPI:
                                  headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/diff/base")
-    def diff_base(path: str = "", frame: int = 0, width: int = 512, height: int = 512, kind: str = "luma"):
-        """One source frame at render size, as the DepthDiff mask starts from it: the frame itself
-        (luma) or its depth map. The page shapes it into the mask live."""
-        if not path or not os.path.isfile(path):
-            raise HTTPException(404, detail="No video at that path")
-        vf = f"select=eq(n\\,{max(0, frame)}),scale={max(8, width)}:{max(8, height)}:flags=lanczos"
-        out = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", vf, "-frames:v", "1",
-                              "-f", "image2pipe", "-vcodec", "png", "-"], capture_output=True)
-        if out.returncode != 0 or not out.stdout:
-            raise HTTPException(422, detail="Could not read that frame")
-        data = out.stdout
+    def diff_base(path: str = "", frame: int = 0, width: int = 512, height: int = 512, kind: str = "luma",
+                  run: str = ""):
+        """One source frame, as the DepthDiff mask starts from it: the frame itself (luma) or its
+        depth map. Either a clip frame at render size (path + frame + size; also the stage's clip
+        view), or the frame a run started from (run + that run's frame number). JPEG like the
+        engine's own source frames; depth as PNG. The page shapes it into the mask live."""
+        if run:
+            run_or_404(run)
+            src = runs.layer_path(run, "init", frame)
+            if not src:
+                raise HTTPException(404, detail="No source frame for that run/frame")
+            data = src.read_bytes()
+        else:
+            if not path or not os.path.isfile(path):
+                raise HTTPException(404, detail="No video at that path")
+            vf = f"select=eq(n\\,{max(0, frame)}),scale={max(8, width)}:{max(8, height)}:flags=lanczos"
+            out = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", vf, "-frames:v", "1",
+                                  "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "2", "-"], capture_output=True)
+            if out.returncode != 0 or not out.stdout:
+                raise HTTPException(422, detail="Could not read that frame")
+            data = out.stdout
+        if kind != "depth":
+            return StreamingResponse(iter([data]), media_type="image/jpeg", headers={"Cache-Control": "max-age=600"})
         if kind == "depth":
             import io
             import numpy as np

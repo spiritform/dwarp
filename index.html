@@ -147,10 +147,6 @@
   .invert { flex: none; padding: 0 12px; background: #34333b; border: 1px solid #44434b; border-radius: 8px;
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
-  .ddprev { width: 100%; margin-bottom: 14px; padding: 7px 0; background: #2a2930; border: 1px solid #3a3941;
-            border-radius: 8px; color: #d4d2da; cursor: pointer; font: inherit; font-size: 12px; }
-  .ddprev:hover { background: #34333b; }
-  .ddprev.on { border-color: var(--accent); background: rgba(255,106,61,.16); color: var(--text); }
   .invert.on { border-color: var(--accent); background: rgba(255,106,61,.16); color: var(--text); }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
@@ -380,7 +376,6 @@
             <input type="range" id="ddAmount" min="0" max="2" step="0.05">
           </div>
         </div>
-        <button class="ddprev" id="ddPrevBtn" title="Show the mask for the first frame of the range on the stage; it follows the sliders live">preview mask</button>
       </div>
     </div>
     <div class="pair">
@@ -536,7 +531,7 @@ function renderClip() {
         <img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
       </button>
-      <div><div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
+      <div id="clipInfo" title="Show the source clip on the stage" style="cursor:pointer"><div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
       <div class="clip-meta">${s.width}×${s.height} · ${Math.round(s.fps)} fps · ${s.frames} frames · ${s.duration.toFixed(1)}s</div></div>
     </div>
     <div class="range" id="range">
@@ -551,6 +546,7 @@ function renderClip() {
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
   bindRange(); bindKeys();
+  $('clipInfo').onclick = showClip;
   paintRange();
 }
 
@@ -568,7 +564,6 @@ function paintRange() {
   $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
   paintKeys();
   updateEst();
-  if (ddPrev) drawDdPreview();
 }
 function bindRange() {
   const range = $('range'); let drag = null;
@@ -580,7 +575,6 @@ function bindRange() {
     if (drag === null) return;
     const r = range.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const minGap = 2 / state.clip.source.frames;
-    ddFrame = null;                        // moving the range: the mask preview follows its first frame again
     if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
     else state.range[1] = Math.max(x, state.range[0] + minGap);
     paintRange();
@@ -633,7 +627,9 @@ function bindKeys() {
     const f = frameAt(e), el = $('keyPeek'); if (!el) return;
     el.style.left = Math.min(100 - 5, Math.max(5, pos(e) * 100)) + '%';     // keep it inside the card
     el.querySelector('span').textContent = `${(f / (state.clip.source.fps || 24)).toFixed(1)}s`;
-    if (ddPrev && ddFrame !== f) { ddFrame = f; drawDdPreview(); }   // mask preview follows the scrub
+    if (clipMode() && clipFrame !== f) {   // clip view: the stage follows the lane scrub
+      clipFrame = f; $('scrubRange').value = f; paintFrame();
+    }
     if (f === peekFrame) return;
     peekFrame = f; clearTimeout(peekTimer);                                  // fetch at most every ~80 ms
     peekTimer = setTimeout(() => {
@@ -680,7 +676,7 @@ $('blend').oninput = e => { state.blend = +e.target.value; paintKeys(); save(); 
 
 async function setClipPath(path, name) {
   const probe = await api(`/api/video/probe?${qs({ path })}`);
-  if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; ddFrame = null; }
+  if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; clipFrame = 0; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
   save(); renderClip();
 }
@@ -694,7 +690,7 @@ function uploadFile(file) {
   xhr.onload = async () => {
     if (xhr.status >= 300) { setStatus('upload failed: ' + xhr.responseText, 'bad'); renderClip(); return; }
     const res = JSON.parse(xhr.responseText);
-    try { await setClipPath(res.path, res.name); setStatus('clip loaded'); }
+    try { await setClipPath(res.path, res.name); setStatus('clip loaded'); showClip(); }
     catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
   };
   xhr.onerror = () => { setStatus('upload failed', 'bad'); renderClip(); };
@@ -804,7 +800,7 @@ function renderControls() {
     const el = $('dd' + k[0].toUpperCase() + k.slice(1));
     el.value = dd[k]; $(el.id + 'V').textContent = (+dd[k]).toFixed(digits);
   }
-  if (ddPrev) dd.src === 'off' ? ddPreview(false) : drawDdPreview();
+  setControlTabs();                        // Diff tab follows DepthDiff on/off; redraws the live mask
   renderSeed(); renderPresets(); updateEst();
 }
 
@@ -833,60 +829,61 @@ $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
 $('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); setControlTabs(); save(); };
 $('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.dd.src = d; renderControls(); save(); };
-// ---- DepthDiff preview: the mask for the range's first frame, shaped here (same maths as the
-// engine's diff_mask) so it follows the sliders instantly. The server only supplies the frame
-// (luma) or its depth map, once per clip / frame / size / source.
-var ddPrev = false, ddBase = { key: '', img: null }, ddFetch = null, ddQueued = false;
-var ddFrame = null;                       // a frame picked by scrubbing the keyframe lane; null = range start
+// ---- Clip view + live Diff. With no run selected the stage shows the source clip and the transport
+// scrubs it. The Diff tab is the DepthDiff mask from the current sliders, live, drawn on a canvas:
+// its base is the source frame on screen (clip view: the clip frame under the transport; run view:
+// the frame that run started from) or that frame's depth, shaped here with the engine's diff_mask maths.
+var clipFrame = 0, maskBase = { key: '', img: null }, maskFetch = null, maskQueued = false;
 function renderSize() {
   const s = state.clip.source, k = state.size / Math.max(s.width, s.height);
   return [Math.max(8, Math.round(s.width * k / 8) * 8), Math.max(8, Math.round(s.height * k / 8) * 8)];
 }
-function ddPreview(on, { restore = true } = {}) {
-  ddPrev = on && !!state.clip && state.dd.src !== 'off';
-  $('ddPrevBtn').classList.toggle('on', ddPrev);
-  if (ddPrev) { stopPlay(); drawDdPreview(); return; }
-  if (restore && $('ddPrevWrap')) viewRun ? showRun(viewRun) : clearStage();
+function clipMode() { return !viewRun && !!state.clip; }
+function clipFrameUrl(kind) {
+  const [w, h] = renderSize();
+  return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind })}`;
 }
-function drawDdPreview() {
-  if (!ddPrev || ddQueued) return;
-  ddQueued = true;
-  requestAnimationFrame(() => { ddQueued = false; paintDdPreview(); });
-}
-function paintDdPreview() {
-  if (!ddPrev) return;
-  const [w, h] = renderSize(), fa = ddFrame ?? rangeFrames()[0], kind = state.dd.src;
-  const key = [state.clip.path, fa, w, h, kind].join('|');
-  if (ddBase.key !== key) {                // new frame / size / source: fetch, debounced for range drags
-    clearTimeout(ddFetch);
-    ddFetch = setTimeout(async () => {
-      setStatus(kind === 'depth' ? 'computing depth…' : 'loading frame…', 'live');
-      const img = new Image();
-      img.src = `/api/diff/base?${qs({ path: state.clip.path, frame: fa, width: w, height: h, kind })}`;
-      try { await img.decode(); } catch {
-        ddPreview(false);                  // don't leave the button lit over a stage that never changed
-        setStatus('mask preview failed — if DWARP was just updated, restart the server', 'bad'); return;
-      }
-      ddBase = { key, img }; setStatus(`mask preview · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`, 'done');
-      paintDdPreview();
-    }, kind === 'depth' ? 250 : 90);      // depth frames cost a model pass; luma is just a frame grab
-    return;
-  }
-  if (!$('ddPrevWrap')) {
-    $('stage').innerHTML = `<div class="frame" id="ddPrevWrap"><canvas class="out" id="ddPrevCv"></canvas>
-      <span class="tag l" id="ddPrevTag"></span><span class="tag r">white repaints · black keeps</span></div>`;
-  }
-  $('ddPrevTag').textContent = ddFrame === null ? 'mask · first frame'
-    : `mask · ${(fa / (state.clip.source.fps || 24)).toFixed(1)}s`;
-  // the transport scrubs the source clip while the mask preview is up
+function showClip() {
+  if (!state.clip) return clearStage();
+  stopPlay(); viewRun = null; frames = [];
+  clipFrame = Math.min(clipFrame, state.clip.source.frames - 1);
+  ensureFrameEl(); setControlTabs();
   $('scrub').hidden = false;
-  $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = fa;
-  $('scrubText').textContent = `${fa + 1} / ${state.clip.source.frames}`;
-  const d = state.dd, cv = $('ddPrevCv');
+  $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
+  paintFrame();
+  $('footInfo').textContent = `${state.clip.name} · source`;
+  ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  $('outputs').innerHTML = ''; $('enh').hidden = true;
+  document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
+}
+function drawMask() {
+  if (maskQueued) return;
+  maskQueued = true;
+  requestAnimationFrame(() => { maskQueued = false; paintMask(); });
+}
+function paintMask() {
+  if (view !== 'mask' || !$('cvMask') || !state.clip || state.dd.src === 'off') return;
+  const kind = state.dd.src;
+  const src = clipMode()
+    ? { key: ['clip', state.clip.path, clipFrame, ...renderSize(), kind].join('|'), url: clipFrameUrl(kind) }
+    : { key: ['run', viewRun, frames[frameIdx], kind].join('|'),
+        url: `/api/diff/base?${qs({ run: viewRun, frame: frames[frameIdx], kind })}` };
+  if (maskBase.key !== src.key) {         // new frame / source: fetch (debounced for scrubs), keep the old one meanwhile
+    clearTimeout(maskFetch);
+    maskFetch = setTimeout(async () => {
+      const img = new Image(); img.src = src.url;
+      try { await img.decode(); } catch {
+        setStatus('Diff: could not load that frame — if DWARP was just updated, restart the server', 'bad'); return;
+      }
+      maskBase = { key: src.key, img }; paintMask();
+    }, kind === 'depth' ? 250 : 60);      // depth frames cost a model pass; luma is just a frame grab
+    if (!maskBase.img) return;
+  }
+  const d = state.dd, cv = $('cvMask'), w = maskBase.img.naturalWidth, h = maskBase.img.naturalHeight;
   cv.width = w; cv.height = h;
   const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
   const tc = tmp.getContext('2d', { willReadFrequently: true });
-  tc.drawImage(ddBase.img, 0, 0, w, h);
+  tc.drawImage(maskBase.img, 0, 0, w, h);
   const im = tc.getImageData(0, 0, w, h), px = im.data;
   const lo = d.black / 255, span = Math.max(d.white / 255 - lo, 1e-4), g = 1 / Math.max(d.gamma, 1e-4);
   for (let i = 0; i < px.length; i += 4) {
@@ -907,7 +904,6 @@ function paintDdPreview() {
     c.putImageData(om, 0, 0);
   }
 }
-$('ddPrevBtn').onclick = () => ddPreview(!ddPrev);
 $('ddInvert').onclick = () => { state.dd.invert = !state.dd.invert; renderControls(); save(); };
 // DepthDiff mask sliders: [state key, decimals shown]; element ids are dd<Key>
 var DD_SLIDERS = [['black', 0], ['white', 0], ['gamma', 2], ['contrast', 2], ['blur', 0], ['amount', 2]];
@@ -1104,15 +1100,14 @@ $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { metho
 // ---------------------------------------------------------------- stage
 let split = 0.5, view = 'split';
 async function showRun(runId, { follow = false } = {}) {
-  if (ddPrev) ddPreview(false, { restore: false });
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
   const out = desc.layers.find(l => l.id === 'output');
   const initL = desc.layers.find(l => l.id === 'init');
-  setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   viewRun = runId; frames = newFrames;
+  setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
   if (switched || follow) frameIdx = frames.length - 1;
   frameIdx = Math.min(frameIdx, frames.length - 1);
@@ -1137,6 +1132,7 @@ function ensureFrameEl(hasInit) {
     <img class="out" id="imgOut" alt="">
     <img class="src" id="imgSrc" alt="">
     <img class="ctl" id="imgCtl" alt="">
+    <canvas class="ctl" id="cvMask"></canvas>
     <div class="divider" id="divider"></div>
     <span class="tag l">source</span><span class="tag r">output</span></div>`;
   const div = $('divider'); let on = false;
@@ -1151,50 +1147,65 @@ function ensureFrameEl(hasInit) {
 }
 function applyView() {
   if (!$('frame')) return;
-  const src = $('imgSrc'), div = $('divider'), f = $('frame'), ctl = view.startsWith('control_');
-  src.style.display = view === 'out' || ctl ? 'none' : '';
+  const src = $('imgSrc'), div = $('divider'), f = $('frame'), clip = clipMode();
+  const ctl = view.startsWith('control_'), mask = view === 'mask';
+  // clip view: #imgOut itself carries the source frame, so the overlay source image is never needed
+  src.style.display = view === 'out' || ctl || mask || clip ? 'none' : '';
   $('imgCtl').style.display = ctl ? '' : 'none';
-  div.style.display = view === 'split' ? '' : 'none';
+  $('cvMask').style.display = mask ? '' : 'none';
+  div.style.display = view === 'split' && !clip ? '' : 'none';
   div.style.left = split * 100 + '%';
   src.style.clipPath = view === 'src' ? 'none' : `inset(0 ${100 - split * 100}% 0 0)`;
-  f.querySelector('.tag.l').textContent = ctl ? controlTabs[view] : 'source';
+  f.querySelector('.tag.l').textContent = mask ? 'diff · live' : ctl ? controlTabs[view] : 'source';
   f.querySelector('.tag.l').style.display = view === 'out' ? 'none' : '';
-  f.querySelector('.tag.r').style.display = view === 'src' || ctl ? 'none' : '';
+  f.querySelector('.tag.r').style.display = view === 'src' || ctl || mask || clip ? 'none' : '';
+  if (mask) drawMask();
 }
-// ControlNet hint layers (depth, edge…) get their own tabs, only for runs that have them.
-// They follow the panel's ControlNet / DepthDiff tab: Depth + Edge, or Diff.
+// Tabs between Source and Output follow the panel's ControlNet / DepthDiff tab: a run's saved
+// Depth / Edge hints, or the live Diff (clip view too). Output / Split exist only for runs.
 var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
 function setControlTabs(layers = runLayers) {
   runLayers = layers;
-  const dd = state.gtab === 'dd';
-  const next = Object.fromEntries(layers.filter(l => (l.id === 'control_diff') === dd).map(l => [l.id, l.label]));
-  if (JSON.stringify(next) === JSON.stringify(controlTabs)) return;
-  controlTabs = next;
+  const clip = clipMode(), dd = state.gtab === 'dd';
+  const entries = dd ? (state.clip && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
+                     : (clip ? [] : layers.filter(l => l.id !== 'control_diff').map(l => [l.id, l.label]));
+  controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
-  for (const [id, label] of Object.entries(controlTabs).reverse())   // after Source: source, hints, output, split
-    $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${dd ? 'The DepthDiff mask: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
-  if (view.startsWith('control_') && !controlTabs[view]) { view = 'split'; applyView(); }
+  for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
+    $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${id === 'mask'
+      ? 'The DepthDiff mask from the current sliders, live: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
+  $('view').querySelector('[data-v="out"]').hidden = clip;
+  $('view').querySelector('[data-v="split"]').hidden = clip;
+  if (((view.startsWith('control_') || view === 'mask') && !controlTabs[view]) || (clip && (view === 'out' || view === 'split')))
+    view = clip ? 'src' : 'split';
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
+  applyView();
 }
 $('view').onclick = e => {
   const v = e.target.dataset.v; if (!v) return; view = v;
   [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target)); applyView();
-  if (frames.length && $('frame')) paintFrame();
+  if ((frames.length || clipMode()) && $('frame')) paintFrame();
 };
 function paintFrame() {
-  const n = frames[frameIdx];
-  $('imgOut').src = img(viewRun, 'output', n);
-  $('imgSrc').src = img(viewRun, 'init', n);
-  if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
-  $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
+  if (clipMode()) {
+    $('imgOut').src = clipFrameUrl('luma');
+    $('scrubText').textContent = `${clipFrame + 1} / ${state.clip.source.frames}`;
+  } else {
+    const n = frames[frameIdx];
+    $('imgOut').src = img(viewRun, 'output', n);
+    $('imgSrc').src = img(viewRun, 'init', n);
+    if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
+    $('scrubText').textContent = `${frameIdx + 1} / ${frames.length}`;
+  }
+  if (view === 'mask') drawMask();
 }
 $('scrubRange').oninput = e => {
-  if (ddPrev) { ddFrame = +e.target.value; drawDdPreview(); return; }   // scrubbing the clip for the mask
+  if (clipMode()) { clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
 function stopPlay() { clearInterval(playing); playing = null; $('playBtn').textContent = '▶'; }
 function togglePlay() {
-  if (ddPrev) return;                      // the mask preview is a still
+  if (clipMode()) return;                  // clip view is for scrubbing, not playback
   if (playing) return stopPlay();
   if (!frames.length) return;
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
@@ -1203,9 +1214,10 @@ function togglePlay() {
 }
 $('playBtn').onclick = togglePlay;
 addEventListener('keydown', e => {
-  if (ddPrev && state.clip && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
-    const n = state.clip.source.frames, f = ddFrame ?? rangeFrames()[0];
-    ddFrame = (f + (e.code === 'ArrowRight' ? 1 : -1) + n) % n; drawDdPreview(); return;
+  if (clipMode() && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+    const n = state.clip.source.frames;
+    clipFrame = (clipFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
+    $('scrubRange').value = clipFrame; paintFrame(); return;
   }
   if (e.target.tagName === 'TEXTAREA' || !frames.length) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
@@ -1335,6 +1347,7 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   setStatus(failed.length ? `couldn't delete ${failed.join('; ')}` : `deleted ${what}`, failed.length ? 'bad' : 'done');
 }
 function clearStage() {
+  if (state.clip) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
   $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
   $('scrub').hidden = true; $('footInfo').textContent = '';
@@ -1465,7 +1478,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   }
   renderClip();
   await refreshRuns();
-  if (runsCache.length) showRun(runsCache[0].id);
+  if (runsCache.length) showRun(runsCache[0].id); else if (state.clip) showClip();
   // re-attach to a render that is still running (e.g. after a page reload)
   const jobs = await api('/api/jobs').catch(() => []);
   const running = jobs.find(j => !['completed', 'cancelled', 'failed'].includes(j.state));
