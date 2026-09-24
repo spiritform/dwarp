@@ -970,7 +970,7 @@ async function buildConfig(kind) {
     prompt: withLook(state.prompt),
     // prompt travel: every keyframe's prompt gets the look's style words too
     prompt_keys: state.keys.length ? [[0, withLook(state.prompt)], ...state.keys.map(k => [k.f, withLook(k.prompt)])] : [],
-    prompt_blend: state.blend,
+    prompt_blend: kind === 'frame' ? 0 : state.blend,   // a single still shows the keyframe's own prompt, never a mix
     negative: ['bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: probe.render.width, height: probe.render.height,
     frame_start: start, frame_end: end, nth,
