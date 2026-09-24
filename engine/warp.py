@@ -12,6 +12,7 @@ Written from the idea of WarpFusion (Alex Spirin / Sxela) — no code taken from
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -62,6 +63,8 @@ class RenderJob:
     mask_dilate: int = 5                 # grow the "don't trust" regions a little (px)
     mask_blur: int = 3
     color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
+    diff: bool = False                   # differential diffusion: per-pixel strength from the trust
+                                         # mask — trusted pixels get style_next, the rest full style
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -359,6 +362,69 @@ def cached_pipeline(job: RenderJob, device, log):
     return _CACHE["pipe"]
 
 
+class DiffDiffusion:
+    """Per-pixel img2img strength as a step callback (Differential Diffusion, Levin & Fried 2023).
+
+    `amount` (1x1xHxW, 0..1) is the share of the run's steps each pixel may change in: 1 = all of
+    them, 0.5 = only the second half, 0 = none. Until its turn a pixel is held at the init image,
+    re-noised to the current step, so it joins the denoise at exactly the right noise level.
+    Held pixels also get the init as the model's clean-image prediction (as ComfyUI's masked
+    sampling does), so a multistep solver's history stays on the init's path: without that, a
+    pixel's first free step reused a stale prediction and trusted areas flickered more.
+    The init latents and noise are the pipeline's own (caught as it noises the start latents).
+    Use as a context manager around the pipeline call."""
+
+    def __init__(self, pipe, amount: torch.Tensor):
+        self.pipe, self.amount_px = pipe, amount
+        self.orig = self.noise = self.amount = self.held = None
+
+    def _prepare_latents(self, *a, **k):
+        sch = self.pipe.scheduler
+        real = sch.add_noise
+
+        def catch(orig, noise, t):
+            self.orig, self.noise = orig, noise
+            return real(orig, noise, t)
+        sch.add_noise = catch
+        try:
+            return self._orig_prepare(*a, **k)
+        finally:
+            del sch.add_noise
+
+    def _convert(self, *a, **k):
+        x0 = self._orig_convert(*a, **k)
+        if self.held is None:                   # first step: everything below amount 1 is held
+            self.amount = F.interpolate(self.amount_px.float(), self.orig.shape[-2:], mode="area").to(self.orig)
+            self.held = self.was_held = self.amount < 1
+        hist = getattr(self.pipe.scheduler, "model_outputs", None)
+        released = self.was_held & ~self.held
+        if hist and hist[-1] is not None and released.any():
+            # A plain run's first step is first order; give just-released pixels the same by making
+            # their "previous prediction" equal this one (the multistep correction term vanishes).
+            hist[-1] = torch.where(released, x0, hist[-1])
+        self.was_held = self.held
+        return torch.where(self.held, self.orig.to(x0.dtype), x0)
+
+    def __enter__(self):
+        sch = self.pipe.scheduler
+        self._orig_prepare, self._orig_convert = self.pipe.prepare_latents, sch.convert_model_output
+        self.pipe.prepare_latents, sch.convert_model_output = self._prepare_latents, self._convert
+        return self
+
+    def __exit__(self, *exc):
+        del self.pipe.prepare_latents           # back to the class methods
+        del self.pipe.scheduler.convert_model_output
+
+    def __call__(self, pipe, i, t, kw):
+        # After step i the scheduler sits at step i+1; add_noise uses that level (sigma 0 at the end).
+        n, k = pipe.num_timesteps, i + 1
+        self.held = self.amount < 1 - k / n
+        if self.held.any():
+            ref = pipe.scheduler.add_noise(self.orig, self.noise, t.reshape(1))
+            kw["latents"] = torch.where(self.held, ref, kw["latents"])
+        return kw
+
+
 def free_models():
     _CACHE.clear()
     torch.cuda.empty_cache()
@@ -396,7 +462,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
-    log(f"style {job.style} on frame 0, {style_next} after; colour match {job.color_match}")
+    log(f"style {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
+        f"colour match {job.color_match}")
     for i, sp in enumerate(src_paths):
         if cancelled():
             log("cancelled")
@@ -405,6 +472,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         src_np = load_rgb(sp)
         src = to_tensor(src_np, device)
 
+        amount = None                           # per-pixel strength, as a share of `strength`
         if prev_out is None:
             init = src
         else:
@@ -413,6 +481,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             warped = warp(prev_out, fb)
             mask = soften_mask(consistency(fb, ff), job.mask_dilate, job.mask_blur)
             init = torch.lerp(src, warped, mask * job.flow_blend)
+            if job.diff and style_next < job.style:
+                # trusted -> style_next, untrusted (new content, occlusions) -> full style
+                amount = torch.lerp(torch.ones_like(mask), torch.full_like(mask, style_next / job.style),
+                                    mask * job.flow_blend)
             if i % 10 == 1:                     # a few debug snapshots, not every frame
                 to_image(mask.expand(-1, 3, -1, -1)).save(out / "debug" / f"mask_{i:06d}.png")
                 to_image(init).save(out / "debug" / f"init_{i:06d}.png")
@@ -423,20 +495,30 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
         text = embeds or dict(prompt=job.prompt, negative_prompt=job.negative or None)
         kw = dict(**text, image=to_image(init),
-                  strength=job.style if i == 0 else style_next, num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
+                  strength=job.style if i == 0 or amount is not None else style_next,
+                  num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
+        dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
+        if amount is not None:
+            kw.update(callback_on_step_end=dd, callback_on_step_end_tensor_inputs=["latents"])
+        # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
+        # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
+        share = style_next / job.style if amount is not None else 1.0
+        cn = job.controlnets
+        starts = [c.start if c.start == 0 else 1 - share + c.start * share for c in cn]
+        ends = [1 - share + c.end * share for c in cn]
         if union:
             # one network, every hint at once, each tagged with its condition type
-            cn = job.controlnets
             kw.update(control_image=hints, control_mode=[UNION_MODE[c.kind] for c in cn],
                       controlnet_conditioning_scale=[c.weight for c in cn],
-                      control_guidance_start=[c.start for c in cn], control_guidance_end=[c.end for c in cn])
-        elif job.controlnets:
-            single = len(job.controlnets) == 1
+                      control_guidance_start=starts, control_guidance_end=ends)
+        elif cn:
+            single = len(cn) == 1
             kw.update(control_image=hints[0] if single else hints,
-                      controlnet_conditioning_scale=job.controlnets[0].weight if single else [c.weight for c in job.controlnets],
-                      control_guidance_start=job.controlnets[0].start if single else [c.start for c in job.controlnets],
-                      control_guidance_end=job.controlnets[0].end if single else [c.end for c in job.controlnets])
-        result = pipe(**kw).images[0]
+                      controlnet_conditioning_scale=cn[0].weight if single else [c.weight for c in cn],
+                      control_guidance_start=starts[0] if single else starts,
+                      control_guidance_end=ends[0] if single else ends)
+        with dd:
+            result = pipe(**kw).images[0]
 
         res = to_tensor(np.asarray(result), device)
         if first_out is None:
