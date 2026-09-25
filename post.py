@@ -70,7 +70,9 @@ def run_frames(run_dir: Path, batch: str = "warpbox") -> list:
 
 
 def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: str | None,
-          scale: int) -> dict:
+          scale: int, slowmo: bool = False) -> dict:
+    """smooth: RIFE factor. The in-between frames raise the fps (same length, smoother), or with
+    slowmo keep the run's fps, so the clip plays `smooth` times longer."""
     with _lock:
         if active_job():
             raise RuntimeError("A post-process job is already running")
@@ -80,7 +82,10 @@ def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: 
         parts = []
         if upscaler_path:
             parts.append(f"x{scale}-{Path(upscaler_path).stem}")
-        out_fps = fps * smooth
+        slowmo = slowmo and smooth > 1
+        out_fps = fps if slowmo else fps * smooth
+        if slowmo:
+            parts.append(f"slowmo{smooth}x")
         parts.append(f"{out_fps:g}fps")
         name = re.sub(r"[^\w.\-]+", "_", "_".join(parts))[:120] + ".mp4"
         job = {

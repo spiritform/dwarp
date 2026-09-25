@@ -502,9 +502,12 @@ Progress = Callable[[str, int, int, str], None]      # stage, frame, total, mess
 
 
 def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Callable[[], bool] = lambda: False,
-           log: Callable[[str], None] = print, live: Callable[[], dict | None] = lambda: None) -> list[Path]:
-    """`live` is polled before every frame; it returns None, or new prompt travel sent while the
-    job runs ({"prompt_keys": [[frame, prompt], ...], "prompt_blend": n}) for the frames still to come."""
+           log: Callable[[str], None] = print, live: Callable[[], dict | None] = lambda: None,
+           on_keys: Callable[[list, int], None] = lambda keys, blend: None) -> list[Path]:
+    """`live` is polled before every frame; it returns None, or edits sent while the job runs, for
+    the frames still to come: new prompt travel ("prompt_keys": [[frame, prompt], ...], "prompt_blend")
+    and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode).
+    `on_keys` hears the keyframes in use at the start and after every edit."""
     device = torch.device("cuda")
     out = Path(job.out_dir)
     (out / "frames").mkdir(parents=True, exist_ok=True)
@@ -545,6 +548,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if len(keys) > 1:
         log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {blend}")
     edits = []                                  # live prompt edits, kept in job.json next to the start state
+    on_keys(keys, blend)
     last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
@@ -559,12 +563,16 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         if upd:
             keys = sorted([int(f), str(p)] for f, p in upd.get("prompt_keys") or []) or keys
             blend = int(upd.get("prompt_blend", blend))
+            if upd.get("now"):                  # Live: from this frame on, morph into the new prompt
+                sf = (job.frame_start + i) * max(1, job.nth)
+                keys = sorted([k for k in keys if k[0] != sf] + [[sf, str(upd["now"])]])
             te = time.time()
             embeds = embeds_for(keys)
             edits.append({"from_frame": i, "prompt_keys": keys, "prompt_blend": blend})
             (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
             log(f"live prompts from frame {i + 1}: {len(keys)} keyframe{'s' * (len(keys) > 1)} at source frames "
                 f"{[f for f, _ in keys]}, blend {blend} ({time.time() - te:.1f}s)")
+            on_keys(keys, blend)
             last_cond = None
         tf = time.time()
         src_np = load_rgb(sp)

@@ -226,8 +226,14 @@ def build_app() -> FastAPI:
     async def job_prompts(job_id: str, request: Request):
         """Live prompt travel: the running render uses these from its next frame on."""
         body = await request.json()
-        job = jobs.set_prompts(job_id, {"prompt_keys": body.get("prompt_keys") or [],
-                                        "prompt_blend": int(body.get("prompt_blend", 12))})
+        upd = {}
+        if "prompt_keys" in body:
+            upd["prompt_keys"] = body["prompt_keys"] or []
+        if "prompt_blend" in body:
+            upd["prompt_blend"] = int(body["prompt_blend"])
+        if body.get("now"):                     # Live mode: a keyframe at the frame about to render
+            upd["now"] = str(body["now"])
+        job = jobs.set_prompts(job_id, upd) if upd else jobs.get(job_id)
         if not job:
             raise HTTPException(404, detail="Unknown job")
         if isinstance(body.get("ui"), dict) and job.state not in TERMINAL:   # the run remembers its latest prompts
@@ -352,7 +358,8 @@ def build_app() -> FastAPI:
                 raise HTTPException(422, detail=f"Unknown upscaler {name}")
             up_path = os.path.join(up_dir, name)
         try:
-            return post.start(path, "warpbox", fps=runs.fps(run_id), smooth=smooth, upscaler_path=up_path, scale=scale)
+            return post.start(path, "warpbox", fps=runs.fps(run_id), smooth=smooth, upscaler_path=up_path, scale=scale,
+                              slowmo=bool(body.get("slowmo")))
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc))
 

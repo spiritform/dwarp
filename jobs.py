@@ -29,6 +29,8 @@ class Job:
         self.error = self.traceback = None
         self.cancel_requested = False
         self.live_prompts: dict | None = None   # prompt travel sent mid-run, picked up before the next frame
+        self.prompt_keys: list | None = None    # the keyframes the render is using now
+        self.prompt_blend = 0
         self.created_at, self.started_at, self.finished_at = _now(), None, None
         self.revision = 0
 
@@ -36,7 +38,7 @@ class Job:
         return {k: getattr(self, k) for k in (
             "id", "kind", "run_id", "state", "stage", "message", "frame", "total_frames", "progress",
             "logs", "error", "traceback", "cancel_requested", "created_at", "started_at", "finished_at",
-            "revision")} | {"logs": list(self.logs)}
+            "revision", "prompt_keys", "prompt_blend")} | {"logs": list(self.logs)}
 
 
 class JobManager:
@@ -79,9 +81,15 @@ class JobManager:
         job = self._jobs.get(job_id)
         if job and job.kind == "render" and job.state not in TERMINAL:
             with self._cond:
-                job.live_prompts = prompts      # a newer edit replaces one not yet picked up
+                # merged with an edit not yet picked up: newer keys / blend / live prompt win
+                job.live_prompts = {**(job.live_prompts or {}), **prompts}
                 self._touch(job)
         return job
+
+    def _keys(self, job: Job, keys: list, blend: int):
+        with self._cond:
+            job.prompt_keys, job.prompt_blend = [list(k) for k in keys], blend
+            self._touch(job)
 
     def _take_prompts(self, job: Job) -> dict | None:
         with self._cond:
@@ -160,7 +168,8 @@ class JobManager:
 
         t0 = time.time()
         written = render(rj, progress=progress, cancelled=lambda: job.cancel_requested,
-                         log=lambda line: self._log(job, line), live=lambda: self._take_prompts(job))
+                         log=lambda line: self._log(job, line), live=lambda: self._take_prompts(job),
+                         on_keys=lambda keys, blend: self._keys(job, keys, blend))
         if written and not job.cancel_requested:
             job.stage, job.message = "assembling", "assembling mp4"
             self._touch(job)

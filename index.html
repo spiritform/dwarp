@@ -233,6 +233,11 @@
   .stage-foot a.icon.hide { display: none; }
   .stage-foot #cancelLink:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
   .stage-foot a.hide { display: none; }
+  .stage-foot #liveBtn { color: var(--dim); }
+  .stage-foot #liveBtn::before { content: "●"; margin-right: 5px; color: var(--faint); }
+  .stage-foot #liveBtn.on { color: var(--text); border-color: var(--accent); }
+  .stage-foot #liveBtn.on::before { color: var(--accent); }
+  #prompt.sent { border-color: var(--accent); }
   .stage-foot .spacer { flex: 1; }
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
@@ -310,7 +315,7 @@
   </section>
 
   <section>
-    <div class="label">Prompt <em>what's in the clip — the look adds style words</em></div>
+    <div class="label">Prompt <em id="promptHint">what's in the clip — the look adds style words</em></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
     <div class="keybar" id="keyBar" hidden>
       <span class="dot"></span><b id="keyWhich"></b>
@@ -432,6 +437,7 @@
       <button class="btn test" id="frameBtn">Single Frame</button>
       <button class="btn test" id="testBtn">Preview</button>
       <button class="btn go" id="goBtn">Render</button>
+      <a id="liveBtn" title="Live: while a Preview / Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
     <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
@@ -454,6 +460,7 @@
     <div class="row">
       <div class="label">Smooth <em>RIFE in-between frames</em></div>
       <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
+      <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
       <div class="hint" id="enhSmoothHint"></div>
     </div>
     <button class="btn go" id="enhGo">Enhance</button>
@@ -482,6 +489,7 @@ let state = {
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
+  live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
   seed: 4275770367, seedLock: true,    // the seed every earlier run used (from base.json)
 };
@@ -621,6 +629,12 @@ function promptTravel(kind) {
     prompt_blend: kind === 'frame' ? 0 : state.blend,   // a single still shows the keyframe's own prompt, never a mix
   };
 }
+function liveSig() {                     // the panel's prompt travel as the engine would see it
+  const pt = promptTravel('render');
+  if (!pt.prompt_keys.length) pt.prompt_keys = [[0, withLook(state.prompt)]];
+  return JSON.stringify(pt);
+}
+const liveOn = () => state.live && live && state.clip?.path === live.video;
 function pushPrompts() {
   if (!live || state.clip?.path !== live.video) return;
   clearTimeout(liveTimer);
@@ -634,6 +648,49 @@ function pushPrompts() {
       body: JSON.stringify({ ...pt, ui: { prompt: state.prompt, keys: state.keys, blend: state.blend } }) }).catch(() => {});
   }, 500);
 }
+// Live mode: Enter sends the prompt box into the render as a keyframe at the frame about to render.
+function sendLive() {
+  const text = $('prompt').value.trim(); if (!text || !live) return;
+  api(`/api/jobs/${live.id}/prompts`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ now: withLook(text) }) }).catch(() => {});
+  $('prompt').classList.add('sent'); setTimeout(() => $('prompt').classList.remove('sent'), 600);
+}
+// The engine reports the keyframes it's using (after every edit): the panel follows, so live edits
+// land on the keyframe lane and in the run's saved settings. In Live mode the prompt box also shows
+// the prompt in effect at the frame being rendered (unless you're typing in it).
+function syncLive(snap) {
+  if (!live || snap.id !== live.id || !snap.prompt_keys || state.clip?.path !== live.video) return;
+  const sig = JSON.stringify([snap.prompt_keys, snap.prompt_blend]);
+  const changed = sig !== live.seen, typing = document.activeElement === $('prompt');
+  if (changed) {
+    live.seen = sig;
+    const look = currentPreset().prompt;
+    const raw = t => look && t.endsWith(', ' + look) ? t.slice(0, -(look.length + 2)) : t;
+    const ks = snap.prompt_keys.map(([f, p]) => ({ f, prompt: raw(p) }));
+    const sel = state.keys[state.keySel];
+    if (ks[0]?.f === 0) state.prompt = ks.shift().prompt;
+    state.keys = ks; state.blend = snap.prompt_blend;
+    state.keySel = sel ? state.keys.findIndex(k => k.f === sel.f) : -1;
+    live.sent = liveSig();                  // what the engine has: nothing to push back
+    api(`/api/jobs/${live.id}/prompts`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ui: { prompt: state.prompt, keys: state.keys, blend: state.blend } }) }).catch(() => {});
+  }
+  if (state.live && live.fs != null && !typing) {
+    const sf = (live.fs + Math.min(snap.frame, Math.max(0, (snap.total_frames || 1) - 1))) * live.nth;
+    state.keySel = state.keys.reduce((j, k, i) => k.f <= sf ? i : j, -1);
+    $('prompt').value = keyAt(state.keySel).prompt;
+  } else if (changed && !typing) $('prompt').value = keyAt(state.keySel).prompt;
+  if (changed || state.live) { paintKeys(); save(); }
+}
+function paintLive() {
+  $('liveBtn').classList.toggle('on', !!state.live);
+  $('promptHint').textContent = liveOn() ? 'live — press Enter to send it into the render (Shift+Enter: new line)'
+                                         : "what's in the clip — the look adds style words";
+}
+$('liveBtn').onclick = () => { state.live = !state.live; save(); paintLive(); };
+$('prompt').addEventListener('keydown', e => {
+  if (liveOn() && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLive(); }
+});
 function selectKey(i) { state.keySel = i; $('prompt').value = keyAt(i).prompt; paintKeys(); save(); }
 function sortKeys() {                      // keep keyframes in time order, selection following its keyframe
   const sel = state.keys[state.keySel];
@@ -848,6 +905,7 @@ $('seed').onchange = e => {
 $('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true; renderSeed(); save(); };
 $('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
 $('prompt').oninput = e => {
+  if (liveOn()) return;                    // Live: Enter sends it; the keyframe arrives from the engine
   if (state.keySel >= 0 && state.keys[state.keySel]) state.keys[state.keySel].prompt = e.target.value;
   else state.prompt = e.target.value;
   paintKeys(); save();
@@ -1094,12 +1152,13 @@ async function startJob(kind) {
   if (kind !== 'frame') {
     const pt = { prompt_keys: built.job.prompt_keys.length ? built.job.prompt_keys : [[0, built.job.prompt]],
                  prompt_blend: built.job.prompt_blend };
-    live = { id: job.id, video: built.job.video, sent: JSON.stringify(pt) };
+    live = { id: job.id, video: built.job.video, sent: JSON.stringify(pt), fs: built.job.frame_start, nth: built.job.nth };
   }
+  paintLive();
   const es = new EventSource(`/api/jobs/${job.id}/events`);
   es.onmessage = async ev => {
     const snap = JSON.parse(ev.data), prevFrame = job?.frame;
-    job = snap;
+    job = snap; syncLive(snap);
     setLog(snap.logs || []);
     $('cancelLink').classList.toggle('hide', ['completed', 'cancelled', 'failed'].includes(snap.state));
     if (snap.run_id && !labelled) {
@@ -1120,7 +1179,7 @@ async function startJob(kind) {
         text += ` · ${per.toFixed(1)} s/f · ${fmtDur(per * (total - snap.frame))} left`;
       }
     }
-    if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) live = null;
+    if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) { live = null; paintLive(); }
     if (snap.state === 'completed') {
       es.close();
       if (times.length >= 3) {  // learn this machine's speed for the estimates
@@ -1456,7 +1515,7 @@ addEventListener('keydown', e => {
 
 // ---------------------------------------------------------------- enhance (upscale + RIFE)
 let POST_OPTS = null, postJob = null, enhFps = 24;
-const postPrefs = () => (state.post ||= { upscaler: '4x-UltraSharp.pth', scale: 2, smooth: 2 });
+const postPrefs = () => (state.post ||= { upscaler: '4x-UltraSharp.pth', scale: 2, smooth: 2, slowmo: false });
 
 async function renderOutputs(runId) {
   const outs = await api(`/api/runs/${runId}/outputs`).catch(() => []);
@@ -1471,12 +1530,15 @@ function segPick(el, v) { [...el.children].forEach(b => b.classList.toggle('on',
 function paintEnhance() {
   const p = postPrefs(), r = runsCache.find(r => r.id === viewRun);
   $('enhModel').value = p.upscaler || '';
-  segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth);
+  segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth); segPick($('enhTiming'), p.slowmo ? 'slow' : 'fps');
+  $('enhTiming').style.opacity = p.smooth > 1 ? 1 : .35;
   $('enhScale').style.opacity = p.upscaler ? 1 : .35;
   const w = frames.length && $('imgOut')?.naturalWidth, h = $('imgOut')?.naturalHeight;
   $('enhScaleHint').textContent = !p.upscaler ? 'no upscale' : w ? `${w}×${h} → ${w * p.scale}×${h * p.scale}` : '';
   const n = r?.frames || frames.length;
+  const slow = p.slowmo && p.smooth > 1, secs = x => `${(x / enhFps).toFixed(1)}s`;
   $('enhSmoothHint').textContent = !POST_OPTS.rife ? 'RIFE weights missing'
+    : slow ? `${n} → ${(n - 1) * p.smooth + 1} frames at ${enhFps.toFixed(0)} fps · ${secs(n)} → ${secs((n - 1) * p.smooth + 1)}`
     : `${enhFps.toFixed(0)} → ${(enhFps * p.smooth).toFixed(0)} fps · ${n} → ${(n - 1) * p.smooth + 1} frames`;
   $('enhGo').disabled = !!postJob || (!p.upscaler && p.smooth === 1) || (job && !['completed', 'cancelled', 'failed'].includes(job.state));
   $('enhGo').textContent = postJob ? 'working…' : 'Enhance';
@@ -1488,7 +1550,7 @@ async function openEnhance() {
     POST_OPTS.upscalers.map(u => `<option value="${u}">${u.replace(/\.(pth|safetensors|pt|ckpt)$/, '')}</option>`).join('');
   if (postPrefs().upscaler && !POST_OPTS.upscalers.includes(postPrefs().upscaler)) postPrefs().upscaler = POST_OPTS.upscalers[0] || '';
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
-  enhFps = (ui.clip?.source?.fps || 24) / (ui.kind === 'test' ? 2 : 1);
+  enhFps = runsCache.find(r => r.id === viewRun)?.fps || (ui.clip?.source?.fps || 24) / (ui.kind === 'test' ? 2 : 1);
   $('enh').hidden = false; paintEnhance();
 }
 $('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hidden = true);
@@ -1496,11 +1558,12 @@ $('enhClose').onclick = () => $('enh').hidden = true;
 $('enhModel').onchange = e => { postPrefs().upscaler = e.target.value; save(); paintEnhance(); };
 $('enhScale').onclick = e => { if (e.target.dataset.v) { postPrefs().scale = +e.target.dataset.v; save(); paintEnhance(); } };
 $('enhSmooth').onclick = e => { if (e.target.dataset.v) { postPrefs().smooth = +e.target.dataset.v; save(); paintEnhance(); } };
+$('enhTiming').onclick = e => { if (e.target.dataset.v) { postPrefs().slowmo = e.target.dataset.v === 'slow'; save(); paintEnhance(); } };
 $('enhGo').onclick = async () => {
   const p = postPrefs(), runId = viewRun;
   try {
     postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth }) });
+      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo }) });
   } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }
   $('enh').hidden = true; followPost(runId);
 };
@@ -1540,7 +1603,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
-  renderControls();
+  renderControls(); paintLive();
   // grey out presets whose checkpoint isn't on disk
   await Promise.all(PRESETS.map(async p => {
     const r = await api(`/api/fs/exists?${qs({ path: `${CKPT_DIR}/${p.checkpoint}` })}`).catch(() => ({ exists: false }));
@@ -1559,12 +1622,17 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   const running = jobs.find(j => !['completed', 'cancelled', 'failed'].includes(j.state));
   if (running) {
     job = running; setButtons(true); $('cancelLink').classList.remove('hide');
+    // live prompts keep working after a reload (a Single Frame has one frame: nothing to steer)
+    if (running.kind === 'render' && running.total_frames !== 1 && state.clip)
+      live = { id: running.id, video: state.clip.path, sent: '' };
+    paintLive();
     const es = new EventSource(`/api/jobs/${running.id}/events`);
     es.onmessage = ev => {
-      const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; setLog(snap.logs || []);
+      const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; syncLive(snap); setLog(snap.logs || []);
       $('bar').style.width = (snap.progress || 0) + '%';
       if (snap.frame !== prev && snap.frame > 0 && snap.run_id) showRun(snap.run_id, { follow: true });
       if (['completed', 'cancelled', 'failed'].includes(snap.state)) {
+        if (live?.id === snap.id) { live = null; paintLive(); }
         es.close(); setButtons(false); $('cancelLink').classList.add('hide');
         setStatus(`render ${snap.state}`, snap.state === 'completed' ? 'done' : snap.state === 'failed' ? 'bad' : '');
         refreshRuns(); return;
