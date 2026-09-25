@@ -282,8 +282,8 @@ def build_app() -> FastAPI:
         run_or_404(run_id)
         if any(j["run_id"] == run_id and j["state"] not in TERMINAL for j in jobs.list()):
             raise HTTPException(409, detail="That run is still rendering — cancel it first")
-        runs.delete(run_id)
-        return {"deleted": run_id}
+        runs.hide(run_id)                   # off the list; the files stay on disk
+        return {"removed": run_id}
 
     @app.get("/api/runs/{run_id}/image")
     def run_image(run_id: str, layer: str, frame: int):

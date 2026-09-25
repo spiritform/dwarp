@@ -57,11 +57,12 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
 - **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
+- **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
 - Seed you can drag left / right to step through nearby ones
 - **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
-- Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and delete
+- Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
 - A built-in guide: the **?** button explains every control
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
 

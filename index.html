@@ -107,6 +107,10 @@
   .keybar .slider { flex: 1; margin: 0; display: flex; align-items: center; gap: 8px; }
   .keybar .slider span { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .range-text { display: flex; justify-content: space-between; color: #a9a7b1; font-size: 11px; margin: -4px 10px 10px; }
+  /* Frames: on ones / twos / threes — which of the range's frames get drawn */
+  .ons { display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; font-size: 11px; color: #a9a7b1; }
+  .ons .seg { grid-template-columns: repeat(3, 1fr); flex: 1; }
+  .ons .seg button { padding: 3px 0; font-size: 11px; }
   .uploading { padding: 10px; color: var(--dim); font-size: 12px; }
   .uploading i { display: block; height: 3px; background: var(--accent); margin-top: 6px; width: 0; transition: width .2s; }
 
@@ -317,7 +321,7 @@
   .sel-bar .ask { color: var(--text); }
   .run.doomed .thumb { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); opacity: .6; }
   .run.doomed .x { display: none; }
-  /* one-card delete: ✕ arms, ✓ (with "delete?") confirms; Esc / clicking elsewhere disarms */
+  /* one-card remove: ✕ arms, ✓ (with "remove?") confirms; Esc / clicking elsewhere disarms */
   .run.armed .x { display: block; background: var(--bad); color: #fff; }
   .run .xq { position: absolute; top: 6px; right: 28px; font-size: 10px; background: rgba(0,0,0,.8); color: #fff;
              padding: 1px 6px; border-radius: 3px; display: none; }
@@ -589,11 +593,15 @@ function renderClip() {
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
+    <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
+      <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
+    </div>
     <div class="keys-label"><span>Prompt keyframes</span><a id="keyDel" title="Delete the selected keyframe">delete</a></div>
     <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
   bindRange(); bindKeys();
+  $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
   $('clipInfo').onclick = showClip;
   paintRange();
 }
@@ -610,6 +618,12 @@ function paintRange() {
   $('rangeA').textContent = (a * d).toFixed(1) + 's'; $('rangeB').textContent = (b * d).toFixed(1) + 's';
   const [fa, fb] = rangeFrames();
   $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
+  const on = state.onN || 1, sfps = state.clip.source.fps || 24;
+  [...$('onN').children].forEach(b => {       // each button is its own frame rate for this clip
+    const n = +b.dataset.n, d = Math.floor((fb - fa) / n) + 1;
+    b.textContent = +(sfps / n).toFixed(1); b.classList.toggle('on', n === on);
+    b.title = n === 1 ? `every frame · ${d} frames` : `on ${n === 2 ? 'twos' : 'threes'}: every ${n === 2 ? '2nd' : '3rd'} frame, held ×${n} · ${d} drawings; the mp4 still plays at ${+sfps.toFixed(2)} fps`;
+  });
   paintKeys();
   updateEst();
 }
@@ -1101,18 +1115,22 @@ function updateEst() {
   if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
   $('frameBtn').title = `${clipMode() ? 'the frame under the transport' : "the range's first frame"} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
   const [fa, fb] = rangeFrames();
-  const testN = Math.min(TEST.frames, Math.floor((fb - fa) / TEST.nth) + 1);
+  const on = state.onN || 1, testStep = Math.max(TEST.nth, on);
+  const testN = Math.min(TEST.frames, Math.floor((fb - fa) / testStep) + 1);
   const testSize = Math.min(state.size, modeCfg().test_size);
-  $('testBtn').title = `${testN} frames · every 2nd · ${testSize}px · ≈ ${fmtDur(testN * spf(testSize))}`;
-  const n = fb - fa + 1;
-  $('goBtn').title = `${n} frames · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
+  $('testBtn').title = `${testN} frames · every ${testStep === 2 ? '2nd' : '3rd'} · ${testSize}px · ≈ ${fmtDur(testN * spf(testSize))}`;
+  const n = Math.floor((fb - fa) / on) + 1;
+  $('goBtn').title = `${n} ${on > 1 ? `drawings (on ${on}s)` : 'frames'} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
 }
 
 // ---------------------------------------------------------------- config mapping
 function withLook(text) { return [text.trim(), currentPreset().prompt].filter(Boolean).join(', ') || 'a painting'; }
 async function buildConfig(kind) {
   const p = currentPreset(), m = modeCfg();
-  const nth = kind === 'test' ? TEST.nth : 1;          // kinds: frame (Single Frame) | test (Preview) | render
+  // kinds: frame (Single Frame) | test (Preview) | render. Frames 2s / 3s draw every 2nd / 3rd frame and hold it
+  const on = state.onN || 1;
+  const nth = kind === 'frame' ? 1 : kind === 'test' ? Math.max(TEST.nth, on) : on;
+  const hold = kind !== 'frame' && on > 1 ? nth : 1;
   const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
   const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
   const [fa, fb] = rangeFrames();
@@ -1146,6 +1164,7 @@ async function buildConfig(kind) {
     style: state.style,                      // first frame; later frames use 0.65x (engine default)
     flow_blend: +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     fresh: !!state.fresh,                    // Boil: no warp, full Denoise on every frame
+    hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
@@ -1302,6 +1321,11 @@ const HELP = {
        end. Drag <b>inside</b> the selection to slide it along the clip, keeping its length. <b>Double-click</b> the strip to
        go back to the full clip. Preview and Render use this range; Single Frame
        uses the frame under the playhead.</p>
+    <h4>FPS: on ones, twos, threes</h4>
+    <p>Hand-drawn animation is often shot <b>on twos</b>: a new drawing every 2nd frame, each held for two. The
+       <b>FPS</b> buttons under the trim offer the clip's rate, half and a third: at half or a third, every 2nd / 3rd frame
+       of the range is rendered and held, so a 24 fps clip gets 12 or 8 drawings a second — a stepped, hand-made rhythm (lovely with <b>Boil</b>), and half or a third of the render time. The mp4
+       still plays at the clip's fps, so it drops straight into an edit. Keyframes stay where they are in time.</p>
     <h4>Prompt keyframes — prompt travel</h4>
     <p>The lane under the filmstrip changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
     <ul>
@@ -1321,7 +1345,8 @@ const HELP = {
     <h4>Runs</h4>
     <p>Every Single Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
        <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed and clip back in the panel — tweak from there.
-       Ctrl / Shift-click selects several to delete.</p>
+       Ctrl / Shift-click selects several. <b>✕ / remove</b> only takes runs off the list — their frames and mp4 stay
+       in the <b>renders</b> folder (delete a hidden run's <b>.hidden</b> file to bring it back).</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
        seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
@@ -1684,7 +1709,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -1709,7 +1734,7 @@ async function refreshRuns() {
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
     return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
-      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">delete?</span><button class="x" title="${r.id === armedId ? 'confirm delete' : 'delete run'}">${r.id === armedId ? '✓' : '✕'}</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
@@ -1721,7 +1746,7 @@ function renderSelBar() {
   if (pendingAsk) return;                  // an inline delete question owns the bar
   $('runsHint').style.display = selected.size ? 'none' : '';
   $('selBar').innerHTML = selected.size
-    ? `<span>${selected.size} selected</span><a id="selAll">all</a><a id="selClear">clear</a><a class="del" id="selDel">delete</a>` : '';
+    ? `<span>${selected.size} selected</span><a id="selAll">all</a><a id="selClear">clear</a><a class="del" id="selDel">remove</a>` : '';
   if (!selected.size) return;
   $('selAll').onclick = () => { runsCache.forEach(r => selected.add(r.id)); paintSel(); };
   $('selClear').onclick = () => { selected.clear(); paintSel(); };
@@ -1738,7 +1763,7 @@ function confirmInline(ids, question) {
   doomedIds = ids;
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('doomed', ids.includes(el.dataset.id)));
   $('runsHint').style.display = 'none';
-  $('selBar').innerHTML = `<span class="ask" title="Removes the frames and mp4 from disk"></span><a class="del" id="askYes">delete</a><a id="askNo">keep</a>`;
+  $('selBar').innerHTML = `<span class="ask" title="Takes them off the list — the frames and mp4 stay in the renders folder"></span><a class="del" id="askYes">remove</a><a id="askNo">keep</a>`;
   $('selBar').querySelector('.ask').textContent = question;
   return new Promise(resolve => {
     const done = yes => {
@@ -1754,14 +1779,14 @@ function confirmInline(ids, question) {
     $('askYes').onclick = () => done(true); $('askNo').onclick = () => done(false);
   });
 }
-// ---- one-card delete: first click on ✕ arms it (turns into ✓ + "delete?"), second click deletes
+// ---- one-card remove: first click on ✕ arms it (turns into ✓ + "remove?"), second click takes it off the list
 var armedId = null;                      // var: read by the runs template, which can render first
 function armDelete(id) {
   armedId = id;
   document.querySelectorAll('.run').forEach(el => {
     const on = el.dataset.id === id, x = el.querySelector('.x');
     el.classList.toggle('armed', on);
-    if (x) { x.textContent = on ? '✓' : '✕'; x.title = on ? 'confirm delete' : 'delete run'; }
+    if (x) { x.textContent = on ? '✓' : '✕'; x.title = on ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'; }
   });
 }
 addEventListener('pointerdown', e => { if (armedId && !e.target.closest('.run .x')) armDelete(null); }, true);
@@ -1772,7 +1797,7 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   if (!ids.length) { setStatus('can\'t delete a run that is still rendering', 'bad'); return; }
   const names = ids.map(id => runsCache.find(r => r.id === id)?.label || 'run ' + id);
   const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
-  if (!confirmed && !await confirmInline(ids, `Delete ${what}?`)) return;
+  if (!confirmed && !await confirmInline(ids, `Remove ${what} from the list?`)) return;
   const failed = [];
   for (const id of ids) {
     try { await api(`/api/runs/${id}`, { method: 'DELETE' }); runGen[id] = (runGen[id] || 0) + 1; selected.delete(id); }
@@ -1781,7 +1806,7 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   if (ids.includes(viewRun)) clearStage();
   await refreshRuns(); renderSelBar();
   if (!viewRun && runsCache.length) showRun(runsCache[0].id);
-  setStatus(failed.length ? `couldn't delete ${failed.join('; ')}` : `deleted ${what}`, failed.length ? 'bad' : 'done');
+  setStatus(failed.length ? `couldn't remove ${failed.join('; ')}` : `removed ${what} — the files stay in renders/`, failed.length ? 'bad' : 'done');
 }
 function clearStage() {
   if (state.clip) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
@@ -1903,7 +1928,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.gtab ||= 'cn';
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   state.srcMix ??= 0.15;
-  state.fresh ??= false;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
+  state.fresh ??= false;
+  state.onN ??= 1;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));

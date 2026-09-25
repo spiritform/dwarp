@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import time
 from pathlib import Path
 
@@ -194,11 +193,22 @@ def list_runs() -> list[dict]:
     runs = []
     for rid in ids:
         try:
+            if is_hidden(rid):
+                continue
             runs.append(summary(rid))
         except (RunNotFound, OSError):
             pass
     return sorted(runs, key=lambda r: r["modified"], reverse=True)
 
 
-def delete(run_id: str) -> None:
-    shutil.rmtree(run_dir(run_id))
+HIDDEN = ".hidden"                         # a removed run: off the list, files kept
+
+
+def hide(run_id: str) -> None:
+    """Take a run off the list. Nothing is deleted: its folder stays in renders/, and removing the
+    marker file brings it back."""
+    (run_dir(run_id) / HIDDEN).touch()
+
+
+def is_hidden(run_id: str) -> bool:
+    return (run_dir(run_id) / HIDDEN).exists()

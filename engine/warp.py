@@ -51,6 +51,8 @@ class RenderJob:
     frame_start: int = 0                 # in extracted-frame units
     frame_end: int = -1                  # inclusive; -1 = to the end
     nth: int = 1                         # use every nth source frame
+    hold: int = 1                        # mp4: show each rendered frame this many times (on twos: nth 2, hold 2 —
+                                         # 12 drawings a second, played at the clip's 24 fps)
     style: float = 0.75                  # img2img strength on the first frame
     style_next: float = -1               # strength on later frames; -1 = 0.65 * style. Lower keeps
                                          # more of the warped previous frame (less boiling)
@@ -671,9 +673,16 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
 
 
 def assemble(out_dir: str, fps: float) -> Path:
+    """frames/ -> video.mp4 at `fps`; a run rendered on twos / threes (job.hold) holds each frame so the
+    file plays at the clip's own rate and drops into its edit timeline."""
     out = Path(out_dir)
     target = out / "video.mp4"
+    try:
+        hold = max(1, int(json.loads((out / "job.json").read_text(encoding="utf-8")).get("hold", 1)))
+    except (OSError, ValueError):
+        hold = 1
+    rate = ["-r", f"{fps * hold:g}"] if hold > 1 else []
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", f"{fps:g}", "-i", str(out / "frames" / "%06d.png"),
-                    "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(target)],
+                    *rate, "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(target)],
                    check=True)
     return target
