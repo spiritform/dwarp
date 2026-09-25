@@ -148,6 +148,7 @@
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
   .invert.on { background: rgba(255,106,61,.22); color: var(--text); }
+  #srcMixBox[hidden] { display: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -161,6 +162,8 @@
   .seed input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--text); border: 0;
                 border-radius: 8px; padding: 7px 9px; font: inherit; font-variant-numeric: tabular-nums; }
   .seed input:disabled { color: var(--faint); }
+  .seed input:not(:disabled):not(:focus) { cursor: ew-resize; }   /* drag left / right to change it, click to type */
+  .seed input.dragging { background: #24232a; }
   .seed button { width: 36px; background: var(--panel-2); border: 0; border-radius: 8px; cursor: pointer; color: var(--text); }
   .seed button:hover { background: #24232a; }
   .seed button.on { background: rgba(255,106,61,.16); }
@@ -371,7 +374,11 @@
       <input type="range" id="style" min="0" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
-    <div class="slider">
+    <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
+      <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
+    </div>
+    <div class="slider" id="srcMixBox">
       <div class="slider-head"><b title="How much of the fresh source frame goes into each frame's start, where the paint is carried along the motion. 0 carries the paint only — it can build up and overcook over long clips; more keeps it anchored to the footage">Source mix</b><span id="srcMixV"></span></div>
       <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
       <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
@@ -425,7 +432,7 @@
     </div>
     <div class="seed" style="margin-top:4px">
       <span class="seed-tag">seed</span>
-      <input type="number" id="seed" min="0" max="4294967295" step="1">
+      <input type="text" id="seed" inputmode="numeric" spellcheck="false" title="Drag left / right to change the seed (Shift: ×100) — click to type one">
       <button id="seedDice" title="New random seed">🎲</button>
       <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
     </div>
@@ -886,6 +893,8 @@ function renderControls() {
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
+  [...$('frameMode').children].forEach(b => b.classList.toggle('on', (b.dataset.f === 'fresh') === !!state.fresh));
+  $('srcMixBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
   $('steps').value = state.steps; $('stepsV').textContent = state.steps;
@@ -932,6 +941,30 @@ $('seed').onchange = e => {
   const v = Math.floor(+e.target.value);
   state.seed = Number.isFinite(v) && v >= 0 ? Math.min(v, 4294967295) : state.seed; renderSeed(); save();
 };
+// Drag the value left / right to step through seeds (1 per 2 px, Shift ×100); a click without a drag types.
+(() => {
+  const el = $('seed'); let press = null;
+  el.addEventListener('pointerdown', e => {
+    if (el.disabled || document.activeElement === el) return;   // typing: the caret works as usual
+    e.preventDefault();                    // no focus yet: it may be a drag
+    press = { x: e.clientX, seed: state.seed, moved: false }; el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', e => {
+    if (!press) return;
+    const dx = e.clientX - press.x;
+    if (!press.moved && Math.abs(dx) < 3) return;
+    press.moved = true; el.classList.add('dragging');
+    const v = press.seed + Math.round(dx / 2) * (e.shiftKey ? 100 : 1);
+    state.seed = Math.min(4294967295, Math.max(0, v)); el.value = state.seed;
+  });
+  el.addEventListener('pointerup', () => {
+    if (!press) return;
+    el.classList.remove('dragging');
+    if (press.moved) save(); else { el.focus(); el.select(); }
+    press = null;
+  });
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
+})();
 $('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true; renderSeed(); save(); };
 $('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
 $('prompt').oninput = e => {
@@ -941,6 +974,7 @@ $('prompt').oninput = e => {
   paintKeys(); save();
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; state.fresh = f === 'fresh'; renderControls(); save(); };
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
@@ -1105,6 +1139,7 @@ async function buildConfig(kind) {
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // first frame; later frames use 0.65x (engine default)
     flow_blend: +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
+    fresh: !!state.fresh,                    // Boil: no warp, full Denoise on every frame
     steps: state.steps, cfg: state.cfg,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
@@ -1231,6 +1266,13 @@ const HELP = {
        fresh source frame back into that start every frame, so the paint levels off instead of compounding.
        <b>0.1–0.2</b> is usually enough; <b>0</b> gives the most locked-in brushwork (fine for short clips); higher
        follows the footage more and the paint less.</p>
+    <h4>Warp or Boil</h4>
+    <p><b>Warp</b> (the default) carries the paint along the footage's motion, so strokes stick to things and the
+       result moves smoothly. <b>Boil</b> repaints every frame anew from its source, with its own noise and the full
+       Denoise — named after <i>line boil</i> in hand-drawn animation, where every frame is a new drawing and the strokes
+       shimmer. ControlNet keeps
+       it following the footage; lower Denoise or higher Hold calms the boil. It skips the optical flow, so it's a
+       little faster.</p>
     <h4>ControlNet — keeps the shapes</h4>
     <p>ControlNets read a map from each source frame and hold the render to it: <b>depth</b> keeps the 3-D layout,
        <b>softedge</b> the outlines and expressions. <b>both</b> is usually best; <b>depth</b> alone gives the
@@ -1275,7 +1317,8 @@ const HELP = {
        Ctrl / Shift-click selects several to delete.</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
-       seed per run. 🎲 rolls a new one.</p>
+       seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
+       or click it to type one.</p>
     <h4>Enhance</h4>
     <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames (RIFE).
        <b>smoother</b> raises the fps (same length, more fluid); <b>slow-mo</b> keeps the fps (longer, slowed down).
@@ -1634,7 +1677,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -1852,7 +1895,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
   state.gtab ||= 'cn';
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
-  state.srcMix ??= 0.15;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
+  state.srcMix ??= 0.15;
+  state.fresh ??= false;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));

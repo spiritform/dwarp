@@ -60,6 +60,8 @@ class RenderJob:
     controlnets: list[ControlSpec] = field(default_factory=list)
     # flow feedback
     flow_blend: float = 1.0              # 1 = trust the warped stylized frame fully where consistent
+    fresh: bool = False                  # "Boil": no warp, every frame repainted from its source at the
+                                         # full style — strokes boil like hand-painted animation
     mask_dilate: int = 5                 # grow the "don't trust" regions a little (px)
     mask_blur: int = 3
     color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
@@ -527,7 +529,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
 
     progress("loading", 0, total, "loading models")
     pipe = cached_pipeline(job, device, log)
-    if total > 1 and "flow" not in _CACHE:
+    if total > 1 and not job.fresh and "flow" not in _CACHE:
         _CACHE["flow"] = Flow(device)
     flow = _CACHE.get("flow")
     ann = _CACHE.setdefault("ann", Annotators(device))
@@ -553,8 +555,11 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
-    log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
-        f"colour match {job.color_match}")
+    if job.fresh:
+        log(f"boil: every frame repainted from its source (no warp), denoise {job.style}; colour match {job.color_match}")
+    else:
+        log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
+            f"colour match {job.color_match}")
     for i, sp in enumerate(src_paths):
         if cancelled():
             log("cancelled")
@@ -580,7 +585,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
 
         amount = None                           # per-pixel strength, as a share of `strength`
         trust = False                           # job.diff: untrusted pixels get full style
-        if prev_out is None:
+        if prev_out is None or job.fresh:      # fresh: every frame starts from its own source frame
             init = src
         else:
             fb = flow(src, prev_src)            # current -> previous
@@ -621,7 +626,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             last_cond = cond
         kw = dict(**text, image=to_image(init),
                   # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                  strength=max(job.style if i == 0 or trust else style_next, 1.001 / job.steps),
+                  strength=max(job.style if i == 0 or trust or job.fresh else style_next, 1.001 / job.steps),
                   num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
         dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
         if amount is not None:

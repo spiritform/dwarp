@@ -23,6 +23,10 @@ For every frame:
 4. **Repaint** — img2img from that blend, steered by ControlNets (depth + soft edge) computed on the source frame. The first frame gets the full Denoise; later frames a lower one, so they refine what's carried forward instead of re-rolling it. With DepthDiff on, Denoise is set per pixel (below).
 5. **Colour** — each frame's colour statistics are pulled toward frame 0 to stop feedback drift.
 
+Or switch **Warp** to **Boil**: steps 1–3 are skipped and every frame is repainted from its own source with its own
+noise, so the strokes shimmer and redraw like hand-painted animation (*line boil*), while ControlNet keeps them on the
+footage.
+
 ## DepthDiff: choose where it repaints
 
 DWARP builds in **[DepthDiff](https://github.com/spiritform/Comfy-DepthDiff)** by spiritform — a ComfyUI node that
@@ -52,8 +56,10 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
 - Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
+- **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
+- Seed you can drag left / right to step through nearby ones
 - **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and delete
 - A built-in guide: the **?** button explains every control
