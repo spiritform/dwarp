@@ -6,9 +6,10 @@ DWARP repaints each frame with Stable Diffusion, but instead of starting every f
 carries the previous painted frame forward along the video's own motion (optical flow). Brushstrokes
 travel with the things they belong to, so the result moves like the footage instead of flickering.
 
-And it doesn't have to repaint everything: with **[DepthDiff](https://github.com/spiritform/Comfy-DepthDiff)**,
-a luma or depth map of each frame decides *where* the style goes — keep a face photographic and dissolve the
-room into paint, or paint only the shadows.
+**What sets DWARP apart is DepthDiff**: it doesn't have to repaint everything. Built on spiritform's
+[Comfy-DepthDiff](https://github.com/spiritform/Comfy-DepthDiff), a luma or depth map of each frame sets the
+denoise *per pixel*, deciding **where** the style goes — keep a face photographic and dissolve the room into
+paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repaints).
 
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Single Frame** or **Preview**.
 

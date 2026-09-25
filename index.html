@@ -1159,6 +1159,13 @@ const HELP = {
     <p>This flow-warp technique was pioneered by Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)
        in <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>. DWARP is an independent
        re-implementation of the idea — see <i>Credits</i>.</p>
+    <h4>What's different: DepthDiff</h4>
+    <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
+       <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
+       frame's <b>luma</b> or <b>depth</b> into a map that sets Denoise <i>per pixel</i>
+       (<a href="https://differential-diffusion.github.io/" target="_blank">differential diffusion</a>): white repaints,
+       black keeps the source. Keep a face photographic and dissolve the room into paint, or paint only the shadows —
+       and see the map live in the <b>Diff</b> tab before you render. How to set it up: <i>Guidance</i>.</p>
     <h4>The loop</h4>
     <ol>
       <li><b>Drop a video</b> anywhere in the window.</li>
