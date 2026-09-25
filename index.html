@@ -67,7 +67,8 @@
   .clip-meta { color: var(--dim); font-size: 11px; margin-top: 2px; }
   .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: 5px; overflow: hidden;
            display: flex; background: #000; touch-action: none; }
-  .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; }
+  .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+  .range, .range-text { user-select: none; -webkit-user-select: none; touch-action: none; }   /* trimming must not select or drag the strip */
   .range .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.65); pointer-events: none; }
   .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; }
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
@@ -607,6 +608,7 @@ function paintRange() {
 function bindRange() {
   const range = $('range'); let drag = null;
   range.addEventListener('pointerdown', e => {
+    e.preventDefault();                    // no text / image selection while dragging a handle
     drag = e.target.classList.contains('l') ? 0 : e.target.classList.contains('r') ? 1 : null;
     if (drag !== null) range.setPointerCapture(e.pointerId);
   });
@@ -1182,7 +1184,8 @@ const HELP = {
       <li>Pick a <b>mode</b>, a <b>look</b> (Oil paint, Anime, … — it adds style words and picks an SD 1.5 model;
           <b>Raw</b> adds nothing) and write a <b>prompt</b> for what's in the shot.</li>
       <li><b>Single Frame</b> renders the frame under the playhead — the fast way to dial in Denoise and guidance.</li>
-      <li><b>Preview</b> renders 5 frames (every 2nd) at a small size to check it holds together over time.</li>
+      <li><b>Preview</b> renders 5 frames (every 2nd) at a small size to check it holds together over time. It's shown
+          as big as a full render, so it looks softer — that's the smaller size, not the settings.</li>
       <li><b>Render</b> does the trimmed range at full size. Finished runs land in the strip at the bottom.</li>
     </ol>
     <h4>The tabs over the image</h4>
@@ -1248,7 +1251,8 @@ const HELP = {
     <h3>Trimming and prompt keyframes</h3>
     <h4>Trim</h4>
     <p>Drag the handles on the filmstrip to set the range to render; the numbers under it show the start, length and
-       end. Preview and Render use this range; Single Frame uses the frame under the playhead.</p>
+       end. <b>Double-click</b> the strip to go back to the full clip. Preview and Render use this range; Single Frame
+       uses the frame under the playhead.</p>
     <h4>Prompt keyframes — prompt travel</h4>
     <p>The lane under the filmstrip changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
     <ul>
@@ -1438,6 +1442,19 @@ async function showRun(runId, { follow = false } = {}) {
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));
   updateEst();
 }
+// Every image fills the stage (aspect kept), whatever size it was rendered at: a 384 px Preview shows as big
+// as a 768 px Render, and the frame box hugs the image, so overlays and the split line up.
+function fitOut() {
+  const im = $('imgOut'), st = $('stage');
+  if (!im || !im.naturalWidth) return;
+  const cs = getComputedStyle(st);
+  const w = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const h = Math.min(st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom), innerHeight - 260);
+  const k = Math.min(w / im.naturalWidth, h / im.naturalHeight);
+  if (!(k > 0)) return;
+  im.style.width = Math.floor(im.naturalWidth * k) + 'px'; im.style.height = Math.floor(im.naturalHeight * k) + 'px';
+}
+new ResizeObserver(() => fitOut()).observe($('stage'));   // window, scrubber, error panel: anything that resizes it
 function ensureFrameEl(hasInit) {
   if ($('frame')) return;
   $('stage').innerHTML = `<div class="frame" id="frame">
@@ -1448,6 +1465,7 @@ function ensureFrameEl(hasInit) {
     <div class="divider" id="divider"></div>
     <button class="save" id="frameSave" title="Save this image"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg></button>
     </div>`;
+  $('imgOut').addEventListener('load', fitOut);
   const div = $('divider'); let on = false;
   div.addEventListener('pointerdown', e => { e.preventDefault(); on = true; div.setPointerCapture(e.pointerId); });
   div.addEventListener('pointermove', e => {

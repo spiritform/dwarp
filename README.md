@@ -19,7 +19,7 @@ For every frame:
 
 1. **Flow** — [RAFT](https://github.com/princeton-vl/RAFT) optical flow between the previous and current source frame, both directions.
 2. **Warp** — the previous *stylized* frame is pushed forward along that flow.
-3. **Trust** — a forward/backward consistency check masks out occlusions, new content and off-screen areas; those fall back to the raw source frame.
+3. **Trust** — a forward/backward consistency check masks out occlusions, new content and off-screen areas; those fall back to the raw source frame. Everywhere else a share of the fresh source is mixed back in (**Source mix**, 15% by default), so paint carried over hundreds of frames levels off instead of overcooking.
 4. **Repaint** — img2img from that blend, steered by ControlNets (depth + soft edge) computed on the source frame. The first frame gets the full Denoise; later frames a lower one, so they refine what's carried forward instead of re-rolling it. With DepthDiff on, Denoise is set per pixel (below).
 5. **Colour** — each frame's colour statistics are pulled toward frame 0 to stop feedback drift.
 
@@ -50,10 +50,11 @@ The **Diff** tab above the image shows the map live on the source while you drag
 ## Features
 
 - SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
-- Style presets, Denoise (how much it repaints) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
+- Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
+- **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
-- **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip
+- **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and delete
 - A built-in guide: the **?** button explains every control
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
