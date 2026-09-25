@@ -129,7 +129,7 @@
   /* sliders */
   .slider { margin-bottom: 14px; }
   .cnsel { margin-bottom: 14px; }
-  #holdBox.off, #ddBox.off { opacity: .35; pointer-events: none; }
+  #holdBox.off, #ddBox.off, #ddInvert.off { display: none; }   /* off: its sliders go away */
   /* ControlNet / DepthDiff: two tabs over one slot (both can be on at once) — a lighter
      cousin of .seg: no fill, thin line, small caps */
   .gtabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px;
@@ -199,6 +199,7 @@
   .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   .frame img { display: block; -webkit-user-drag: none; }
+  .frame video { position: absolute; top: 0; left: 0; object-fit: fill; background: #000; }
   .frame { user-select: none; -webkit-user-select: none; }   /* dragging the split must not select / drag the images */
   .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
   /* Overlays take the output's width and their own aspect, pinned top-left — so they line up with
@@ -262,6 +263,26 @@
               background: rgba(14,14,16,.95); font: 11px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
               color: #b9b7bf; white-space: pre-wrap; word-break: break-all; }
   .logpanel .dim { color: var(--faint); }
+  /* help: a guide over the stage, like the log */
+  .helppanel { position: absolute; inset: 0; z-index: 5; padding: 22px 26px; overflow: auto; background: rgba(14,14,16,.97);
+               font-size: 12.5px; line-height: 1.55; color: #c9c7cf; }
+  .helppanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
+  .helppanel h4 { margin: 20px 0 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
+  .helppanel p { margin: 6px 0; max-width: 70ch; }
+  .helppanel table { border-collapse: collapse; margin: 6px 0; }
+  .helppanel th, .helppanel td { text-align: left; vertical-align: top; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line); }
+  .helppanel th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+  .helppanel b { color: var(--text); font-weight: 600; }
+  .helppanel .close { position: sticky; top: 0; float: right; }
+  .helppanel .htabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 40px 18px 0; }
+  .helppanel .htabs button { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px;
+               padding: 4px 11px; cursor: pointer; font: inherit; font-size: 11.5px; }
+  .helppanel .htabs button:hover { color: var(--text); }
+  .helppanel .htabs button.on { color: var(--text); border-color: var(--accent); }
+  .helppanel ol, .helppanel ul { margin: 6px 0; padding-left: 20px; max-width: 70ch; }
+  .helppanel li { margin: 3px 0; }
+  .helppanel a { color: var(--accent-2); text-decoration: none; }
+  .helppanel a:hover { text-decoration: underline; }
   .logpanel .hot { color: var(--accent-2); }
   .logpanel .bad { color: var(--bad); }
 
@@ -336,7 +357,7 @@
 
   <section>
     <div class="slider">
-      <div class="slider-head"><b>Style</b><span id="styleV"></span></div>
+      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely">Denoise</b><span id="styleV"></span></div>
       <input type="range" id="style" min="0.4" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
@@ -418,6 +439,7 @@
     </div>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
     <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
+    <button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button>
   </div>
   <div class="progress"><i id="bar"></i></div>
   <div class="stage-wrap">
@@ -425,6 +447,7 @@
       <div class="placeholder"><b>Drop a video to start</b>anywhere in this window</div>
     </div>
     <pre class="logpanel" id="logPanel" hidden></pre>
+    <div class="helppanel" id="helpPanel" hidden></div>
   </div>
   <div class="scrub" id="scrub" hidden>
     <button id="playBtn" title="Play frames (space)">▶</button>
@@ -440,7 +463,7 @@
       <a id="liveBtn" title="Live: while a Preview / Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
-    <a id="mp4Link" class="hide" target="_blank">▶ play mp4</a>
+    <a id="mp4Link" class="hide" title="Download the run's mp4">↓ download mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
     <a id="loadRun" class="hide" title="Copy this run's settings (look, prompt, sliders, model, seed, clip) into the panel">copy settings</a>
@@ -868,7 +891,6 @@ function renderControls() {
   $('cnSel').querySelector('[data-c="both"]').hidden = nets < 2;
   [...$('cnSel').children].forEach(b => b.classList.toggle('on', b.dataset.c === cn));
   $('holdBox').classList.toggle('off', cn === 'off');
-  $('holdBox').title = cn === 'off' ? 'Hold steers the ControlNets — turn one on to use it' : '';
   const dd = state.dd;
   [...$('gTabs').children].forEach(a => {
     a.classList.toggle('on', a.dataset.t === state.gtab);
@@ -877,6 +899,7 @@ function renderControls() {
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   [...$('ddSel').children].forEach(b => b.classList.toggle('on', b.dataset.d === dd.src));
   $('ddBox').classList.toggle('off', dd.src === 'off');
+  $('ddInvert').classList.toggle('off', dd.src === 'off');
   $('ddInvert').classList.toggle('on', dd.invert);
   $('ddInvert').title = 'Invert — now: ' + (dd.src === 'depth'
     ? (dd.invert ? 'far repaints most, near keeps the source' : 'near repaints most, far keeps the source')
@@ -1103,7 +1126,7 @@ function paintLog() {
   const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   el.innerHTML = logLines.length ? logLines.slice(-400).map(l => {
     const cls = /error|traceback|failed|exception/i.test(l) ? 'bad'
-      : /loaded|reusing|extracted|assembled|live prompts|style [\d.]+ on frame/i.test(l) ? 'hot'
+      : /loaded|reusing|extracted|assembled|live prompts|(style|denoise) [\d.]+ on frame/i.test(l) ? 'hot'
       : /^\s*(SD gradient|Warped frame|CN hint)/.test(l) ? 'dim' : '';
     return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
   }).join('\n') : '<span class="dim">no log yet — start a Single Frame, Preview or Render</span>';
@@ -1123,6 +1146,151 @@ function toggleLog(open = $('logPanel').hidden) {
   if (open) { delete $('logPanel').dataset.seen; paintLog(); }
 }
 $('logBtn').onclick = () => toggleLog();
+
+// ---------------------------------------------------------------- help
+// A short guide, one topic at a time.
+var helpTab = '';
+const HELP = {
+  basics: ['Basics', () => `
+    <h3>How DWARP works</h3>
+    <p>DWARP restyles a video with Stable Diffusion, one frame after another. Each frame is repainted from the
+       source; after the first, it also starts from the <b>previous result, moved along the footage's motion</b>
+       (optical flow), so the style sticks to things instead of boiling. Where the flow can't be trusted
+       (things appearing, fast motion) that frame is painted fresh.</p>
+    <p>This flow-warp technique was pioneered by Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)
+       in <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>. DWARP is an independent
+       re-implementation of the idea — see <i>Credits</i>.</p>
+    <h4>The loop</h4>
+    <ol>
+      <li><b>Drop a video</b> anywhere in the window.</li>
+      <li><b>Trim</b> with the handles on the filmstrip — see <i>Timeline</i>.</li>
+      <li>Pick a <b>mode</b>, a <b>look</b> (Oil paint, Anime, … — it adds style words and picks an SD 1.5 model;
+          <b>Raw</b> adds nothing) and write a <b>prompt</b> for what's in the shot.</li>
+      <li><b>Single Frame</b> renders the frame under the playhead — the fast way to dial in Denoise and guidance.</li>
+      <li><b>Preview</b> renders 5 frames (every 2nd) at a small size to check it holds together over time.</li>
+      <li><b>Render</b> does the trimmed range at full size. Finished runs land in the strip at the bottom.</li>
+    </ol>
+    <h4>The tabs over the image</h4>
+    <table>
+      <tr><td><b>Source</b></td><td>The clip itself — scrub or play it anywhere, with or without a run. Single Frame
+          renders the frame shown here.</td></tr>
+      <tr><td><b>Diff</b></td><td>With DepthDiff on: the repaint map, live from the sliders (white repaints, black keeps
+          the source), on the clip frame under the playhead.</td></tr>
+      <tr><td><b>Depth · Edge</b></td><td>With ControlNet on and a run selected: what each ControlNet saw on every frame.</td></tr>
+      <tr><td><b>Output</b></td><td>The selected run's frames. Shown when a run finishes.</td></tr>
+      <tr><td><b>Split</b></td><td>Source and output in one frame — drag the divider to compare.</td></tr>
+    </table>
+    <p>Which of Diff or Depth · Edge shows follows the ControlNet / DepthDiff tab in the panel. Output and Split need a
+       run: click one in the strip at the bottom. <b>Space</b> plays, <b>← →</b> step a frame, and the ↓ button on
+       the image saves whatever tab is shown. <b>log</b> shows the renderer's output.</p>`],
+
+  modes: ['Modes', () => `
+    <h3>SD 1.5 or SDXL</h3>
+    <table>
+      <tr><th></th><th>Good for</th><th>Trade-off</th></tr>
+      <tr><td><b>SD 1.5</b></td><td>Most looks and styles; quick to try. Each look brings a model tuned for it.
+          512 px default.</td><td>Softer detail; faces at a distance can go mushy.</td></tr>
+      <tr><td><b>SDXL</b></td><td>More detail and cleaner faces; 1024 px default. Defaults to SDXL Flash Mini,
+          a fast distilled model (few steps, low CFG).</td><td>Slower per frame and needs more VRAM. Looks add their style words but keep the SDXL model.</td></tr>
+    </table>
+    <h4>Models</h4>
+    <p>The model menu lists the checkpoints of that family. Names with ⚡ are distilled (Lightning, Turbo, LCM,
+       Flash…): picking one sets few steps and low CFG, which they need — normal models turn noisy there and
+       distilled ones burn at normal CFG.</p>
+    <h4>Steps, CFG, Size</h4>
+    <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
+       is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
+
+  guide: ['Guidance', () => `
+    <h3>Denoise, ControlNet, DepthDiff</h3>
+    <h4>Denoise</h4>
+    <p>How much of each frame is repainted. Low keeps the footage and adds texture; high follows the prompt and
+       invents. Most looks sit around 0.6–0.85. Later frames use a bit less than the first, since they start from
+       the previous result.</p>
+    <h4>ControlNet — keeps the shapes</h4>
+    <p>ControlNets read a map from each source frame and hold the render to it: <b>depth</b> keeps the 3-D layout,
+       <b>softedge</b> the outlines and expressions. <b>both</b> is usually best; <b>depth</b> alone gives the
+       style more room; <b>off</b> lets it wander. <b>Hold</b> is how tight: low lets shapes melt and drift,
+       high locks them to the footage. With high Denoise, raise Hold to keep the scene recognisable.</p>
+    <h4>DepthDiff — decides where to repaint</h4>
+    <p>A per-pixel Denoise: a grey map says how much each area changes — white repaints fully, black keeps the source.
+       <b>luma</b> uses the frame's brightness, <b>depth</b> its distance. <b>◐ invert</b> swaps which end repaints
+       (the tooltip says which). Black / White / Gamma / Contrast shape the map like levels, Blur softens its edges,
+       Amount scales it. Watch the <b>Diff</b> tab while you drag — it shows the map live.</p>
+    <p>Both can be on together: ControlNet holds the shapes, DepthDiff picks the areas.</p>
+    <h4>Seeing the maps</h4>
+    <p>The tabs above the image show what the guidance sees. They follow the panel: with <b>ControlNet</b> selected
+       you get <b>Depth</b> and <b>Edge</b> (a run's maps, frame by frame); with <b>DepthDiff</b> selected you get
+       <b>Diff</b> (the repaint map, live as you drag the sliders — no render needed).</p>`],
+
+  timeline: ['Timeline', () => `
+    <h3>Trimming and prompt keyframes</h3>
+    <h4>Trim</h4>
+    <p>Drag the handles on the filmstrip to set the range to render; the numbers under it show the start, length and
+       end. Preview and Render use this range; Single Frame uses the frame under the playhead.</p>
+    <h4>Prompt keyframes — prompt travel</h4>
+    <p>The lane under the filmstrip changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
+    <ul>
+      <li><b>Hover</b> the lane to scrub, <b>click</b> to add a keyframe there, <b>drag</b> one to move it,
+          click one to <b>edit</b> its prompt in the box (the badge says which keyframe you're editing).</li>
+      <li>From each keyframe the video <b>morphs into its prompt over Blend frames</b> — 0 is a hard cut, 12–30 a
+          smooth change. The look's style words are added to every keyframe.</li>
+      <li><b>delete</b> (in the lane's header) removes the selected keyframe.</li>
+    </ul>
+    <h4>Live</h4>
+    <p>Turn on <b>live</b> next to Render, and while a Preview or Render runs, type a prompt and press Enter — the
+       video morphs into it from the frame being rendered. Each one is saved as a keyframe, so the run can be
+       repeated.</p>`],
+
+  finish: ['Finishing', () => `
+    <h3>Runs, seeds and Enhance</h3>
+    <h4>Runs</h4>
+    <p>Every Single Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
+       <b>copy settings</b> puts its look, prompt, sliders, model, seed and keyframes back in the panel.
+       Ctrl / Shift-click selects several to delete.</p>
+    <h4>Seed</h4>
+    <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
+       seed per run. 🎲 rolls a new one.</p>
+    <h4>Enhance</h4>
+    <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames (RIFE).
+       <b>smoother</b> raises the fps (same length, more fluid); <b>slow-mo</b> keeps the fps (longer, slowed down).
+       The results are listed next to the run's mp4.</p>`],
+  credits: ['Credits', () => `
+    <h3>Credits</h3>
+    <p>Based on the work of <b>Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)</b>, who pioneered this technique with
+       <a href="https://github.com/Sxela/DiscoDiffusion-Warp" target="_blank">DiscoDiffusion-Warp</a>, <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>
+       and <a href="https://github.com/Sxela/VibeWarp" target="_blank">VibeWarp</a> — support it on <a href="https://www.patreon.com/sxela" target="_blank">Patreon</a>.
+       DWARP is an independent re-implementation and contains none of their code.</p>
+    <h4>Built on</h4>
+    <ul>
+      <li><a href="https://github.com/CompVis/stable-diffusion" target="_blank">Stable Diffusion</a>, <a href="https://github.com/lllyasviel/ControlNet" target="_blank">ControlNet</a> (Lvmin Zhang),
+          <a href="https://github.com/huggingface/diffusers" target="_blank">diffusers</a>, <a href="https://github.com/huggingface/controlnet_aux" target="_blank">controlnet_aux</a></li>
+      <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
+      <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
+          <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
+      <li><a href="https://github.com/chaiNNer-org/spandrel" target="_blank">spandrel</a> for loading upscale models</li>
+      <li><a href="https://differential-diffusion.github.io/" target="_blank">Differential Diffusion</a> (Levin &amp; Fried); the DepthDiff mask
+          comes from <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a></li>
+    </ul>`],
+};
+function paintHelp() {
+  if (!HELP[helpTab]) helpTab = 'basics';
+  $('helpPanel').innerHTML = `<button class="logbtn close" id="helpClose">✕</button>
+    <div class="htabs">${Object.entries(HELP).map(([k, [label]]) =>
+      `<button data-h="${k}" class="${k === helpTab ? 'on' : ''}">${label}</button>`).join('')}</div>
+    ${HELP[helpTab][1]()}`;
+  $('helpClose').onclick = () => toggleHelp(false);
+  $('helpPanel').querySelector('.htabs').onclick = e => {
+    if (!e.target.dataset.h) return;
+    helpTab = e.target.dataset.h; paintHelp(); $('helpPanel').scrollTop = 0;
+  };
+}
+function toggleHelp(open = $('helpPanel').hidden) {
+  $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
+  if (open) paintHelp();
+}
+$('helpBtn').onclick = () => toggleHelp();
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('helpPanel').hidden) toggleHelp(false); });
 addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
   if (e.key === 'l' || e.key === 'L') toggleLog();
@@ -1216,6 +1384,7 @@ async function showRun(runId, { follow = false } = {}) {
   const initL = desc.layers.find(l => l.id === 'init');
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
+  if (playing === 'clip') stopPlay();       // a run replaces the clip on the stage
   viewRun = runId; frames = newFrames;
   if (switched && (view === 'src' || view === 'mask')) view = 'out';     // a picked run opens on its result
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
@@ -1229,7 +1398,10 @@ async function showRun(runId, { follow = false } = {}) {
   const r = runsCache.find(r => r.id === runId);
   $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
   $('mp4Link').classList.toggle('hide', !r?.video_available);
-  if (r?.video_available) $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r.video_modified}`;
+  if (r?.video_available) {
+    $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r.video_modified}`;
+    $('mp4Link').download = `dwarp_${runId}.mp4`;
+  }
   $('makeMp4').classList.toggle('hide', !!r?.video_available || !!(job && job.run_id === runId && job.state === 'running'));
   $('openFolder').classList.remove('hide'); $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
@@ -1332,13 +1504,46 @@ function paintFrame() {
 }
 $('scrubRange').oninput = e => {
   if (oneFrameRun()) toSource();           // scrubbing away from a Single Frame result: back to Source
-  if (clipMode()) { clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
+  if (clipMode()) { if (playing) stopPlay(); clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
-function stopPlay() { clearInterval(playing); playing = null; $('playBtn').textContent = '▶'; }
+function stopPlay() {
+  if (playing === 'clip') stopClip(); else clearInterval(playing);
+  playing = null; $('playBtn').textContent = '▶';
+}
+// Clip view plays the source file itself in a <video> over the frame (stills come from ffmpeg one
+// at a time, too slow for playback); pausing hands back to the frame-exact still at that spot.
+function playClip() {
+  let v = $('vidSrc');
+  if (!v) { $('divider').insertAdjacentHTML('beforebegin', '<video id="vidSrc" muted playsinline loop></video>'); v = $('vidSrc'); }   // under the Save button
+  const fps = state.clip.source.fps || 24, n = state.clip.source.frames;
+  const url = `/api/video/file?${qs({ path: state.clip.path })}`;
+  if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
+  v.hidden = false;
+  const im = $('imgOut');                  // exactly over the still (the box can be wider than the image)
+  v.style.width = im.offsetWidth + 'px'; v.style.height = im.offsetHeight + 'px';
+  v.currentTime = (clipFrame + 0.5) / fps;
+  const follow = () => {                   // transport follows the video
+    if (playing !== 'clip') return;
+    clipFrame = Math.min(n - 1, Math.floor(v.currentTime * fps));
+    $('scrubRange').value = clipFrame; $('scrubText').textContent = `${clipFrame + 1} / ${n}`;
+    v.requestVideoFrameCallback ? v.requestVideoFrameCallback(follow) : requestAnimationFrame(follow);
+  };
+  playing = 'clip'; $('playBtn').textContent = '❚❚';
+  v.play().then(follow).catch(() => stopPlay());
+}
+function stopClip() {
+  const v = $('vidSrc'); if (!v) return;
+  v.pause(); v.hidden = true;
+  if (state.clip) {
+    clipFrame = Math.min(state.clip.source.frames - 1, Math.floor(v.currentTime * (state.clip.source.fps || 24)));
+    $('scrubRange').value = clipFrame;
+  }
+  if (clipMode()) paintFrame();
+}
 function togglePlay() {
-  if (clipMode()) return;                  // clip view is for scrubbing, not playback
   if (playing) return stopPlay();
+  if (clipMode()) { if (view === 'src') playClip(); return; }   // Diff is drawn per frame: scrub it
   if (!frames.length) return;
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
   $('playBtn').textContent = '❚❚';
@@ -1353,7 +1558,7 @@ addEventListener('keydown', e => {
     clipFrame = (clipFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
     $('scrubRange').value = clipFrame; paintFrame(); return;
   }
-  if (e.target.tagName === 'TEXTAREA' || !frames.length) return;
+  if (e.target.tagName === 'TEXTAREA' || (!frames.length && !clipMode())) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     stopPlay(); frameIdx = (frameIdx + (e.code === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length;

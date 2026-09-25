@@ -553,7 +553,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
-    log(f"style {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
+    log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
         f"colour match {job.color_match}")
     for i, sp in enumerate(src_paths):
         if cancelled():

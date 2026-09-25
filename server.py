@@ -143,6 +143,13 @@ def build_app() -> FastAPI:
         return {"source": info, "render": {"width": w, "height": h}, "extract_nth_frame": nth,
                 "renderable_frames": renderable, "max_frame": max(0, renderable - 1)}
 
+    @app.get("/api/video/file")
+    def video_file(path: str = ""):
+        """The clip itself, for playing the source in clip view (range requests, so it can seek)."""
+        if not path or not os.path.isfile(path) or Path(path).suffix.lower() not in VIDEO_EXTS:
+            raise HTTPException(404, detail="No video at that path")
+        return FileResponse(path)
+
     @app.get("/api/video/thumbnail")
     def video_thumbnail(path: str = "", frame: int = 0):
         if not path or not os.path.isfile(path):
