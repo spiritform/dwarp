@@ -139,9 +139,21 @@ def video_path(run_id: str) -> Path | None:
 
 
 # ------------------------------------------------------------------ listing
+def timing(run_id: str) -> dict | None:
+    """Where the run's frames sit in its clip: frame n is source frame (frame_start + n) * nth, at the
+    clip's fps — so the viewer can show clip time, the keyframe lane's units. None for old runs."""
+    try:
+        job = json.loads((run_dir(run_id) / "job.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    nth = max(1, int(job.get("nth", 1)))
+    src = (((read_meta(run_id).get("ui") or {}).get("clip") or {}).get("source") or {}).get("fps")
+    return {"frame_start": int(job.get("frame_start", 0)), "nth": nth, "fps": float(src or fps(run_id) * nth)}
+
+
 def describe(run_id: str) -> dict:
     out, init = output_frames(run_id), init_frames(run_id)
-    return {"run": run_id, "layers": [
+    return {"run": run_id, "timing": timing(run_id), "layers": [
         {"id": "output", "label": "Output", "frames": sorted(out)},
         {"id": "init", "label": "Source", "frames": sorted(init)},
     ] + [{"id": f"control_{kind}", "label": label, "frames": sorted(frames)}

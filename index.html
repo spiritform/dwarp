@@ -223,6 +223,7 @@
   .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
   .scrub button { background: none; border: 1px solid var(--line); color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
   .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+  .scrub span b { color: var(--dim); font-weight: 600; margin-right: 8px; }   /* the clip time, as on the keyframe lane */
   .stage-foot { display: flex; gap: 8px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
                 background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 1px solid #3a3941;
@@ -466,7 +467,7 @@
     <a id="mp4Link" class="hide" title="Download the run's mp4">↓ download mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="makeMp4" class="hide">make mp4</a>
-    <a id="loadRun" class="hide" title="Copy this run's settings (look, prompt, sliders, model, seed, clip) into the panel">copy settings</a>
+    <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
@@ -1246,7 +1247,7 @@ const HELP = {
     <h3>Runs, seeds and Enhance</h3>
     <h4>Runs</h4>
     <p>Every Single Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
-       <b>copy settings</b> puts its look, prompt, sliders, model, seed and keyframes back in the panel.
+       <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed and clip back in the panel — tweak from there.
        Ctrl / Shift-click selects several to delete.</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
@@ -1377,6 +1378,13 @@ $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { metho
 
 // ---------------------------------------------------------------- stage
 var split = 0.5, view = 'out';   // var: clipMode() reads view, and it can run before this line
+// The scrubber's readout: clip time (the keyframe lane's seconds) then the frame count. A run's frame n is
+// source frame (frame_start + n) * nth of its clip, so a trimmed or every-2nd run still reads in clip time.
+var runTiming = null;
+function scrubReadout(sec, i, n) {
+  $('scrubText').innerHTML = `<b>${sec.toFixed(1)}s</b>${i + 1} / ${n}`;
+}
+const clipSec = f => f / (state.clip?.source.fps || 24);
 async function showRun(runId, { follow = false } = {}) {
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
@@ -1385,7 +1393,7 @@ async function showRun(runId, { follow = false } = {}) {
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   if (playing === 'clip') stopPlay();       // a run replaces the clip on the stage
-  viewRun = runId; frames = newFrames;
+  viewRun = runId; frames = newFrames; runTiming = desc.timing;
   if (switched && (view === 'src' || view === 'mask')) view = 'out';     // a picked run opens on its result
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
@@ -1489,7 +1497,7 @@ $('view').onclick = e => {
 function paintFrame() {
   if (clipMode()) {
     $('imgOut').src = clipFrameUrl('luma');
-    $('scrubText').textContent = `${clipFrame + 1} / ${state.clip.source.frames}`;
+    scrubReadout(clipSec(clipFrame), clipFrame, state.clip.source.frames);
   } else {
     const n = frames[frameIdx];
     $('imgOut').src = img(viewRun, 'output', n);
@@ -1497,8 +1505,10 @@ function paintFrame() {
     if (view.startsWith('control_')) $('imgCtl').src = img(viewRun, view, n);
     // a run still rendering counts toward its full length, not just the frames so far
     const rendering = job && job.run_id === viewRun && !['completed', 'cancelled', 'failed'].includes(job.state);
-    $('scrubText').textContent = oneFrameRun() ? `${clipFrame + 1} / ${state.clip.source.frames}`
-                                               : `${frameIdx + 1} / ${rendering && job.total_frames || frames.length}`;
+    const t = runTiming;
+    if (oneFrameRun()) scrubReadout(clipSec(clipFrame), clipFrame, state.clip.source.frames);
+    else scrubReadout(t ? (t.frame_start + n) * t.nth / t.fps : clipSec(frameIdx),
+                      frameIdx, rendering && job.total_frames || frames.length);
   }
   if (view === 'mask') drawMask();
 }
@@ -1526,7 +1536,7 @@ function playClip() {
   const follow = () => {                   // transport follows the video
     if (playing !== 'clip') return;
     clipFrame = Math.min(n - 1, Math.floor(v.currentTime * fps));
-    $('scrubRange').value = clipFrame; $('scrubText').textContent = `${clipFrame + 1} / ${n}`;
+    $('scrubRange').value = clipFrame; scrubReadout(clipSec(clipFrame), clipFrame, n);
     v.requestVideoFrameCallback ? v.requestVideoFrameCallback(follow) : requestAnimationFrame(follow);
   };
   playing = 'clip'; $('playBtn').textContent = '❚❚';
@@ -1594,10 +1604,10 @@ $('loadRun').onclick = async () => {
   if (ui.kind === 'render' && ui.size) state.size = ui.size;
   if (ui.clip && (!state.clip || ui.clip.path !== state.clip.path)) {
     try { await setClipPath(ui.clip.path, ui.clip.name); state.range = ui.range || [0, 1]; }
-    catch { setStatus('that run\'s clip is gone — settings copied without it', 'bad'); }
+    catch { setStatus('that run\'s clip is gone — using its settings without it', 'bad'); }
   }
   save(); renderClip(); renderControls();
-  setStatus(`copied settings from run ${viewRun}`, 'done');
+  setStatus(`using the settings of run ${viewRun}`, 'done');
 };
 
 // ---------------------------------------------------------------- runs strip
