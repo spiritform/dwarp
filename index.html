@@ -70,7 +70,8 @@
   .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
   .range, .range-text { user-select: none; -webkit-user-select: none; touch-action: none; }   /* trimming must not select or drag the strip */
   .range .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.65); pointer-events: none; }
-  .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; }
+  .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; cursor: grab; }
+  .range.sliding .sel { cursor: grabbing; }   /* dragging inside the selection slides it, length kept */
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
   /* prompt travel: keyframe lane under the filmstrip */
@@ -613,21 +614,26 @@ function paintRange() {
   updateEst();
 }
 function bindRange() {
-  const range = $('range'); let drag = null;
+  const range = $('range'); let drag = null, slide = null;
   range.addEventListener('pointerdown', e => {
     e.preventDefault();                    // no text / image selection while dragging a handle
-    drag = e.target.classList.contains('l') ? 0 : e.target.classList.contains('r') ? 1 : null;
+    const t = e.target.classList;
+    drag = t.contains('l') ? 0 : t.contains('r') ? 1 : t.contains('sel') ? 2 : null;   // 2: slide the whole range
+    if (drag === 2) { slide = { x: e.clientX, a: state.range[0], b: state.range[1] }; range.classList.add('sliding'); }
     if (drag !== null) range.setPointerCapture(e.pointerId);
   });
   range.addEventListener('pointermove', e => {
     if (drag === null) return;
     const r = range.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const minGap = 2 / state.clip.source.frames;
-    if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
+    if (drag === 2) {                      // keep the length, stop at either end of the clip
+      const d = Math.min(1 - slide.b, Math.max(-slide.a, (e.clientX - slide.x) / r.width));
+      state.range = [slide.a + d, slide.b + d];
+    } else if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
     else state.range[1] = Math.max(x, state.range[0] + minGap);
     paintRange();
   });
-  range.addEventListener('pointerup', () => { drag = null; save(); });
+  range.addEventListener('pointerup', () => { drag = null; range.classList.remove('sliding'); save(); });
   range.addEventListener('dblclick', () => { state.range = [0, 1]; paintRange(); save(); });
 }
 
@@ -1293,7 +1299,8 @@ const HELP = {
     <h3>Trimming and prompt keyframes</h3>
     <h4>Trim</h4>
     <p>Drag the handles on the filmstrip to set the range to render; the numbers under it show the start, length and
-       end. <b>Double-click</b> the strip to go back to the full clip. Preview and Render use this range; Single Frame
+       end. Drag <b>inside</b> the selection to slide it along the clip, keeping its length. <b>Double-click</b> the strip to
+       go back to the full clip. Preview and Render use this range; Single Frame
        uses the frame under the playhead.</p>
     <h4>Prompt keyframes — prompt travel</h4>
     <p>The lane under the filmstrip changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
