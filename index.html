@@ -349,6 +349,16 @@
     <div class="seg mode" id="mode" style="grid-template-columns:1fr 1fr"></div>
     <div class="sublabel">Model</div>
     <select class="model" id="model" title="Checkpoint"></select>
+    <div class="pair" style="margin-top:12px">
+      <div class="slider">
+        <div class="slider-head"><b>Steps</b><span id="stepsV"></span></div>
+        <input type="range" id="steps" min="4" max="50" step="1">
+      </div>
+      <div class="slider">
+        <div class="slider-head"><b>CFG</b><span id="cfgV"></span></div>
+        <input type="range" id="cfg" min="1" max="12" step="0.5">
+      </div>
+    </div>
     <div class="sublabel">Style</div>
     <select class="model" id="presets" title="Style preset"></select>
     <div class="preset-model" id="presetModel" hidden></div>
@@ -359,6 +369,11 @@
       <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely">Denoise</b><span id="styleV"></span></div>
       <input type="range" id="style" min="0" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
+    </div>
+    <div class="slider">
+      <div class="slider-head"><b title="How much of the fresh source frame goes into each frame's start, where the paint is carried along the motion. 0 carries the paint only — it can build up and overcook over long clips; more keeps it anchored to the footage">Source mix</b><span id="srcMixV"></span></div>
+      <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
+      <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
     </div>
     <div class="gtabs" id="gTabs"><button data-t="cn" title="ControlNet: hold the source's shapes">ControlNet</button><button data-t="dd" title="DepthDiff: the source's luma or depth decides where the style repaints">DepthDiff</button></div>
     <div id="cnPane">
@@ -405,16 +420,6 @@
             <input type="range" id="ddAmount" min="0" max="2" step="0.05">
           </div>
         </div>
-      </div>
-    </div>
-    <div class="pair">
-      <div class="slider">
-        <div class="slider-head"><b>Steps</b><span id="stepsV"></span></div>
-        <input type="range" id="steps" min="4" max="50" step="1">
-      </div>
-      <div class="slider">
-        <div class="slider-head"><b>CFG</b><span id="cfgV"></span></div>
-        <input type="range" id="cfg" min="1" max="12" step="0.5">
       </div>
     </div>
     <div class="seed" style="margin-top:4px">
@@ -878,6 +883,7 @@ function renderControls() {
   renderMode();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
+  $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
   $('steps').value = state.steps; $('stepsV').textContent = state.steps;
@@ -933,6 +939,7 @@ $('prompt').oninput = e => {
   paintKeys(); save();
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
 $('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); setControlTabs(); save(); };
@@ -1095,6 +1102,7 @@ async function buildConfig(kind) {
     width: probe.render.width, height: probe.render.height,
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // first frame; later frames use 0.65x (engine default)
+    flow_blend: +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     steps: state.steps, cfg: state.cfg,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
@@ -1157,8 +1165,9 @@ const HELP = {
        (optical flow), so the style sticks to things instead of boiling. Where the flow can't be trusted
        (things appearing, fast motion) that frame is painted fresh.</p>
     <p>This flow-warp technique was pioneered by Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)
-       in <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>. DWARP is an independent
-       re-implementation of the idea — see <i>Credits</i>.</p>
+       in <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>.<br>
+       DWARP is an independent re-implementation of the idea, combining a similar approach with differential diffusion
+       using the source's luma / depth maps — see <i>Credits</i>.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
@@ -1213,6 +1222,12 @@ const HELP = {
     <p>How much of each frame is repainted. Low keeps the footage and adds texture; high follows the prompt and
        invents. Most looks sit around 0.6–0.85. Later frames use a bit less than the first, since they start from
        the previous result.</p>
+    <h4>Source mix — stops the build-up</h4>
+    <p>Where nothing moves, each frame starts from the previous painted one and is painted again, so over a long clip
+       a still background can get overcooked: speckled, over-textured, over-saturated. Source mix puts some of the
+       fresh source frame back into that start every frame, so the paint levels off instead of compounding.
+       <b>0.1–0.2</b> is usually enough; <b>0</b> gives the most locked-in brushwork (fine for short clips); higher
+       follows the footage more and the paint less.</p>
     <h4>ControlNet — keeps the shapes</h4>
     <p>ControlNets read a map from each source frame and hold the render to it: <b>depth</b> keeps the 3-D layout,
        <b>softedge</b> the outlines and expressions. <b>both</b> is usually best; <b>depth</b> alone gives the
@@ -1601,7 +1616,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -1819,6 +1834,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
   state.gtab ||= 'cn';
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
+  state.srcMix ??= 0.15;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
