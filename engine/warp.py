@@ -620,7 +620,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 log(f"frame {i + 1}: {cond}")
             last_cond = cond
         kw = dict(**text, image=to_image(init),
-                  strength=job.style if i == 0 or trust else style_next,
+                  # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
+                  strength=max(job.style if i == 0 or trust else style_next, 1.001 / job.steps),
                   num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
         dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
         if amount is not None:
