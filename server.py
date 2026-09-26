@@ -217,7 +217,7 @@ def build_app() -> FastAPI:
         body = await request.json()
         job, meta = body.get("job") or {}, body.get("meta") or {}
         job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
-        for key in ("video", "checkpoint"):
+        for key in ("checkpoint",) if job.get("t2v_frames") else ("video", "checkpoint"):   # text -> video: no clip
             if not job.get(key) or not os.path.isfile(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         for c in job.get("controlnets", []):

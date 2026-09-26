@@ -47,6 +47,8 @@
   .label { margin-bottom: 8px;
            display: flex; justify-content: space-between; }
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
+  .randlink { color: var(--accent-2); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
+  .randlink:hover { color: var(--text); }
 
   /* clip card */
   .clip { border-radius: var(--radius); overflow: hidden; background: var(--panel-2); }
@@ -153,7 +155,7 @@
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
   .invert.on { background: rgba(255,106,61,.22); color: var(--text); }
-  #srcMixBox[hidden] { display: none; }
+  #srcMixBox[hidden], #frameMode[hidden], #gTabs[hidden] { display: none; }
   .embrow { display: flex; gap: 6px; }
   .embrow select.model { flex: 1; min-width: 0; }
   .embrow #embedVer { flex: none; width: 92px; }
@@ -180,7 +182,12 @@
   .seg button { background: var(--panel-2); color: var(--dim); border: 0; padding: 7px 0; cursor: pointer; }
   .seg button.on { background: var(--line); color: var(--text); }
   /* the big switches (model family, Warp / Boil) stand out: the picked one is white with dark text */
-  #mode button.on, #frameMode button.on { background: #ecebef; color: #16161a; font-weight: 600; }
+  #mode button.on, #frameMode button.on, #srcMode button.on { background: #ecebef; color: #16161a; font-weight: 600; }
+  /* Text -> Video card: in place of the clip card */
+  .t2vbody { padding: 12px 10px 4px; }
+  .t2vbody .ons { margin: 0 0 10px; }
+  .t2vbody .pair { gap: 12px; }
+  .t2vbody .slider { margin-bottom: 10px; }
   #gTabs button.on { background: #a9a8b0; color: #16161a; }   /* a step down: a panel tab, not a mode */
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -349,12 +356,13 @@
   <div class="brand"><b>DWARP</b><span>diffusion warp</span></div>
 
   <section>
+    <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Restyle a video">Video → Video</button><button data-s="t2v" title="No video: the prompt paints frame 1, a camera move carries it on">Text → Video</button></div>
     <div id="clipBox"></div>
     <input type="file" id="fileInput" accept="video/*" hidden>
   </section>
 
   <section>
-    <div class="label">Prompt <em id="promptHint">what's in the clip — the look adds style words</em></div>
+    <div class="label"><span>Prompt <em id="promptHint"></em></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
     <div class="keybar" id="keyBar" hidden>
       <span class="dot"></span><b id="keyWhich"></b>
@@ -501,9 +509,9 @@
       <a id="liveBtn" title="Live: while a Preview / Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
-    <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
-    <a id="enhanceLink" class="hide">enhance</a>
     <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
+    <a id="enhanceLink" class="hide">enhance</a>
+    <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
@@ -612,7 +620,59 @@ function showError(summary, log) {
 }
 
 // ---------------------------------------------------------------- clip
+const T2V_FPS = 24;                         // Text -> Video's clock (FPS 2s / 3s hold drawings on it)
+const laneFrames = () => state.t2v ? Math.max(2, Math.round(state.t2vLen * T2V_FPS)) : state.clip.source.frames;
+const laneFps = () => state.t2v ? T2V_FPS : (state.clip.source.fps || 24);
+const curVideo = () => state.t2v ? '' : state.clip?.path;     // what a live job of this panel renders from
+function t2vDims(size) {                    // long side = size, the picked aspect, multiples of 8
+  const [a, b] = (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
+  return [Math.round(a * k / 8) * 8, Math.round(b * k / 8) * 8];
+}
+const KEYS_HTML = `<div class="keys-label"><span>Prompt keyframes</span><a id="keyDel" title="Delete the selected keyframe">delete</a></div>
+    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>`;
+function renderT2V() {
+  $('clipBox').innerHTML = `<div class="clip"><div class="t2vbody">
+    <div class="slider"><div class="slider-head"><b>Length</b><span id="t2vLenV"></span></div>
+      <input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
+    <div class="ons"><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
+    <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes"><span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div></div>
+    <div class="label">Camera <em>per frame</em></div>
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
+      <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
+    </div>
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
+      <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
+    </div></div>
+    ${KEYS_HTML}
+  </div>`;
+  const cam = (id, key) => $(id).oninput = e => { state.cam[key] = +e.target.value; paintT2V(); save(); };
+  cam('camZoom', 'zoom'); cam('camRot', 'rotate'); cam('camX', 'x'); cam('camY', 'y');
+  $('t2vLen').oninput = e => { state.t2vLen = +e.target.value; paintT2V(); save(); };
+  $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
+  $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
+  // a double-click on a camera slider puts it back at rest
+  [['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y']].forEach(([id, k]) =>
+    $(id).ondblclick = () => { state.cam[k] = 0; paintT2V(); save(); });
+  bindKeys(); paintT2V();
+}
+function paintT2V() {
+  if (!state.t2v || !$('t2vLen')) return;
+  const on = state.onN || 1, frames = laneFrames(), c = state.cam || { zoom: 1, rotate: 0, x: 0, y: 0 };
+  $('t2vLen').value = state.t2vLen;
+  $('t2vLenV').textContent = `${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} ${on > 1 ? 'drawings' : 'frames'}`;
+  [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
+  [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
+  const sign = v => (v > 0 ? '+' : '') + v;
+  $('camZoom').value = c.zoom; $('camZoomV').textContent = `${sign(+(+c.zoom).toFixed(1))}%`;
+  $('camRot').value = c.rotate; $('camRotV').textContent = `${sign(+(+c.rotate).toFixed(2))}°`;
+  $('camX').value = c.x; $('camXV').textContent = `${sign(+(+c.x).toFixed(2))}%`;
+  $('camY').value = c.y; $('camYV').textContent = `${sign(+(+c.y).toFixed(2))}%`;
+  paintKeys(); updateEst();
+}
 function renderClip() {
+  if (state.t2v) return renderT2V();
   const box = $('clipBox');
   if (!state.clip) {
     box.innerHTML = `<div class="clip-empty" id="pick">Drop a video here<small>or click to choose</small></div>`;
@@ -639,8 +699,7 @@ function renderClip() {
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
       <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
     </div>
-    <div class="keys-label"><span>Prompt keyframes</span><a id="keyDel" title="Delete the selected keyframe">delete</a></div>
-    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
+    ${KEYS_HTML}
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
   bindRange(); bindKeys();
@@ -654,7 +713,7 @@ function rangeFrames() {
   return [Math.round(state.range[0] * (n - 1)), Math.round(state.range[1] * (n - 1))];
 }
 function paintRange() {
-  if (!state.clip) return;
+  if (!state.clip || state.t2v) return;
   const [a, b] = state.range, d = state.clip.source.duration;
   $('sel').style.left = a * 100 + '%'; $('sel').style.width = (b - a) * 100 + '%';
   $('shadeL').style.width = a * 100 + '%'; $('shadeR').style.width = (1 - b) * 100 + '%';
@@ -701,8 +760,8 @@ function bindRange() {
 // frame 0 (fixed); each added keyframe says "from here, morph into this prompt" over Blend frames.
 function keyAt(i) { return i < 0 ? { f: 0, prompt: state.prompt } : state.keys[i]; }
 function paintKeys() {
-  const lane = $('keyMarks'); if (!lane || !state.clip) return;
-  const n = Math.max(1, state.clip.source.frames - 1), fps = state.clip.source.fps || 24;
+  const lane = $('keyMarks'); if (!lane || !(state.clip || state.t2v)) return;
+  const n = Math.max(1, laneFrames() - 1), fps = laneFps();
   lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
     const k = keyAt(i);
     return `<b class="key ${i === state.keySel ? 'on' : ''}" data-i="${i}" style="left:${k.f / n * 100}%"></b>`;
@@ -736,9 +795,9 @@ function liveSig() {                     // the panel's prompt travel as the eng
   if (!pt.prompt_keys.length) pt.prompt_keys = [[0, withLook(state.prompt)]];
   return JSON.stringify(pt);
 }
-const liveOn = () => state.live && live && state.clip?.path === live.video;
+const liveOn = () => state.live && live && curVideo() === live.video;
 function pushPrompts() {
-  if (!live || state.clip?.path !== live.video) return;
+  if (!live || curVideo() !== live.video) return;
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
     const pt = promptTravel('render');
@@ -761,14 +820,12 @@ function sendLive() {
 // land on the keyframe lane and in the run's saved settings. In Live mode the prompt box also shows
 // the prompt in effect at the frame being rendered (unless you're typing in it).
 function syncLive(snap) {
-  if (!live || snap.id !== live.id || !snap.prompt_keys || state.clip?.path !== live.video) return;
+  if (!live || snap.id !== live.id || !snap.prompt_keys || curVideo() !== live.video) return;
   const sig = JSON.stringify([snap.prompt_keys, snap.prompt_blend]);
   const changed = sig !== live.seen, typing = document.activeElement === $('prompt');
   if (changed) {
     live.seen = sig;
-    const look = currentPreset().prompt;
-    const raw = t => look && t.endsWith(', ' + look) ? t.slice(0, -(look.length + 2)) : t;
-    const ks = snap.prompt_keys.map(([f, p]) => ({ f, prompt: raw(p) }));
+    const ks = snap.prompt_keys.map(([f, p]) => ({ f, prompt: unLook(p) }));
     const sel = state.keys[state.keySel];
     if (ks[0]?.f === 0) state.prompt = ks.shift().prompt;
     state.keys = ks; state.blend = snap.prompt_blend;
@@ -786,9 +843,34 @@ function syncLive(snap) {
 }
 function paintLive() {
   $('liveBtn').classList.toggle('on', !!state.live);
-  $('promptHint').textContent = liveOn() ? 'live — press Enter to send it into the render (Shift+Enter: new line)'
-                                         : "what's in the clip — the look adds style words";
+  $('promptHint').textContent = liveOn() ? 'live — press Enter to send it into the render (Shift+Enter: new line)' : '';
 }
+// ---- random prompt: content only (subject · action · place · detail · light); the look adds the style
+const RAND = {
+  subject: ['an old lighthouse keeper', 'a fox with glass eyes', 'a jellyfish cathedral', 'a sleeping giant', 'a deep-sea diver',
+    'a paper crane', 'a marble statue', 'a lone astronaut', 'a flock of moths', 'a clockwork heart', 'a drowned piano',
+    'a woman made of smoke', 'a white horse', 'an abandoned carousel', 'a coral skull', 'a tiny house on stilts',
+    'a masked dancer', 'a tree of hands', 'a burning violin', 'a whale in the sky', 'a crowd of umbrellas',
+    'a porcelain doll', 'a moth-winged child', 'a ruined observatory', 'a mountain with an eye'],
+  action: ['slowly dissolving', 'blooming into flowers', 'melting into the floor', 'turning to sand', 'floating upward',
+    'splitting into mirrors', 'growing roots', 'breathing smoke', 'unravelling into threads', 'shattering in slow motion',
+    'covered in moss', 'glowing from inside', 'folding into itself', 'swarmed by fireflies', 'sinking into water'],
+  place: ['in an empty ballroom', 'under a violet sea', 'in a foggy forest', 'on a salt flat', 'inside a cathedral of ice',
+    'in a flooded library', 'at the edge of the world', 'in a neon alley', 'on the moon', 'in a field of tall grass',
+    'inside a snow globe', 'in an overgrown greenhouse', 'on a cliff above clouds', 'in a candlelit cellar', 'in a desert of glass'],
+  detail: ['surreal', 'dreamlike', 'intricate details', 'strange geometry', 'drifting particles', 'long shadows',
+    'swirling patterns', 'melancholic', 'hypnotic', 'cinematic composition', 'dust in the air', 'reflections everywhere'],
+  light: ['golden hour', 'moonlight', 'soft rim light', 'volumetric light', 'harsh noon sun', 'candlelight', 'neon glow',
+    'overcast', 'bioluminescent light', 'backlit', 'stormy light', 'the blue hour'],
+};
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const randomPrompt = () => `${pick(RAND.subject)} ${pick(RAND.action)} ${pick(RAND.place)}, ${pick(RAND.detail)}, ${pick(RAND.light)}`;
+$('promptRandom').onclick = () => {
+  const t = randomPrompt();
+  $('prompt').value = t;                    // Live: it's in the box, Enter sends it
+  if (!liveOn()) $('prompt').dispatchEvent(new Event('input'));   // otherwise it's the prompt (or the keyframe's) now
+  $('prompt').focus();
+};
 $('liveBtn').onclick = () => { state.live = !state.live; save(); paintLive(); };
 $('prompt').addEventListener('keydown', e => {
   if (liveOn() && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLive(); }
@@ -809,11 +891,12 @@ function bindKeys() {
     selectKey(state.keys.length ? state.keySel : -1);
   };
   const pos = e => { const r = lane.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
-  const frameAt = e => Math.round(pos(e) * (state.clip.source.frames - 1));
+  const frameAt = e => Math.round(pos(e) * (laneFrames() - 1));
   const peek = e => {
     const f = frameAt(e), el = $('keyPeek'); if (!el) return;
     el.style.left = Math.min(100 - 5, Math.max(5, pos(e) * 100)) + '%';     // keep it inside the card
-    el.querySelector('span').textContent = `${(f / (state.clip.source.fps || 24)).toFixed(1)}s`;
+    el.querySelector('span').textContent = `${(f / laneFps()).toFixed(1)}s`;
+    if (state.t2v) { el.querySelector('img').removeAttribute('src'); return; }   // no clip frames to show
     if (clipMode() && clipFrame !== f) {   // clip view: the stage follows the lane scrub
       clipFrame = f; $('scrubRange').value = f; paintFrame();
     }
@@ -877,7 +960,7 @@ function uploadFile(file) {
   xhr.onload = async () => {
     if (xhr.status >= 300) { setStatus('upload failed: ' + xhr.responseText, 'bad'); renderClip(); return; }
     const res = JSON.parse(xhr.responseText);
-    try { await setClipPath(res.path, res.name); setStatus('clip loaded'); showClip(); }
+    try { state.t2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
     catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
   };
   xhr.onerror = () => { setStatus('upload failed', 'bad'); renderClip(); };
@@ -1010,6 +1093,13 @@ function renderControls() {
     a.classList.toggle('live', a.dataset.t === 'cn' ? cn !== 'off' : dd.src !== 'off');
   });
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
+  // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
+  [...$('srcMode').children].forEach(b => b.classList.toggle('on', (b.dataset.s === 't2v') === !!state.t2v));
+  if (state.t2v) {
+    $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = $('frameMode').hidden = $('srcMixBox').hidden = true;
+  } else {
+    $('gTabs').hidden = $('frameMode').hidden = false;
+  }
   [...$('ddSel').children].forEach(b => b.classList.toggle('on', b.dataset.d === dd.src));
   $('ddBox').classList.toggle('off', dd.src === 'off');
   $('ddInvert').classList.toggle('off', dd.src === 'off');
@@ -1071,6 +1161,13 @@ $('prompt').oninput = e => {
   paintKeys(); save();
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('srcMode').onclick = e => {
+  const m = e.target.dataset.s; if (!m || (m === 't2v') === !!state.t2v) return;
+  state.t2v = m === 't2v'; state.keySel = -1;
+  renderClip(); renderControls(); paintLive(); updateEst();
+  if (!viewRun) state.t2v || !state.clip ? clearStage() : showClip();
+  save();
+};
 $('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; state.fresh = f === 'fresh'; renderControls(); save(); };
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
@@ -1088,8 +1185,8 @@ function renderSize() {
 }
 // Source and Diff are about the input: they scrub the whole clip, run or no run. Output / Split /
 // Depth / Edge are about a run and scrub its frames.
-function clipMode() { return !!state.clip && (!viewRun || view === 'src' || view === 'mask'); }
-function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip; }
+function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view === 'src' || view === 'mask'); }
+function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
 function toSource() {                      // e.g. scrubbing away from a Single Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
@@ -1107,7 +1204,7 @@ function clipFrameUrl(kind) {
   return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind })}`;
 }
 function showClip() {
-  if (!state.clip) return clearStage();
+  if (!state.clip || state.t2v) return clearStage();
   stopPlay(); viewRun = null; frames = [];
   clipFrame = Math.min(clipFrame, state.clip.source.frames - 1);
   if (view !== 'mask') view = 'src';
@@ -1189,6 +1286,14 @@ function spf(size) {
   return base * (size / m.ref_size) ** 2 * (state.steps / 20);
 }
 function updateEst() {
+  if (state.t2v) {                         // Text -> Video: frame 1, a short start, the whole length
+    const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = Math.min(state.size, modeCfg().test_size);
+    const tn = Math.min(n, 12);
+    $('frameBtn').title = `frame 1 from the prompt · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
+    $('testBtn').title = `the first ${tn} ${on > 1 ? 'drawings' : 'frames'} · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
+    $('goBtn').title = `${n} ${on > 1 ? `drawings (on ${on}s)` : 'frames'} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
+    return;
+  }
   if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
   $('frameBtn').title = `${playheadFrame() != null ? 'the frame under the playhead' : "the range's first frame"} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
   const [fa, fb] = rangeFrames();
@@ -1204,6 +1309,16 @@ function updateEst() {
 // The picked embedding (SD 1.5): a name with "neg" in it (EasyNegative…) belongs in the negative prompt
 const embedOn = () => EMBEDS.some(e => e.name === state.embed && e.family === state.mode) ? state.embed : '';
 const embedNeg = () => /neg/i.test(embedOn());
+// withLook's inverse, for prompts that come back from the engine: drop the look's words and the
+// embedding it added (without this, every Live round trip left one more copy of them in the prompt box)
+function unLook(t) {
+  for (const w of [currentPreset().prompt, embedNeg() ? '' : embedOn()]) {
+    if (!w) continue;
+    if (t === w) t = '';
+    else if (t.endsWith(', ' + w)) t = t.slice(0, -(w.length + 2));
+  }
+  return t;
+}
 function withLook(text) {
   const emb = embedNeg() ? '' : embedOn();
   return [text.trim(), emb, currentPreset().prompt].filter(Boolean).join(', ') || 'a painting';
@@ -1215,16 +1330,25 @@ async function buildConfig(kind) {
   const nth = kind === 'frame' ? 1 : kind === 'test' ? Math.max(TEST.nth, on) : on;
   const hold = kind !== 'frame' && on > 1 ? nth : 1;
   const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
-  const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
-  const [fa, fb] = rangeFrames();
-  // Single Frame renders the frame under the playhead (with the prompt keyframe in effect there): the
-  // clip's in Source / Diff, the run frame's source frame in Output / Split; else the range's first frame
-  const here = kind === 'frame' ? playheadFrame() : null;
-  let start = here ?? Math.floor(fa / nth);
-  let end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
-  if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
-  if (kind === 'frame') end = start;
-  end = Math.min(end, probe.max_frame);
+  const t2v = !!state.t2v;
+  let W, H, start = 0, end = -1, t2vN = 0;
+  if (t2v) {                                // no clip: a length on T2V_FPS, drawings every nth frame
+    [W, H] = t2vDims(size);
+    const n = Math.floor((laneFrames() - 1) / nth) + 1;
+    t2vN = kind === 'frame' ? 1 : kind === 'test' ? Math.min(n, 12) : n;
+  } else {
+    const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
+    const [fa, fb] = rangeFrames();
+    // Single Frame renders the frame under the playhead (with the prompt keyframe in effect there): the
+    // clip's in Source / Diff, the run frame's source frame in Output / Split; else the range's first frame
+    const here = kind === 'frame' ? playheadFrame() : null;
+    start = here ?? Math.floor(fa / nth);
+    end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
+    if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
+    if (kind === 'frame') end = start;
+    end = Math.min(end, probe.max_frame);
+    W = probe.render.width; H = probe.render.height;
+  }
 
   // Hold: how tightly ControlNets pin the source's structure. Low = the render
   // drifts and dissolves between frames, high = it stays locked to the footage.
@@ -1237,30 +1361,32 @@ async function buildConfig(kind) {
     weight: +(c.hold[0] + (c.hold[1] - c.hold[0]) * h).toFixed(3),
   }));
   const job = {
-    video: state.clip.path,
+    video: t2v ? '' : state.clip.path,
     checkpoint: checkpointPath(),
     family: state.mode,
     prompt: withLook(state.prompt),
     ...promptTravel(kind),
     negative: [embedNeg() ? embedOn() : '', 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
-    width: probe.render.width, height: probe.render.height,
+    width: W, height: H,
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // first frame; later frames use 0.65x (engine default)
-    flow_blend: +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
-    fresh: !!state.fresh,                    // Boil: no warp, full Denoise on every frame
+    flow_blend: t2v ? 1 : +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
+    fresh: !t2v && !!state.fresh,            // Boil: no warp, full Denoise on every frame
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
-    controlnets,
+    controlnets: t2v ? [] : controlnets,     // Text -> Video: nothing to follow
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
-    diff_source: state.dd.src, diff_invert: state.dd.invert,
+    diff_source: t2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
+    ...(t2v ? { t2v_frames: t2vN, cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
+                cam_x: state.cam.x / 100, cam_y: state.cam.y / 100 } : {}),
   };
-  const fps = (state.clip.source.fps || 24) / nth;
-  return { job, total: end - start + 1, size, fps };
+  const fps = (t2v ? T2V_FPS : (state.clip.source.fps || 24)) / nth;
+  return { job, total: t2v ? t2vN : end - start + 1, size, fps };
 }
 
 // ---------------------------------------------------------------- log panel
@@ -1317,6 +1443,12 @@ const HELP = {
        (<a href="https://github.com/Sxela" target="_blank">Sxela</a>) — see <i>Credits</i>.</p>
     <h4>Boil</h4>
     <p>Every frame is repainted fresh from its source, so the strokes shimmer and redraw like hand-painted animation.</p>
+    <h4>Text → Video</h4>
+    <p>No video at all (the switch at the top). The prompt paints frame 1; every next frame is the previous one moved
+       by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted at your Denoise, so the picture keeps travelling
+       and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
+       steadier, higher changes faster. Set the length, aspect and FPS in the card; ControlNet, DepthDiff and Source
+       mix need a video, so they hide here. Double-click a camera slider to reset it.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
@@ -1504,7 +1636,7 @@ addEventListener('keydown', e => {
 // ---------------------------------------------------------------- jobs
 async function startJob(kind) {
   const name = { frame: 'single frame', test: 'preview', render: 'render' }[kind];   // shown in status + run labels
-  if (!state.clip) { setStatus('drop a video first', 'bad'); return; }
+  if (!state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
@@ -1592,7 +1724,7 @@ const clipSec = f => f / (state.clip?.source.fps || 24);
 // The clip frame under the playhead: Source / Diff scrub the clip itself; a run of this clip maps its
 // frame n back to source frame (frame_start + n) * nth. null when a run of another clip is showing.
 function playheadFrame() {
-  if (!state.clip) return null;
+  if (!state.clip || state.t2v) return null;
   if (clipMode()) return clipFrame;
   const t = runTiming, n = frames[frameIdx];
   if (!t || n == null || (t.video && t.video !== state.clip.path)) return null;
@@ -1830,7 +1962,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'sampler', 'schedule']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'sampler', 'schedule', 't2v', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -1930,9 +2062,11 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   setStatus(failed.length ? `couldn't remove ${failed.join('; ')}` : `removed ${what} — the files stay in renders/`, failed.length ? 'bad' : 'done');
 }
 function clearStage() {
-  if (state.clip) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
+  if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
-  $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
+  $('stage').innerHTML = state.t2v
+    ? '<div class="placeholder"><b>Text → Video</b>write a prompt, then Single Frame for frame 1 or Preview for the start</div>'
+    : '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
   $('scrub').hidden = true; $('footInfo').textContent = '';
   ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
@@ -2057,6 +2191,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.fresh ??= false;
   state.onN ??= 1;
   state.embed ??= '';
+  state.t2v ??= false; state.t2vLen ??= 5; state.t2vAspect ??= '1:1';
+  state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
@@ -2076,15 +2212,15 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   }
   renderClip();
   await refreshRuns();
-  if (runsCache.length) showRun(runsCache[0].id); else if (state.clip) showClip();
+  if (runsCache.length) showRun(runsCache[0].id); else if (state.clip && !state.t2v) showClip(); else clearStage();
   // re-attach to a render that is still running (e.g. after a page reload)
   const jobs = await api('/api/jobs').catch(() => []);
   const running = jobs.find(j => !['completed', 'cancelled', 'failed'].includes(j.state));
   if (running) {
     job = running; setButtons(true); $('cancelLink').classList.remove('hide');
     // live prompts keep working after a reload (a Single Frame has one frame: nothing to steer)
-    if (running.kind === 'render' && running.total_frames !== 1 && state.clip)
-      live = { id: running.id, video: state.clip.path, sent: '' };
+    if (running.kind === 'render' && running.total_frames !== 1 && (state.clip || state.t2v))
+      live = { id: running.id, video: curVideo(), sent: '' };
     paintLive();
     const es = new EventSource(`/api/jobs/${running.id}/events`);
     es.onmessage = ev => {

@@ -147,6 +147,8 @@ def timing(run_id: str) -> dict | None:
         return None
     nth = max(1, int(job.get("nth", 1)))
     src = (((read_meta(run_id).get("ui") or {}).get("clip") or {}).get("source") or {}).get("fps")
+    if job.get("t2v_frames"):                 # text -> video: its own clock, not the panel's clip
+        src = None
     return {"frame_start": int(job.get("frame_start", 0)), "nth": nth, "fps": float(src or fps(run_id) * nth),
             "video": job.get("video", "")}
 

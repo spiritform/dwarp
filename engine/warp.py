@@ -55,6 +55,14 @@ class RenderJob:
     nth: int = 1                         # use every nth source frame
     embeddings_dir: list = field(default_factory=list)   # folders of textual-inversion embeddings (SD 1.5):
                                          # a file's name typed in a prompt loads it, as in A1111 / ComfyUI
+    # Text -> Video: no clip. Frame 1 comes from the prompt alone, every later one from the previous
+    # result moved by a camera (per clip frame; on twos a drawing moves `nth` frames' worth) and
+    # repainted at `style`. 0 = video -> video.
+    t2v_frames: int = 0
+    cam_zoom: float = 1.01               # scale per frame (>1 pushes in)
+    cam_rotate: float = 0.0              # degrees per frame
+    cam_x: float = 0.0                   # pan per frame, share of the width (+ = the image drifts right)
+    cam_y: float = 0.0                   # share of the height (+ = down)
     hold: int = 1                        # mp4: show each rendered frame this many times (on twos: nth 2, hold 2 —
                                          # 12 drawings a second, played at the clip's 24 fps)
     style: float = 0.75                  # img2img strength on the first frame
@@ -361,7 +369,22 @@ def make_scheduler(base_config: dict, sampler: str, schedule: str):
     import diffusers
     cls, fixed, schedules = SAMPLERS.get(sampler, SAMPLERS["dpmpp_2m"])
     kw = SCHEDULE_KW[schedule if schedule in schedules else schedules[0]]
-    return getattr(diffusers, cls).from_config(base_config, **fixed, **kw)
+    # the stored config carries the load-time spacing (Karras on): clear every spacing flag first, or
+    # Exponential / Beta would ask for two at once
+    base = {**base_config, "use_karras_sigmas": False, "use_exponential_sigmas": False, "use_beta_sigmas": False}
+    return getattr(diffusers, cls).from_config(base, **fixed, **kw)
+
+
+def camera_move(img: torch.Tensor, job: RenderJob) -> torch.Tensor:
+    """Text -> Video's motion: the previous frame zoomed / rotated / panned by the camera, for as many
+    clip frames as one drawing spans (nth). Edges reflect instead of going black."""
+    n = max(1, job.nth)
+    zoom, ang = job.cam_zoom ** n, math.radians(job.cam_rotate * n)
+    tx, ty = -2 * job.cam_x * n, -2 * job.cam_y * n          # grid units: the image moves the other way
+    c, s_ = math.cos(ang) / zoom, math.sin(ang) / zoom
+    theta = torch.tensor([[c, -s_, tx], [s_, c, ty]], dtype=img.dtype, device=img.device)[None]
+    grid = F.affine_grid(theta, list(img.shape), align_corners=False)
+    return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
 
 
 def fetch_missing(job: RenderJob, log) -> None:
@@ -671,17 +694,24 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
     t0 = time.time()
-    progress("extracting", 0, 0, "extracting frames")
-    src_paths = extract_frames(job, out / "src")
-    total = len(src_paths)
-    log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
+    t2v = job.t2v_frames > 0
+    if t2v:                                     # no clip: the frames come from the prompt and the camera
+        src_paths = [None] * job.t2v_frames
+        total = job.t2v_frames
+        log(f"text -> video: {total} frames at {job.width}x{job.height}, camera zoom {job.cam_zoom} rotate "
+            f"{job.cam_rotate} pan {job.cam_x}/{job.cam_y} per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
+    else:
+        progress("extracting", 0, 0, "extracting frames")
+        src_paths = extract_frames(job, out / "src")
+        total = len(src_paths)
+        log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
 
     progress("loading", 0, total, "loading models")
     fetch_missing(job, log)
     pipe = cached_pipeline(job, device, log)
     pipe.scheduler = make_scheduler(pipe._dwarp_scheduler_config, job.sampler, job.schedule)
     log(f"sampler {job.sampler}, schedule {job.schedule} ({type(pipe.scheduler).__name__})")
-    if total > 1 and not job.fresh and "flow" not in _CACHE:
+    if total > 1 and not job.fresh and not t2v and "flow" not in _CACHE:
         _CACHE["flow"] = Flow(device)
     flow = _CACHE.get("flow")
     ann = _CACHE.setdefault("ann", Annotators(device))
@@ -708,7 +738,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
-    if job.fresh:
+    if t2v:
+        log(f"frame 1 from the prompt, then denoise {job.style} on the moved previous frame; colour match {job.color_match}")
+    elif job.fresh:
         log(f"boil: every frame repainted from its source (no warp), denoise {job.style}; colour match {job.color_match}")
     else:
         log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
@@ -733,12 +765,18 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             on_keys(keys, blend)
             last_cond = None
         tf = time.time()
-        src_np = load_rgb(sp)
-        src = to_tensor(src_np, device)
+        if t2v:                                 # the "source" is where this frame starts: blank, then the camera
+            src = (torch.full((1, 3, job.height, job.width), 0.5, device=device) if prev_out is None
+                   else camera_move(prev_out, job))
+            src_np = (src[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+            Image.fromarray(src_np).save(out / "src" / f"{i:06d}.jpg", quality=90)   # the viewer's Source layer
+        else:
+            src_np = load_rgb(sp)
+            src = to_tensor(src_np, device)
 
         amount = None                           # per-pixel strength, as a share of `strength`
         trust = False                           # job.diff: untrusted pixels get full style
-        if prev_out is None or job.fresh:      # fresh: every frame starts from its own source frame
+        if prev_out is None or job.fresh or t2v:   # fresh / t2v: every frame starts from its own start
             init = src
         else:
             fb = flow(src, prev_src)            # current -> previous
@@ -779,7 +817,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             last_cond = cond
         kw = dict(**text, image=to_image(init),
                   # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                  strength=max(job.style if i == 0 or trust or job.fresh else style_next, 1.001 / job.steps),
+                  strength=(1.0 if t2v and i == 0 else    # t2v frame 1: from the prompt alone
+                            max(job.style if i == 0 or trust or job.fresh or t2v else style_next, 1.001 / job.steps)),
                   num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
         dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
         if amount is not None:

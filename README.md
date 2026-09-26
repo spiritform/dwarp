@@ -57,6 +57,7 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - **Embeddings**: drop textual-inversion embeddings (your own trained styles too) into `models/embeddings` and pick one above Style, with its training step; DWARP reads which family each was trained for and lists it in that mode
 - Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, sampler + schedule (DPM++ 2M / SDE, Euler, Euler a, UniPC, DDIM, Heun, LCM; Karras, exponential, beta, trailing), steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
+- **Text → Video**: no video needed. The prompt paints frame 1, a camera move (zoom, rotate, pan) carries every next frame on from the last, prompt keyframes and Live steer it; set a length, aspect and FPS
 - **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
