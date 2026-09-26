@@ -48,8 +48,10 @@ def settings() -> dict:
     for mode in d.get("modes", {}).values():
         for c in mode.get("controlnets", {}).values():
             names = c["file"] if isinstance(c["file"], list) else [c["file"]]
-            paths = [f"{root}/controlnet/{n}" for n in names]
-            c["path"] = next((q for q in paths if os.path.isfile(q)), paths[0])
+            # DWARP's own models/controlnet first (e.g. the SD 2.1 nets), then the models folder's
+            paths = [str(HERE / "models" / "controlnet" / n) for n in names] + [f"{root}/controlnet/{n}" for n in names]
+            c["path"] = next((q for q in paths if os.path.isfile(q)), paths[0])   # missing: DWARP's folder
+            c["have"] = os.path.isfile(c["path"])
     return d
 
 
@@ -105,6 +107,19 @@ def build_app() -> FastAPI:
     def exists(path: str = ""):
         p = Path(path.strip().strip('"')) if path.strip() else None
         return {"path": path, "checked": bool(p), "exists": bool(p and p.exists())}
+
+    def embedding_dirs() -> list[str]:
+        """Textual-inversion embeddings: only DWARP's own models/embeddings, a hand-picked set (the shared
+        ComfyUI folder is left alone)."""
+        return [str(HERE / "models" / "embeddings")]
+
+    @app.get("/api/embeddings")
+    def embeddings():
+        """Embeddings by name (what a prompt types), with the model family they were trained for."""
+        from engine.warp import embedding_family, embedding_files
+        out = [{"name": name, "family": fam} for name, f in embedding_files(embedding_dirs()).items()
+               if (fam := embedding_family(f))]
+        return {"embeddings": sorted(out, key=lambda e: e["name"].lower())}
 
     @app.get("/api/checkpoints")
     def checkpoints():
@@ -201,11 +216,12 @@ def build_app() -> FastAPI:
     async def submit(request: Request):
         body = await request.json()
         job, meta = body.get("job") or {}, body.get("meta") or {}
+        job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
         for key in ("video", "checkpoint"):
             if not job.get(key) or not os.path.isfile(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         for c in job.get("controlnets", []):
-            if not os.path.isfile(c.get("path", "")):
+            if not os.path.isfile(c.get("path", "")) and not c.get("repo"):   # a repo = downloads on first use
                 raise HTTPException(422, detail=[{"message": f"ControlNet not found: {c.get('path')!r}"}])
         run_id, _ = runs.new_run()
         runs.write_meta(run_id, label=meta.get("label", ""), ui=meta.get("ui", {}), fps=meta.get("fps", 24))

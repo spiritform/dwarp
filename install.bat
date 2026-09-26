@@ -60,7 +60,7 @@ echo [4/6] DWARP packages
 "%UV%" pip install --python "%PY%" -r requirements.txt || goto :fail
 
 echo.
-echo [5/6] ffmpeg and RIFE weights
+echo [5/6] ffmpeg, RIFE weights and the DepthDiff depth model
 where ffmpeg >nul 2>nul
 if errorlevel 1 (
     if not exist "tools\ffmpeg\bin\ffmpeg.exe" (
@@ -75,6 +75,9 @@ if errorlevel 1 (
     echo   ffmpeg found on PATH
 )
 %FETCH% -Url "%RIFE_URL%" -Sha256 %RIFE_SHA% -Dest "models\rife\rife49.pth" || goto :fail
+REM Depth for DepthDiff (and the depth ControlNet hints). Other models, like the SD 2.1 ControlNets,
+REM download on first use.
+"%PY%" "%~dp0scripts\fetch_depth.py" || goto :fail
 
 echo.
 echo [6/6] models folder

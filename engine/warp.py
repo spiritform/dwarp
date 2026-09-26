@@ -16,6 +16,7 @@ import contextlib
 import json
 import math
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field, asdict
@@ -31,11 +32,12 @@ from PIL import Image
 # ------------------------------------------------------------------ job description
 @dataclass
 class ControlSpec:
-    kind: str            # depth | softedge | canny | lineart
+    kind: str            # depth | softedge | hed | canny | lineart
     path: str            # ControlNet weights file
     weight: float = 1.0
     start: float = 0.0
     end: float = 1.0
+    repo: str = ""       # Hugging Face repo to fetch `path` from on first use, when it isn't on disk yet
 
 
 @dataclass
@@ -43,7 +45,7 @@ class RenderJob:
     video: str
     out_dir: str
     checkpoint: str
-    family: str = "sd15"                 # sd15 | sdxl
+    family: str = "sd15"                 # sd15 | sd2 | sdxl
     prompt: str = ""
     negative: str = ""
     width: int = 512
@@ -51,12 +53,16 @@ class RenderJob:
     frame_start: int = 0                 # in extracted-frame units
     frame_end: int = -1                  # inclusive; -1 = to the end
     nth: int = 1                         # use every nth source frame
+    embeddings_dir: list = field(default_factory=list)   # folders of textual-inversion embeddings (SD 1.5):
+                                         # a file's name typed in a prompt loads it, as in A1111 / ComfyUI
     hold: int = 1                        # mp4: show each rendered frame this many times (on twos: nth 2, hold 2 —
                                          # 12 drawings a second, played at the clip's 24 fps)
     style: float = 0.75                  # img2img strength on the first frame
     style_next: float = -1               # strength on later frames; -1 = 0.65 * style. Lower keeps
                                          # more of the warped previous frame (less boiling)
     steps: int = 20
+    sampler: str = "dpmpp_2m"            # see SAMPLERS
+    schedule: str = "karras"             # karras | normal | exponential | beta | trailing (what the sampler supports)
     cfg: float = 6.0
     seed: int = 0
     controlnets: list[ControlSpec] = field(default_factory=list)
@@ -238,6 +244,8 @@ class Annotators:
                 det = ca.MidasDetector.from_pretrained("lllyasviel/Annotators")
             elif kind == "softedge":
                 det = ca.PidiNetDetector.from_pretrained("lllyasviel/Annotators")
+            elif kind == "hed":                  # the SD 2.1 edge ControlNet was trained on HED maps
+                det = ca.HEDdetector.from_pretrained("lllyasviel/Annotators")
             elif kind == "lineart":
                 det = ca.LineartDetector.from_pretrained("lllyasviel/Annotators")
             elif kind == "canny":
@@ -256,7 +264,7 @@ class Annotators:
         if kind == "canny":
             out = det(Image.fromarray(img), low_threshold=100, high_threshold=200,
                       detect_resolution=res, image_resolution=res)
-        elif kind == "softedge":
+        elif kind in ("softedge", "hed"):
             out = det(Image.fromarray(img), detect_resolution=res, image_resolution=res, safe=True)
         else:
             out = det(Image.fromarray(img), detect_resolution=res, image_resolution=res)
@@ -330,6 +338,45 @@ def load_union(path: str, dtype):
     return net.eval()
 
 
+# Samplers: diffusers class + fixed kwargs, and the noise schedules each supports (first = its default).
+SAMPLERS = {
+    "dpmpp_2m":     ("DPMSolverMultistepScheduler", {}, ("karras", "normal", "exponential", "beta", "trailing")),
+    "dpmpp_2m_sde": ("DPMSolverMultistepScheduler", {"algorithm_type": "sde-dpmsolver++"},
+                     ("karras", "normal", "exponential", "beta", "trailing")),
+    "euler":        ("EulerDiscreteScheduler", {}, ("karras", "normal", "exponential", "beta", "trailing")),
+    "euler_a":      ("EulerAncestralDiscreteScheduler", {}, ("normal", "trailing")),
+    "unipc":        ("UniPCMultistepScheduler", {}, ("karras", "normal", "exponential", "beta", "trailing")),
+    "ddim":         ("DDIMScheduler", {}, ("normal", "trailing")),
+    "heun":         ("HeunDiscreteScheduler", {}, ("karras", "normal", "exponential", "beta", "trailing")),
+    "lcm":          ("LCMScheduler", {}, ("normal", "trailing")),
+}
+SCHEDULE_KW = {"karras": {"use_karras_sigmas": True}, "exponential": {"use_exponential_sigmas": True},
+               "beta": {"use_beta_sigmas": True}, "trailing": {"timestep_spacing": "trailing"}, "normal": {}}
+
+
+def make_scheduler(base_config: dict, sampler: str, schedule: str):
+    """A fresh scheduler for this render from the model's own config (so v-prediction etc. carry over);
+    swapping it never reloads the model. An unknown sampler falls back to DPM++ 2M, an unsupported
+    schedule to the sampler's first."""
+    import diffusers
+    cls, fixed, schedules = SAMPLERS.get(sampler, SAMPLERS["dpmpp_2m"])
+    kw = SCHEDULE_KW[schedule if schedule in schedules else schedules[0]]
+    return getattr(diffusers, cls).from_config(base_config, **fixed, **kw)
+
+
+def fetch_missing(job: RenderJob, log) -> None:
+    """Models that download on first use (DWARP installs without them): a ControlNet with a `repo` and no
+    file yet is fetched into its folder once, then it's just there."""
+    for c in job.controlnets:
+        p = Path(c.path)
+        if c.repo and not p.is_file():
+            from huggingface_hub import hf_hub_download
+            log(f"downloading {p.name} from {c.repo} (first use, once)…")
+            t = time.time()
+            hf_hub_download(c.repo, p.name, local_dir=str(p.parent))
+            log(f"downloaded {p.name} ({p.stat().st_size / 1e6:.0f} MB) in {time.time() - t:.0f}s")
+
+
 def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     from diffusers import ControlNetModel, DPMSolverMultistepScheduler
 
@@ -338,14 +385,18 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     # disable_mmap: memory-mapping multi-GB checkpoints crashes the process on Windows with an
     # access violation (seen with 7 GB SDXL files on a busy HDD); a plain read into RAM doesn't.
     nets = [load_union(paths[0], dtype)] if union else \
-        [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True) for c in job.controlnets]
+        [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True,
+                                          # SD 2.1 nets: diffusers would guess an SD 1.5 layout; thibaud's
+                                          # diffusers repo carries the 2.1 one (same for all his nets)
+                                          **({"config": "thibaud/controlnet-sd21-depth-diffusers"} if job.family == "sd2" else {}))
+         for c in job.controlnets]
     import diffusers
     # No ControlNets = plain img2img: lighter and faster, structure comes from the flow warp alone.
     name = "StableDiffusionXLControlNetUnionImg2ImgPipeline" if union else \
            {("sdxl", True): "StableDiffusionXLControlNetImg2ImgPipeline",
             ("sdxl", False): "StableDiffusionXLImg2ImgPipeline",
             ("sd15", True): "StableDiffusionControlNetImg2ImgPipeline",
-            ("sd15", False): "StableDiffusionImg2ImgPipeline"}[(job.family, bool(nets))]
+            ("sd15", False): "StableDiffusionImg2ImgPipeline"}[("sdxl" if job.family == "sdxl" else "sd15", bool(nets))]
     Pipe = getattr(diffusers, name)
     kwargs = dict(torch_dtype=dtype, disable_mmap=True)
     if nets:
@@ -354,8 +405,24 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
         kwargs.update(safety_checker=None, requires_safety_checker=False)
     elif is_ssd1b(job.checkpoint):
         kwargs["unet"] = load_ssd1b_unet(job.checkpoint, dtype)
-    pipe = Pipe.from_single_file(job.checkpoint, **kwargs)
-    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
+    source = job.checkpoint
+    if job.family == "sd2":
+        from models import converted_path, ckpt_to_safetensors, sd2_prediction
+        # Stability took its SD 2.1 repos off the Hub: the architecture configs come from the community
+        # mirror (512 base / 768-v). Old SD 2 .ckpt pickles fail diffusers' strict loader, so a .ckpt is
+        # converted once to fp16 safetensors under models/converted.
+        v = sd2_prediction(Path(job.checkpoint)) == "v_prediction"
+        kwargs["config"] = "sd2-community/stable-diffusion-2-1" if v else "sd2-community/stable-diffusion-2-1-base"
+        if job.checkpoint.lower().endswith(".ckpt"):
+            conv = converted_path(Path(job.checkpoint), Path(__file__).resolve().parents[1] / "models" / "converted")
+            source = str(conv if conv.is_file() else ckpt_to_safetensors(Path(job.checkpoint), conv))
+    pipe = Pipe.from_single_file(source, **kwargs)
+    extra = {}
+    if job.family == "sd2":                     # 768 models predict v, 512 base models noise (models.py)
+        from models import sd2_prediction
+        extra["prediction_type"] = sd2_prediction(Path(job.checkpoint))
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True, **extra)
+    pipe._dwarp_scheduler_config = dict(pipe.scheduler.config)   # make_scheduler starts from this each render
     pipe.set_progress_bar_config(disable=True)
     if job.family != "sdxl":
         pipe.to(device)
@@ -372,8 +439,70 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     return pipe
 
 
-def encode_prompts(pipe, job: RenderJob, device, prompts: list[str]) -> list[dict]:
+EMBED_EXTS = (".pt", ".safetensors", ".bin")
+
+
+def embedding_files(dirs) -> dict[str, Path]:
+    """Embedding name (the file name, as typed in a prompt) -> file, first folder wins."""
+    found: dict[str, Path] = {}
+    for d in dirs:
+        d = Path(d)
+        if d.is_dir():
+            for f in sorted(d.rglob("*")):
+                if f.suffix.lower() in EMBED_EXTS and f.stem not in found:
+                    found[f.stem] = f
+    return found
+
+
+def embedding_family(f: Path) -> str | None:
+    """What an embedding was trained for, from its vector width: 768 = SD 1.5, 1024 = SD 2.x, clip_g /
+    clip_l pairs = SDXL. None if unreadable. Only the tensors' shapes matter; files are small."""
+    try:
+        if f.suffix.lower() == ".safetensors":
+            from safetensors import safe_open
+            with safe_open(str(f), "pt") as st:
+                keys = list(st.keys())
+                if any("clip_g" in k for k in keys):
+                    return "sdxl"
+                widths = {st.get_slice(k).get_shape()[-1] for k in keys}
+        else:
+            d = torch.load(str(f), map_location="cpu", weights_only=True)
+            d = d.get("string_to_param", d) if isinstance(d, dict) else {}
+            widths = {v.shape[-1] for v in d.values() if hasattr(v, "shape")}
+    except Exception:
+        return None
+    return "sd15" if widths == {768} else "sd2" if widths == {1024} else None
+
+
+def load_embeddings(pipe, job: RenderJob, texts, log) -> None:
+    """Load the embeddings named in these prompts into the pipeline's text encoder (once per loaded
+    pipeline). A name matches as a whole word: `charcoalstyle-1000`, not `charcoalstyle-100` inside it."""
+    files = embedding_files(job.embeddings_dir)    # a small folder: rescanned, so new ones show up
+    if not files:
+        return
+    text = "\n".join(t for t in texts if t)
+    named = [n for n in files if re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", text)]
+    if not named:
+        return
+    if job.family == "sdxl":
+        log(f"embeddings {named} are for SD 1.5 / SD 2.x — ignored with SDXL")
+        return
+    done = pipe.__dict__.setdefault("_dwarp_embeddings", set())
+    for n in named:
+        if n in done:
+            continue
+        try:
+            pipe.load_textual_inversion(str(files[n]), token=n)
+            done.add(n)
+            log(f"embedding {n} loaded")
+        except Exception as e:                  # an SDXL / broken file: say so, keep rendering
+            done.add(n)
+            log(f"embedding {n} skipped: {str(e).splitlines()[0][:120]}")
+
+
+def encode_prompts(pipe, job: RenderJob, device, prompts: list[str], log=lambda m: None) -> list[dict]:
     """Encode each prompt once per job. SDXL's text encoders visit the GPU just for this."""
+    load_embeddings(pipe, job, [*prompts, job.negative], log)
     sdxl = job.family == "sdxl"
     if sdxl:
         pipe.text_encoder.to(device)
@@ -457,11 +586,14 @@ class DiffDiffusion:
         finally:
             del sch.add_noise
 
-    def _convert(self, *a, **k):
-        x0 = self._orig_convert(*a, **k)
+    def _init_amount(self):
         if self.held is None:                   # first step: everything below amount 1 is held
             self.amount = F.interpolate(self.amount_px.float(), self.orig.shape[-2:], mode="area").to(self.orig)
             self.held = self.was_held = self.amount < 1
+
+    def _convert(self, *a, **k):
+        x0 = self._orig_convert(*a, **k)
+        self._init_amount()
         hist = getattr(self.pipe.scheduler, "model_outputs", None)
         released = self.was_held & ~self.held
         if hist and hist[-1] is not None and released.any():
@@ -473,20 +605,35 @@ class DiffDiffusion:
 
     def __enter__(self):
         sch = self.pipe.scheduler
-        self._orig_prepare, self._orig_convert = self.pipe.prepare_latents, sch.convert_model_output
-        self.pipe.prepare_latents, sch.convert_model_output = self._prepare_latents, self._convert
+        self._orig_prepare = self.pipe.prepare_latents
+        self.pipe.prepare_latents = self._prepare_latents
+        # multistep solvers (DPM++, UniPC) predict x0 through convert_model_output: pin held pixels there
+        # too; Euler, DDIM, Heun, LCM have no such step and rely on the per-step holding alone
+        self.hooked = hasattr(sch, "convert_model_output")
+        if self.hooked:
+            self._orig_convert = sch.convert_model_output
+            sch.convert_model_output = self._convert
         return self
 
     def __exit__(self, *exc):
         del self.pipe.prepare_latents           # back to the class methods
-        del self.pipe.scheduler.convert_model_output
+        if self.hooked:
+            del self.pipe.scheduler.convert_model_output
 
     def __call__(self, pipe, i, t, kw):
         # After step i the scheduler sits at step i+1; add_noise uses that level (sigma 0 at the end).
         n, k = pipe.num_timesteps, i + 1
+        self._init_amount()
         self.held = self.amount < 1 - k / n
         if self.held.any():
-            ref = pipe.scheduler.add_noise(self.orig, self.noise, t.reshape(1))
+            sch = pipe.scheduler
+            if getattr(sch, "step_index", None) is None:
+                # DDIM / LCM noise to the timestep they're given, not their own step: hand them the next one
+                ts = sch.timesteps
+                at = (ts == t).nonzero()
+                nxt = ts[at[0, 0] + 1] if len(at) and at[0, 0] + 1 < len(ts) else ts[-1]
+                t = nxt
+            ref = sch.add_noise(self.orig, self.noise, t.reshape(1))
             kw["latents"] = torch.where(self.held, ref, kw["latents"])
         return kw
 
@@ -530,7 +677,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
 
     progress("loading", 0, total, "loading models")
+    fetch_missing(job, log)
     pipe = cached_pipeline(job, device, log)
+    pipe.scheduler = make_scheduler(pipe._dwarp_scheduler_config, job.sampler, job.schedule)
+    log(f"sampler {job.sampler}, schedule {job.schedule} ({type(pipe.scheduler).__name__})")
     if total > 1 and not job.fresh and "flow" not in _CACHE:
         _CACHE["flow"] = Flow(device)
     flow = _CACHE.get("flow")
@@ -545,9 +695,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     def embeds_for(ks):
         new = list(dict.fromkeys(p for _, p in ks if p not in encoded))
         if new:
-            encoded.update(zip(new, encode_prompts(pipe, job, device, new)))
+            encoded.update(zip(new, encode_prompts(pipe, job, device, new, log)))
         return [encoded[p] for _, p in ks]
 
+    load_embeddings(pipe, job, [p for _, p in keys] + [job.prompt, job.negative], log)   # the plain-text path too
     embeds = embeds_for(keys) if job.family == "sdxl" or len(keys) > 1 else None
     if len(keys) > 1:
         log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {blend}")

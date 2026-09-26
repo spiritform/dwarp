@@ -36,6 +36,44 @@
         }
       }
     },
+    "sd2": {
+      "label": "SD 2.1",
+      "model_version": "sd21",
+      "sizes": [
+        512,
+        768,
+        1024
+      ],
+      "default_size": 768,
+      "test_size": 512,
+      "ref_size": 768,
+      "spf": 2.5,
+      "default_checkpoint": "768-v-ema.ckpt",
+      "controlnets": {
+        "depth": {
+          "kind": "depth",
+          "hold": [
+            0.3,
+            1.0
+          ],
+          "start": 0.0,
+          "end": 1.0,
+          "file": "control_v11p_sd21_depth.safetensors",
+          "repo": "thibaud/controlnet-sd21"
+        },
+        "hed": {
+          "kind": "hed",
+          "hold": [
+            0.15,
+            1.0
+          ],
+          "start": 0.0,
+          "end": 0.7,
+          "file": "control_v11p_sd21_hed.safetensors",
+          "repo": "thibaud/controlnet-sd21"
+        }
+      }
+    },
     "sdxl": {
       "label": "SDXL",
       "model_version": "control_multi_sdxl",

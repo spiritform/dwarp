@@ -154,6 +154,11 @@
   .invert:hover { background: #3c3b43; }
   .invert.on { background: rgba(255,106,61,.22); color: var(--text); }
   #srcMixBox[hidden] { display: none; }
+  .embrow { display: flex; gap: 6px; }
+  .embrow select.model { flex: 1; min-width: 0; }
+  .embrow #embedVer { flex: none; width: 92px; }
+  .embrow #embedVer[hidden] { display: none; }
+  #cnSel[hidden] { display: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -174,6 +179,9 @@
   .seed button.on { background: rgba(255,106,61,.16); }
   .seg button { background: var(--panel-2); color: var(--dim); border: 0; padding: 7px 0; cursor: pointer; }
   .seg button.on { background: var(--line); color: var(--text); }
+  /* the big switches (model family, Warp / Boil) stand out: the picked one is white with dark text */
+  #mode button.on, #frameMode button.on { background: #ecebef; color: #16161a; font-weight: 600; }
+  #gTabs button.on { background: #a9a8b0; color: #16161a; }   /* a step down: a panel tab, not a mode */
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 0; }
@@ -229,7 +237,8 @@
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
   .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
   .scrub button { background: var(--panel-2); border: 0; color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
-  .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+  .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right;
+                white-space: nowrap; flex: none; min-width: 128px; }   /* one line, fixed room: the bar never jumps */
   .scrub span b { color: var(--dim); font-weight: 600; margin-right: 8px; }   /* the clip time, as on the keyframe lane */
   .stage-foot { display: flex; gap: 8px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
                 background: var(--panel); }
@@ -300,7 +309,8 @@
   /* ---------- runs strip ---------- */
   footer { grid-column: 2; background: var(--panel); padding: 10px 18px; min-width: 0; }
   footer .label { margin-bottom: 6px; }
-  .runs { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; min-height: 104px; }
+  /* the selection ring sits outside each thumbnail: room on every side so the scroller doesn't clip it */
+  .runs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 3px; margin: -4px -4px 0; min-height: 104px; }
   .runs .empty { color: var(--faint); font-size: 12px; align-self: center; }
   .run { flex: none; width: 124px; cursor: pointer; }
   .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
@@ -355,9 +365,13 @@
   </section>
 
   <section>
-    <div class="seg mode" id="mode" style="grid-template-columns:1fr 1fr"></div>
+    <div class="seg mode" id="mode"></div>
     <div class="sublabel">Model</div>
     <select class="model" id="model" title="Checkpoint"></select>
+    <div class="pair" style="margin-top:4px">
+      <div><div class="sublabel">Sampler</div><select class="model" id="sampler" title="How each step moves toward the image"></select></div>
+      <div><div class="sublabel">Schedule</div><select class="model" id="schedule" title="How the noise levels are spaced across the steps"></select></div>
+    </div>
     <div class="pair" style="margin-top:12px">
       <div class="slider">
         <div class="slider-head"><b>Steps</b><span id="stepsV"></span></div>
@@ -367,6 +381,11 @@
         <div class="slider-head"><b>CFG</b><span id="cfgV"></span></div>
         <input type="range" id="cfg" min="1" max="12" step="0.5">
       </div>
+    </div>
+    <div class="sublabel">Embedding</div>
+    <div class="embrow">
+      <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
+      <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
     </div>
     <div class="sublabel">Style</div>
     <select class="model" id="presets" title="Style preset"></select>
@@ -390,6 +409,8 @@
     </div>
     <div class="gtabs" id="gTabs"><button data-t="cn" title="ControlNet: hold the source's shapes">ControlNet</button><button data-t="dd" title="DepthDiff: the source's luma or depth decides where the style repaints">DepthDiff</button></div>
     <div id="cnPane">
+      <div class="preset-model" id="cnFetch" hidden></div>
+      <div class="preset-model" id="cnNone" hidden>No ControlNets for this mode — the warp and DepthDiff keep the structure.</div>
       <div class="seg cnsel" id="cnSel"><button data-c="off">off</button><button data-c="depth">depth</button><button data-c="both">depth + edge</button></div>
       <div class="slider" id="holdBox">
         <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
@@ -480,9 +501,8 @@
       <a id="liveBtn" title="Live: while a Preview / Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
-    <a id="mp4Link" class="hide" title="Download the run's mp4">↓ download mp4</a>
+    <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
     <a id="enhanceLink" class="hide">enhance</a>
-    <a id="makeMp4" class="hide">make mp4</a>
     <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
@@ -519,6 +539,29 @@ const LS_KEY = 'dwarp.state.v1', OLD_LS_KEY = 'warpbox.state.v1';
 const TEST = { frames: 5, nth: 2 };   // test size comes from the mode
 
 let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
+var EMBEDS = [];                           // [{name, family}] from the embeddings folder
+// Samplers and the schedules each supports (first = its default) — mirrors SAMPLERS in engine/warp.py
+const SAMPLERS = {
+  dpmpp_2m:     ['DPM++ 2M', 'The default: sharp and steady', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
+  dpmpp_2m_sde: ['DPM++ 2M SDE', 'Adds fresh noise each step: more detail and texture, livelier over frames', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
+  euler:        ['Euler', 'Simple and smooth; a touch softer', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
+  euler_a:      ['Euler a', 'Ancestral: fresh noise each step, loose and painterly, changes more between frames', ['normal', 'trailing']],
+  unipc:        ['UniPC', 'Good results in few steps', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
+  ddim:         ['DDIM', 'The classic; very stable', ['normal', 'trailing']],
+  heun:         ['Heun', 'Two model passes per step: finer, about twice as slow', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
+  lcm:          ['LCM', 'Only for LCM checkpoints (few steps, low CFG)', ['normal', 'trailing']],
+};
+const SCHEDULES = { karras: 'Karras', normal: 'Normal', exponential: 'Exponential', beta: 'Beta', trailing: 'Trailing' };
+function renderSampler() {
+  const sm = SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', ok = SAMPLERS[sm][2];
+  if (!ok.includes(state.schedule)) state.schedule = ok[0];
+  $('sampler').innerHTML = Object.entries(SAMPLERS).map(([k, [label, tip]]) => `<option value="${k}" title="${tip}">${label}</option>`).join('');
+  $('sampler').value = sm; $('sampler').title = SAMPLERS[sm][1];
+  $('schedule').innerHTML = ok.map(k => `<option value="${k}">${SCHEDULES[k]}</option>`).join('');
+  $('schedule').value = state.schedule;
+}
+$('sampler').onchange = e => { state.sampler = e.target.value; renderControls(); save(); };
+$('schedule').onchange = e => { state.schedule = e.target.value; save(); };
 let state = {
   clip: null,                  // { path, name, source: {width,height,fps,frames,duration} }
   range: [0, 1],               // fractions of the clip
@@ -878,7 +921,7 @@ function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|
 function checkpointPath() {
   const pick = state.ckpt?.[state.mode];
   if (pick) return pick;
-  const want = state.mode === 'sdxl' ? modeCfg().default_checkpoint : currentPreset().checkpoint;
+  const want = state.mode === 'sd15' ? currentPreset().checkpoint : modeCfg().default_checkpoint;
   // Defaults are file names, found in any subfolder; if missing, fall back to the first of the family.
   const have = CHECKPOINTS.filter(c => c.family === state.mode);
   const base = want.split('/').pop().toLowerCase();
@@ -887,6 +930,7 @@ function checkpointPath() {
 }
 const isFast = path => /lightning|turbo|hyper|lcm|flash/i.test(path.split('/').pop());
 function renderMode() {
+  $('mode').style.gridTemplateColumns = `repeat(${Object.keys(MODES).length}, 1fr)`;
   $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
     `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}">${m.label}</button>`).join('');
   const list = CHECKPOINTS.filter(c => c.family === state.mode);
@@ -911,8 +955,32 @@ $('mode').onclick = e => {
 };
 $('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModelDefaults(); renderControls(); save(); };
 
+const embedBase = n => n.replace(/-\d+$/, '');
+const embedStep = n => (n.match(/-(\d+)$/) || [])[1] || '';
+function renderEmbed() {
+  const sd15 = state.mode !== 'sdxl', list = EMBEDS.filter(e => e.family === state.mode);   // sd15 / sd2 embeddings
+  const bases = [...new Set(list.map(e => embedBase(e.name)))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const cur = embedOn(), base = cur ? embedBase(cur) : '';
+  $('embed').disabled = !sd15 || !bases.length;
+  $('embed').innerHTML = !sd15 ? '<option value="">SD 1.5 / 2.1 only for now</option>'
+    : (bases.length ? '<option value="">none</option>' : '<option value="">none — add some to models/embeddings</option>') +
+      bases.map(b => `<option value="${b}">${b}</option>`).join('');
+  $('embed').value = sd15 ? base : '';
+  const vers = list.filter(e => embedBase(e.name) === base)
+    .sort((a, b) => (+embedStep(b.name) || Infinity) - (+embedStep(a.name) || Infinity));   // final first, then newest step
+  $('embedVer').hidden = !sd15 || vers.length < 2;
+  $('embedVer').innerHTML = vers.map(e => `<option value="${e.name}">${embedStep(e.name) ? `step ${embedStep(e.name)}` : 'final'}</option>`).join('');
+  $('embedVer').value = cur;
+}
+$('embed').onchange = e => {
+  const base = e.target.value, list = EMBEDS.filter(x => x.family === state.mode && embedBase(x.name) === base);
+  // a style picks its final file, else its latest training step
+  const pick = list.find(x => x.name === base) || list.sort((a, b) => +embedStep(b.name) - +embedStep(a.name))[0];
+  state.embed = pick ? pick.name : ''; renderControls(); save();
+};
+$('embedVer').onchange = e => { state.embed = e.target.value; renderControls(); save(); };
 function renderControls() {
-  renderMode();
+  renderMode(); renderEmbed(); renderSampler();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
@@ -925,6 +993,12 @@ function renderControls() {
   // A mode with a single ControlNet has no "depth + edge".
   const nets = Object.keys(modeCfg().controlnets || {}).length;
   if (nets < 2 && state.cn[state.mode] === 'both') state.cn[state.mode] = 'depth';
+  if (!nets) state.cn[state.mode] = 'off';
+  $('cnNone').hidden = nets > 0; $('cnSel').hidden = !nets;
+  // nets that download on first use (DWARP installs without them): say so while they're missing
+  const toFetch = Object.values(modeCfg().controlnets || {}).filter(c => c.repo && !c.have);
+  $('cnFetch').hidden = !toFetch.length || (state.cn[state.mode] || 'both') === 'off';
+  $('cnFetch').textContent = `${toFetch.length === 1 ? 'This ControlNet downloads' : 'These ControlNets download'} on the first render that uses ${toFetch.length === 1 ? 'it' : 'them'} (~${(toFetch.length * 0.73).toFixed(1)} GB, once).`;
   const cn = state.cn[state.mode] || 'both';
   $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 2 : 3}, 1fr)`;
   $('cnSel').querySelector('[data-c="both"]').hidden = nets < 2;
@@ -1040,7 +1114,7 @@ function showClip() {
   ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
   $('footInfo').textContent = `${state.clip.name} · source`;
-  ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
   updateEst();                             // Single Frame's tooltip names the frame it will render
@@ -1116,7 +1190,7 @@ function spf(size) {
 }
 function updateEst() {
   if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
-  $('frameBtn').title = `${clipMode() ? 'the frame under the transport' : "the range's first frame"} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
+  $('frameBtn').title = `${playheadFrame() != null ? 'the frame under the playhead' : "the range's first frame"} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
   const [fa, fb] = rangeFrames();
   const on = state.onN || 1, testStep = Math.max(TEST.nth, on);
   const testN = Math.min(TEST.frames, Math.floor((fb - fa) / testStep) + 1);
@@ -1127,7 +1201,13 @@ function updateEst() {
 }
 
 // ---------------------------------------------------------------- config mapping
-function withLook(text) { return [text.trim(), currentPreset().prompt].filter(Boolean).join(', ') || 'a painting'; }
+// The picked embedding (SD 1.5): a name with "neg" in it (EasyNegative…) belongs in the negative prompt
+const embedOn = () => EMBEDS.some(e => e.name === state.embed && e.family === state.mode) ? state.embed : '';
+const embedNeg = () => /neg/i.test(embedOn());
+function withLook(text) {
+  const emb = embedNeg() ? '' : embedOn();
+  return [text.trim(), emb, currentPreset().prompt].filter(Boolean).join(', ') || 'a painting';
+}
 async function buildConfig(kind) {
   const p = currentPreset(), m = modeCfg();
   // kinds: frame (Single Frame) | test (Preview) | render. Frames 2s / 3s draw every 2nd / 3rd frame and hold it
@@ -1137,9 +1217,10 @@ async function buildConfig(kind) {
   const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
   const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
   const [fa, fb] = rangeFrames();
-  // Single Frame in clip view renders the frame under the transport (with the prompt keyframe in
-  // effect there); otherwise it's the range's first frame
-  let start = kind === 'frame' && clipMode() ? clipFrame : Math.floor(fa / nth);
+  // Single Frame renders the frame under the playhead (with the prompt keyframe in effect there): the
+  // clip's in Source / Diff, the run frame's source frame in Output / Split; else the range's first frame
+  const here = kind === 'frame' ? playheadFrame() : null;
+  let start = here ?? Math.floor(fa / nth);
   let end = state.range[1] >= 1 ? probe.max_frame : Math.floor(fb / nth);
   if (kind === 'test') end = Math.min(end, start + TEST.frames - 1);
   if (kind === 'frame') end = start;
@@ -1152,7 +1233,7 @@ async function buildConfig(kind) {
   const cnSel = state.cn[state.mode] || 'both';
   const controlnets = Object.values(m.controlnets || {}).filter(c =>
     cnSel === 'both' || (cnSel === 'depth' && c.kind === 'depth')).map(c => ({
-    kind: c.kind, path: c.path, start: c.start, end: c.end,
+    kind: c.kind, path: c.path, start: c.start, end: c.end, repo: c.repo || '',
     weight: +(c.hold[0] + (c.hold[1] - c.hold[0]) * h).toFixed(3),
   }));
   const job = {
@@ -1161,7 +1242,7 @@ async function buildConfig(kind) {
     family: state.mode,
     prompt: withLook(state.prompt),
     ...promptTravel(kind),
-    negative: ['bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
+    negative: [embedNeg() ? embedOn() : '', 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: probe.render.width, height: probe.render.height,
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // first frame; later frames use 0.65x (engine default)
@@ -1169,6 +1250,7 @@ async function buildConfig(kind) {
     fresh: !!state.fresh,                    // Boil: no warp, full Denoise on every frame
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
+    sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets,
@@ -1223,23 +1305,25 @@ $('logBtn').onclick = () => toggleLog();
 // A short guide, one topic at a time.
 var helpTab = '';
 const HELP = {
-  basics: ['Basics', () => `
+  basics: ['Intro', () => `
     <h3>How DWARP works</h3>
-    <p>DWARP restyles a video with Stable Diffusion, one frame after another. Each frame is repainted from the
-       source; after the first, it also starts from the <b>previous result, moved along the footage's motion</b>
-       (optical flow), so the style sticks to things instead of boiling. Where the flow can't be trusted
-       (things appearing, fast motion) that frame is painted fresh.</p>
-    <p>This flow-warp technique was pioneered by Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)
-       in <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>.<br>
-       DWARP is an independent re-implementation of the idea, combining a similar approach with differential diffusion
-       using the source's luma / depth maps — see <i>Credits</i>.</p>
+    <p>DWARP restyles a video with Stable Diffusion, one frame after another, in one of two modes (the switch under
+       Denoise; more in <i>Guidance</i>).</p>
+    <h4>Warp</h4>
+    <p>The default. Each frame starts from the <b>previous result, moved along the footage's motion</b> (optical flow),
+       so brushstrokes stick to the things they belong to. Where the flow can't be trusted (things appearing, fast
+       motion), those areas start from the source instead. Warp is based on
+       <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a> by Alex Spirin
+       (<a href="https://github.com/Sxela" target="_blank">Sxela</a>) — see <i>Credits</i>.</p>
+    <h4>Boil</h4>
+    <p>Every frame is repainted fresh from its source, so the strokes shimmer and redraw like hand-painted animation.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
        frame's <b>luma</b> or <b>depth</b> into a map that sets Denoise <i>per pixel</i>
        (<a href="https://differential-diffusion.github.io/" target="_blank">differential diffusion</a>): white repaints,
        black keeps the source. Keep a face photographic and dissolve the room into paint, or paint only the shadows —
-       and see the map live in the <b>Diff</b> tab before you render. How to set it up: <i>Guidance</i>.</p>
+       and see the map live in the <b>Diff</b> tab before you render.</p>
     <h4>The loop</h4>
     <ol>
       <li><b>Drop a video</b> anywhere in the window.</li>
@@ -1266,11 +1350,14 @@ const HELP = {
        the image saves whatever tab is shown. <b>log</b> shows the renderer's output.</p>`],
 
   modes: ['Modes', () => `
-    <h3>SD 1.5 or SDXL</h3>
+    <h3>SD 1.5, SD 2.1 or SDXL</h3>
     <table>
       <tr><th></th><th>Good for</th><th>Trade-off</th></tr>
       <tr><td><b>SD 1.5</b></td><td>Most looks and styles; quick to try. Each look brings a model tuned for it.
           512 px default.</td><td>Softer detail; faces at a distance can go mushy.</td></tr>
+      <tr><td><b>SD 2.1</b></td><td>Its own look, and embeddings trained on SD 2.x. 768 px default. Reads the
+          original 768-v / 512 checkpoints (a .ckpt is converted once to a faster file in models/converted).</td>
+          <td>Its ControlNets (depth, HED edges) are community-trained, by thibaud.</td></tr>
       <tr><td><b>SDXL</b></td><td>More detail and cleaner faces; 1024 px default. Defaults to SDXL Flash Mini,
           a fast distilled model (few steps, low CFG).</td><td>Slower per frame and needs more VRAM. Looks add their style words but keep the SDXL model.</td></tr>
     </table>
@@ -1278,6 +1365,20 @@ const HELP = {
     <p>The model menu lists the checkpoints of that family. Names with ⚡ are distilled (Lightning, Turbo, LCM,
        Flash…): picking one sets few steps and low CFG, which they need — normal models turn noisy there and
        distilled ones burn at normal CFG.</p>
+    <h4>Embeddings</h4>
+    <p>Textual-inversion embeddings from DWARP's own <b>models/embeddings</b> folder — drop in the ones you want, like
+       your own trained styles. Each works with the
+       family it was trained on, so SD 1.5 and SD 2.1 list their own (DWARP reads that from the file). Pick one
+       above Style — and which training step, if you kept several — and its name is added to every prompt, keyframes
+       included. Negative embeddings (a name with "neg", like EasyNegative) go into the negative prompt instead. Typing
+       an embedding's name straight into a prompt works too.</p>
+    <h4>Sampler and Schedule</h4>
+    <p>The <b>sampler</b> is how each step moves toward the image; <b>DPM++ 2M</b> with <b>Karras</b> is a sharp, steady
+       default. <b>Euler a</b> and <b>DPM++ 2M SDE</b> add fresh noise every step — looser and more textured, and they
+       change more from frame to frame (nice with Boil). <b>DDIM</b> is the most stable, <b>Heun</b> finer but about
+       twice as slow, <b>LCM</b> only for LCM checkpoints. The <b>schedule</b> spaces the noise levels: Karras spends
+       more steps on fine detail; <b>Trailing</b> suits few-step (⚡) models. Each sampler lists the schedules it
+       supports.</p>
     <h4>Steps, CFG, Size</h4>
     <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
        is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
@@ -1362,19 +1463,19 @@ const HELP = {
   credits: ['Credits', () => `
     <h3>Credits</h3>
     <p>Based on the work of <b>Alex Spirin (<a href="https://github.com/Sxela" target="_blank">Sxela</a>)</b>, who pioneered this technique with
-       <a href="https://github.com/Sxela/DiscoDiffusion-Warp" target="_blank">DiscoDiffusion-Warp</a>, <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>
-       and <a href="https://github.com/Sxela/VibeWarp" target="_blank">VibeWarp</a> — support it on <a href="https://www.patreon.com/sxela" target="_blank">Patreon</a>.
-       DWARP is an independent re-implementation and contains none of their code.</p>
+       <a href="https://github.com/Sxela/DiscoDiffusion-Warp" target="_blank">DiscoDiffusion-Warp</a> and <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a>.</p>
     <h4>Built on</h4>
     <ul>
       <li><a href="https://github.com/CompVis/stable-diffusion" target="_blank">Stable Diffusion</a>, <a href="https://github.com/lllyasviel/ControlNet" target="_blank">ControlNet</a> (Lvmin Zhang),
           <a href="https://github.com/huggingface/diffusers" target="_blank">diffusers</a>, <a href="https://github.com/huggingface/controlnet_aux" target="_blank">controlnet_aux</a></li>
+      <li><a href="https://huggingface.co/thibaud/controlnet-sd21" target="_blank">SD 2.1 ControlNets</a> (thibaud) — depth and HED edges</li>
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
       <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
           <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
       <li><a href="https://github.com/chaiNNer-org/spandrel" target="_blank">spandrel</a> for loading upscale models</li>
       <li><a href="https://differential-diffusion.github.io/" target="_blank">Differential Diffusion</a> (Levin &amp; Fried); the DepthDiff mask
-          comes from <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a></li>
+          comes from <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> by
+          <a href="https://github.com/spiritform" target="_blank">spiritform</a></li>
     </ul>`],
 };
 function paintHelp() {
@@ -1488,6 +1589,15 @@ function scrubReadout(sec, i, n) {
   $('scrubText').innerHTML = `<b>${sec.toFixed(1)}s</b>${i + 1} / ${n}`;
 }
 const clipSec = f => f / (state.clip?.source.fps || 24);
+// The clip frame under the playhead: Source / Diff scrub the clip itself; a run of this clip maps its
+// frame n back to source frame (frame_start + n) * nth. null when a run of another clip is showing.
+function playheadFrame() {
+  if (!state.clip) return null;
+  if (clipMode()) return clipFrame;
+  const t = runTiming, n = frames[frameIdx];
+  if (!t || n == null || (t.video && t.video !== state.clip.path)) return null;
+  return Math.min(state.clip.source.frames - 1, (t.frame_start + n) * t.nth);
+}
 async function showRun(runId, { follow = false } = {}) {
   let desc;
   try { desc = await api(`/api/runs/${runId}?${runQ()}`); } catch { return; }
@@ -1508,12 +1618,10 @@ async function showRun(runId, { follow = false } = {}) {
   if (!(follow && playing)) paintFrame();
   const r = runsCache.find(r => r.id === runId);
   $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
-  $('mp4Link').classList.toggle('hide', !r?.video_available);
-  if (r?.video_available) {
-    $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r.video_modified}`;
-    $('mp4Link').download = `dwarp_${runId}.mp4`;
-  }
-  $('makeMp4').classList.toggle('hide', !!r?.video_available || !!(job && job.run_id === runId && job.state === 'running'));
+  // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
+  $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
+  $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
+  $('mp4Link').download = `dwarp_${runId}.mp4`;
   $('openFolder').classList.remove('hide'); $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
   if (switched || !follow) renderOutputs(runId);
@@ -1694,26 +1802,35 @@ addEventListener('keydown', e => {
 });
 
 $('openFolder').onclick = () => viewRun && api(`/api/runs/${viewRun}/open`, { method: 'POST' });
-$('makeMp4').onclick = async () => {
+function saveMp4(id) {
+  const a = document.createElement('a');
+  a.href = `/api/runs/${id}/video?${runQ()}&t=${Date.now()}`; a.download = `dwarp_${id}.mp4`; a.click();
+}
+$('mp4Link').onclick = async e => {
+  e.preventDefault();                       // decided below, after a fresh look at the run
   if (!viewRun) return;
-  $('makeMp4').classList.add('hide'); setStatus('assembling mp4…', 'live');
+  const id = viewRun;
+  await refreshRuns();                      // the list may predate the mp4 the render just made
+  if (runsCache.find(x => x.id === id)?.video_available) return saveMp4(id);
+  setStatus('assembling mp4…', 'live');     // none yet: build it, then download
   try {
-    const j = await api(`/api/runs/${viewRun}/video?${runQ()}`, { method: 'POST' });
+    const j = await api(`/api/runs/${id}/video?${runQ()}`, { method: 'POST' });
     const poll = setInterval(async () => {
       const s = await api(`/api/jobs/${j.id}`);
-      if (['completed', 'failed', 'cancelled'].includes(s.state)) {
-        clearInterval(poll);
-        setStatus(s.state === 'completed' ? 'mp4 ready' : 'mp4 failed', s.state === 'completed' ? 'done' : 'bad');
-        await refreshRuns(); showRun(viewRun);
-      }
+      if (!['completed', 'failed', 'cancelled'].includes(s.state)) return;
+      clearInterval(poll);
+      if (s.state !== 'completed') return setStatus('mp4 failed', 'bad');
+      setStatus('mp4 ready', 'done');
+      await refreshRuns();
+      saveMp4(id);
     }, 1000);
-  } catch (e) { setStatus('mp4 failed: ' + e.message, 'bad'); }
+  } catch (err) { setStatus('mp4 failed: ' + err.message, 'bad'); }
 };
 $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'sampler', 'schedule']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -1738,7 +1855,7 @@ async function refreshRuns() {
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
     return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
-      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>${r.video_available ? '' : '<span class="badge">no mp4</span>'}`}</div>
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
@@ -1817,7 +1934,7 @@ function clearStage() {
   stopPlay(); viewRun = null; frames = [];
   $('stage').innerHTML = '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
   $('scrub').hidden = true; $('footInfo').textContent = '';
-  ['mp4Link', 'makeMp4', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }
 $('runs').onclick = e => {
@@ -1843,6 +1960,11 @@ addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA') return;
   if (e.code === 'Delete' && selected.size) deleteRuns([...selected]);
   if (e.code === 'Escape' && selected.size) { selected.clear(); paintSel(); }
+});
+// clicking anywhere off the runs (and off their select / remove bar) drops a selection
+addEventListener('pointerdown', e => {
+  if (!selected.size || pendingAsk || e.target.closest('.run, #selBar')) return;
+  selected.clear(); paintSel();
 });
 
 // ---------------------------------------------------------------- enhance (upscale + RIFE)
@@ -1933,9 +2055,12 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   state.srcMix ??= 0.15;
   state.fresh ??= false;
-  state.onN ??= 1;                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
+  state.onN ??= 1;
+  state.embed ??= '';
+  state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
+  EMBEDS = (await api('/api/embeddings').catch(() => ({ embeddings: [] }))).embeddings;
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
   renderControls(); paintLive();

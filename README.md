@@ -53,8 +53,9 @@ The **Diff** tab above the image shows the map live on the source while you drag
 
 ## Features
 
-- SD 1.5 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers
-- Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, steps, CFG, lockable seed
+- SD 1.5, SD 2.1 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers. SD 2.1 reads the original 768-v / 512 `.ckpt` files (converted once, safely, to fp16 safetensors) and has depth + HED ControlNets
+- **Embeddings**: drop textual-inversion embeddings (your own trained styles too) into `models/embeddings` and pick one above Style, with its training step; DWARP reads which family each was trained for and lists it in that mode
+- Style presets, Denoise (how much it repaints), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, sampler + schedule (DPM++ 2M / SDE, Euler, Euler a, UniPC, DDIM, Heun, LCM; Karras, exponential, beta, trailing), steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
 - **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
@@ -79,7 +80,8 @@ The **Diff** tab above the image shows the map live on the source while you drag
    your models are. Press Enter to use DWARP's own `models` folder, or paste a ComfyUI `models`
    folder to reuse what you already have.
 3. Add models: see **[models/README.md](models/README.md)** for a short list of links. A single
-   SD 1.5 checkpoint is enough to start.
+   SD 1.5 checkpoint is enough to start. The install already brings the depth model DepthDiff uses;
+   the SD 2.1 ControlNets download by themselves the first time a render needs them.
 4. Double-click **`run.bat`**. DWARP opens at http://localhost:8013.
 
 Re-running `install.bat` is safe: finished steps are skipped. Every download is pinned and
@@ -90,6 +92,7 @@ checked against its SHA-256.
 Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pioneered this technique with [DiscoDiffusion-Warp](https://github.com/Sxela/DiscoDiffusion-Warp), [WarpFusion](https://github.com/Sxela/WarpFusion) and [VibeWarp](https://github.com/Sxela/VibeWarp) ([Patreon](https://www.patreon.com/sxela)). DWARP is an independent re-implementation and contains none of their code.
 
 - [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [ControlNet](https://github.com/lllyasviel/ControlNet) (Lvmin Zhang), [diffusers](https://github.com/huggingface/diffusers), [controlnet_aux](https://github.com/huggingface/controlnet_aux)
+- [SD 2.1 ControlNets](https://huggingface.co/thibaud/controlnet-sd21) (thibaud): depth and HED edges
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
 - [spandrel](https://github.com/chaiNNer-org/spandrel) for loading upscale models

@@ -97,7 +97,7 @@ def init_frames(run_id: str) -> dict[int, Path]:
 
 
 # ControlNet hints the engine saved per frame: control/<kind>/NNNNNN.jpg -> layer "control_<kind>"
-CONTROL_LABELS = {"depth": "Depth", "softedge": "Edge", "canny": "Canny", "lineart": "Lineart",
+CONTROL_LABELS = {"depth": "Depth", "softedge": "Edge", "hed": "Edge", "canny": "Canny", "lineart": "Lineart",
                   "diff": "Diff"}      # diff = the DepthDiff per-pixel strength mask
 
 
@@ -147,7 +147,8 @@ def timing(run_id: str) -> dict | None:
         return None
     nth = max(1, int(job.get("nth", 1)))
     src = (((read_meta(run_id).get("ui") or {}).get("clip") or {}).get("source") or {}).get("fps")
-    return {"frame_start": int(job.get("frame_start", 0)), "nth": nth, "fps": float(src or fps(run_id) * nth)}
+    return {"frame_start": int(job.get("frame_start", 0)), "nth": nth, "fps": float(src or fps(run_id) * nth),
+            "video": job.get("video", "")}
 
 
 def describe(run_id: str) -> dict:
