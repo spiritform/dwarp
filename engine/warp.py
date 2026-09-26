@@ -32,7 +32,7 @@ from PIL import Image
 # ------------------------------------------------------------------ job description
 @dataclass
 class ControlSpec:
-    kind: str            # depth | softedge | hed | canny | lineart
+    kind: str            # depth | softedge | hed | canny | lineart | tile (the frame itself: refine / upscale)
     path: str            # ControlNet weights file
     weight: float = 1.0
     start: float = 0.0
@@ -61,6 +61,8 @@ class RenderJob:
     # result moved by a camera (per clip frame; on twos a drawing moves `nth` frames' worth) and
     # repainted at `style`. 0 = video -> video.
     t2v_frames: int = 0
+    init_image: str = ""                 # Image -> Video: frame 1 is this picture repainted at `style`, not
+                                         # the prompt alone; ControlNet / DepthDiff read each frame's start
     cam_zoom: float = 1.01               # scale per frame (>1 pushes in)
     cam_rotate: float = 0.0              # degrees per frame
     cam_x: float = 0.0                   # pan per frame, share of the width (+ = the image drifts right)
@@ -74,6 +76,10 @@ class RenderJob:
     style: float = 0.75                  # img2img strength on the first frame
     style_next: float = -1               # strength on later frames; -1 = 0.65 * style. Lower keeps
                                          # more of the warped previous frame (less boiling)
+    tile: int = 0                        # > 0: frames larger than this are denoised in overlapping tiles of
+                                         # this size (refine / upscale: detail at the scale SD was trained at,
+                                         # VRAM flat whatever the frame size). 0 = whole frame
+    tile_overlap: int = 128
     steps: int = 20
     sampler: str = "dpmpp_2m"            # see SAMPLERS
     schedule: str = "karras"             # karras | normal | exponential | beta | trailing (what the sampler supports)
@@ -145,6 +151,9 @@ def to_image(t: torch.Tensor) -> Image.Image:
 
 
 # ------------------------------------------------------------------ optical flow
+FLOW_MAX = 1024                          # long side RAFT measures at; the flow is scaled back up
+
+
 class Flow:
     """RAFT-large from torchvision. flow(a, b)[p] = where pixel p of a moved to in b."""
 
@@ -156,8 +165,9 @@ class Flow:
     @torch.inference_mode()
     def __call__(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         h, w = a.shape[2:]
-        # RAFT wants dims divisible by 8 and inputs in [-1, 1]
-        H, W = math.ceil(h / 8) * 8, math.ceil(w / 8) * 8
+        # RAFT wants dims divisible by 8 and inputs in [-1, 1]; big frames are measured at FLOW_MAX
+        k = min(1.0, FLOW_MAX / max(h, w))
+        H, W = math.ceil(h * k / 8) * 8, math.ceil(w * k / 8) * 8
         pa = F.interpolate(a, (H, W), mode="bilinear", align_corners=False) * 2 - 1
         pb = F.interpolate(b, (H, W), mode="bilinear", align_corners=False) * 2 - 1
         flow = self.model(pa, pb, num_flow_updates=20)[-1]
@@ -273,6 +283,8 @@ class Annotators:
 
     def __call__(self, kind: str, img: np.ndarray) -> Image.Image:
         h, w = img.shape[:2]
+        if kind == "tile":                       # no detector: the tile net reads the frame as it is
+            return Image.fromarray(img)
         det = self._get(kind)
         res = min(h, w)
         if kind == "canny":
@@ -298,7 +310,7 @@ UNION_CONFIG = dict(
     in_channels=4, layers_per_block=2, mid_block_scale_factor=1, norm_eps=1e-5, norm_num_groups=32,
     projection_class_embeddings_input_dim=2816, resnet_time_scale_shift="default",
     transformer_layers_per_block=[1, 2, 10], use_linear_projection=True, num_control_type=8)
-UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3}
+UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3, "tile": 6}
 
 
 # SSD-1B (Segmind's distilled SDXL; SDXL Flash Mini is built on it): same channels and ControlNet
@@ -426,6 +438,29 @@ def camera_move_3d(img: torch.Tensor, disparity: torch.Tensor, job: RenderJob) -
     return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
 
 
+def tile_spans(length: int, tile: int, overlap: int) -> list[int]:
+    """Start offsets of tiles covering `length`, evenly spread, neighbours sharing >= `overlap`."""
+    if length <= tile:
+        return [0]
+    n = math.ceil((length - overlap) / (tile - overlap))
+    return [round(k * (length - tile) / (n - 1) / 8) * 8 for k in range(n)]
+
+
+def tile_weight(h: int, w: int, y: int, x: int, H: int, W: int, overlap: int, device) -> torch.Tensor:
+    """1x1xhxw feather for a tile at (y, x) in an HxW frame: ramps over `overlap` on inner edges only."""
+    def ramp(n, lo_edge, hi_edge):
+        r = torch.ones(n, device=device)
+        o = min(overlap, n // 2)
+        up = (torch.arange(o, device=device) + 0.5) / o
+        if not lo_edge:
+            r[:o] = up
+        if not hi_edge:
+            r[n - o:] = torch.minimum(r[n - o:], up.flip(0))
+        return r
+    wy, wx = ramp(h, y == 0, y + h >= H), ramp(w, x == 0, x + w >= W)
+    return (wy[:, None] * wx[None, :])[None, None]
+
+
 def fetch_missing(job: RenderJob, log) -> None:
     """Models that download on first use (DWARP installs without them): a ControlNet with a `repo` and no
     file yet is fetched into its folder once, then it's just there."""
@@ -533,6 +568,24 @@ def lora_family(f: Path) -> str | None:
     return None
 
 
+def load_lora(pipe, path: str) -> None:
+    """pipe.load_lora_weights, with one fix: transformers 5 dropped CLIPTextModel's `text_model` level
+    (CLIPTextModelWithProjection, SDXL's second encoder, kept it),
+    but diffusers still names text-encoder LoRA layers `text_model.encoder...`, so they matched nothing
+    (IndexError in get_peft_kwargs). Renamed here before loading."""
+    sd, alphas = pipe.lora_state_dict(path)
+    for name in ("text_encoder", "text_encoder_2"):    # CLIPTextModel lost it; ...WithProjection kept it
+        te = getattr(pipe, name, None)
+        if te is not None and not hasattr(te, "text_model"):
+            fix = lambda d, n=name: {k.replace(f"{n}.text_model.", f"{n}."): v for k, v in d.items()}
+            sd, alphas = fix(sd), alphas and fix(alphas)
+    pipe.load_lora_into_unet(sd, alphas, pipe.unet, adapter_name="style", _pipeline=pipe)
+    for name in ("text_encoder", "text_encoder_2"):
+        te = getattr(pipe, name, None)
+        if te is not None and any(k.startswith(name + ".") for k in sd):
+            pipe.load_lora_into_text_encoder(sd, alphas, te, prefix=name, adapter_name="style", _pipeline=pipe)
+
+
 def apply_lora(pipe, job: RenderJob, log) -> None:
     """The job's LoRA in the loaded pipeline, swapped without reloading the model: the old one unloaded,
     the new one loaded once, its strength set every render."""
@@ -542,7 +595,12 @@ def apply_lora(pipe, job: RenderJob, log) -> None:
             pipe.unload_lora_weights()
         if job.lora:
             t = time.time()
-            pipe.load_lora_weights(job.lora, adapter_name="style")
+            try:
+                load_lora(pipe, job.lora)
+            except Exception:                   # a half-loaded LoRA would block the next one's name
+                pipe.unload_lora_weights()
+                pipe._dwarp_lora = ""
+                raise
             log(f"LoRA {Path(job.lora).stem} loaded in {time.time() - t:.1f}s")
         pipe._dwarp_lora = job.lora
     if job.lora:
@@ -773,7 +831,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if t2v:                                     # no clip: the frames come from the prompt and the camera
         src_paths = [None] * job.t2v_frames
         total = job.t2v_frames
-        log(f"text -> video: {total} frames at {job.width}x{job.height}, {'3D ' if job.cam_3d else ''}camera zoom {job.cam_zoom} rotate "
+        log(f"{'image' if job.init_image else 'text'} -> video: {total} frames at {job.width}x{job.height}, {'3D ' if job.cam_3d else ''}camera zoom {job.cam_zoom} rotate "
             f"{job.cam_rotate} pan {job.cam_x}/{job.cam_y}" + (f" turn {job.cam_yaw} tilt {job.cam_pitch}" if job.cam_3d else "")
             + " per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
     else:
@@ -816,7 +874,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     written, prev_src, prev_out, first_out = [], None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
     if t2v:
-        log(f"frame 1 from the prompt, then denoise {job.style} on the moved previous frame; colour match {job.color_match}")
+        log(f"frame 1 from {'the image ' + Path(job.init_image).name if job.init_image else 'the prompt'}, then denoise {job.style} on the moved previous frame; colour match {job.color_match}")
     elif job.fresh:
         log(f"boil: every frame repainted from its source (no warp), denoise {job.style}; colour match {job.color_match}")
     else:
@@ -843,7 +901,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             last_cond = None
         tf = time.time()
         if t2v:                                 # the "source" is where this frame starts: blank, then the camera
-            if prev_out is None:
+            if prev_out is None and job.init_image:     # Image -> Video: the picture, at render size
+                pic = Image.open(job.init_image).convert("RGB").resize((job.width, job.height), Image.LANCZOS)
+                src = to_tensor(np.asarray(pic), device)
+            elif prev_out is None:
                 src = torch.full((1, 3, job.height, job.width), 0.5, device=device)
             elif job.cam_3d:                    # the previous frame's own depth carries it into space
                 prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
@@ -900,35 +961,59 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if len(keys) > 1 and cond != last_cond and not cond.endswith("%"):
                 log(f"frame {i + 1}: {cond}")
             last_cond = cond
-        kw = dict(**text, image=to_image(init),
-                  # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                  strength=(1.0 if t2v and i == 0 else    # t2v frame 1: from the prompt alone
-                            max(job.style if i == 0 or trust or job.fresh or t2v else style_next, 1.001 / job.steps)),
-                  num_inference_steps=job.steps, guidance_scale=job.cfg, generator=g)
-        dd = DiffDiffusion(pipe, amount) if amount is not None else contextlib.nullcontext()
-        if amount is not None:
-            kw.update(callback_on_step_end=dd, callback_on_step_end_tensor_inputs=["latents"])
+        strength = (1.0 if t2v and i == 0 and not job.init_image else    # t2v frame 1: from the prompt alone
+                    # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
+                    max(job.style if i == 0 or trust or job.fresh or t2v else style_next, 1.001 / job.steps))
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
         share = style_next / job.style if trust else 1.0
         cn = job.controlnets
         starts = [c.start if c.start == 0 else 1 - share + c.start * share for c in cn]
         ends = [1 - share + c.end * share for c in cn]
-        if union:
-            # one network, every hint at once, each tagged with its condition type
-            kw.update(control_image=hints, control_mode=[UNION_MODE[c.kind] for c in cn],
-                      controlnet_conditioning_scale=[c.weight for c in cn],
-                      control_guidance_start=starts, control_guidance_end=ends)
-        elif cn:
-            single = len(cn) == 1
-            kw.update(control_image=hints[0] if single else hints,
-                      controlnet_conditioning_scale=cn[0].weight if single else [c.weight for c in cn],
-                      control_guidance_start=starts[0] if single else starts,
-                      control_guidance_end=ends[0] if single else ends)
-        with dd:
-            result = pipe(**kw).images[0]
 
-        res = to_tensor(np.asarray(result), device)
+        def denoise(init_t, hint_imgs, amt, gen):
+            """One img2img pass over init_t (a whole frame or a tile) -> 1x3xHxW tensor."""
+            kw = dict(**text, image=to_image(init_t), strength=strength, num_inference_steps=job.steps,
+                      guidance_scale=job.cfg, generator=gen)
+            if init_t.shape[2:] != (job.height, job.width):
+                kw.update(height=init_t.shape[2], width=init_t.shape[3])
+            dd = DiffDiffusion(pipe, amt) if amt is not None else contextlib.nullcontext()
+            if amt is not None:
+                kw.update(callback_on_step_end=dd, callback_on_step_end_tensor_inputs=["latents"])
+            if union:
+                # one network, every hint at once, each tagged with its condition type
+                kw.update(control_image=hint_imgs, control_mode=[UNION_MODE[c.kind] for c in cn],
+                          controlnet_conditioning_scale=[c.weight for c in cn],
+                          control_guidance_start=starts, control_guidance_end=ends)
+            elif cn:
+                single = len(cn) == 1
+                kw.update(control_image=hint_imgs[0] if single else hint_imgs,
+                          controlnet_conditioning_scale=cn[0].weight if single else [c.weight for c in cn],
+                          control_guidance_start=starts[0] if single else starts,
+                          control_guidance_end=ends[0] if single else ends)
+            with dd:
+                return to_tensor(np.asarray(pipe(**kw).images[0]), device)
+
+        H, W = init.shape[2:]
+        if job.tile and max(H, W) > job.tile:
+            # Tiled: each tile denoised on its own at a size SD knows, blended back with feathered seams.
+            # Every tile starts from the same init, so the warp's coherence carries through each one.
+            acc, wsum = torch.zeros_like(init), torch.zeros_like(init[:, :1])
+            th, tw = min(job.tile, H), min(job.tile, W)
+            ys, xs = tile_spans(H, th, job.tile_overlap), tile_spans(W, tw, job.tile_overlap)
+            for ti, (y, x) in enumerate((y, x) for y in ys for x in xs):
+                sl = (slice(None), slice(None), slice(y, y + th), slice(x, x + tw))
+                crops = [h.crop((x, y, x + tw, y + th)) for h in hints]
+                gt = torch.Generator(device="cpu").manual_seed(int(job.seed) + i + 7919 * ti)
+                t_out = denoise(init[sl], crops, None if amount is None else amount[sl], gt)
+                wt = tile_weight(th, tw, y, x, H, W, job.tile_overlap, device)
+                acc[sl] += t_out * wt
+                wsum[sl] += wt
+            res = acc / wsum.clamp(min=1e-6)
+            if i == 0:
+                log(f"tiled: {len(ys) * len(xs)} tiles of {tw}x{th}, overlap {job.tile_overlap}")
+        else:
+            res = denoise(init, hints, amount, g)
         if first_out is None:
             first_out = res
         else:
@@ -939,7 +1024,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         prev_src, prev_out = src, res
         # Hand this frame's scratch memory back every frame. Without it the caching allocator's
         # footprint crept up until the Windows driver spilled into system RAM (30 s -> 235 s/frame).
-        del result, init, hints, kw
+        del init, hints
         torch.cuda.empty_cache()
         log(f"frame {i + 1}/{total}: {time.time() - tf:.1f}s")
         progress("rendering", i + 1, total, f"frame {i + 1}/{total}")

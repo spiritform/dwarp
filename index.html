@@ -263,6 +263,7 @@
   .frame:hover .save { opacity: 1; }
   .frame .save:hover { background: rgba(0,0,0,.85); color: #fff; }
   .placeholder { color: var(--faint); text-align: center; }
+  .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
 
   .progress { height: 3px; background: var(--line); }
@@ -401,9 +402,9 @@
   <div class="brand"><b>DWARP</b><span>diffusion warp</span></div>
 
   <section>
-    <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Restyle a video">Video → Video</button><button data-s="t2v" title="No video: the prompt paints frame 1, a camera move carries it on">Text → Video</button></div>
+    <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Video → Video: restyle a video">Video</button><button data-s="i2v" title="Image → Video: your picture is frame 1, a camera move carries it on">Image</button><button data-s="t2v" title="Text → Video: the prompt paints frame 1, a camera move carries it on">Text</button></div>
     <div id="clipBox"></div>
-    <input type="file" id="fileInput" accept="video/*" hidden>
+    <input type="file" id="fileInput" accept="video/*,image/*" hidden>
   </section>
 
   <section id="camBox" hidden>
@@ -468,18 +469,18 @@
 
   <section>
     <div class="card" data-card="style">
-    <div class="card-head" title="The look (style words, and for SD 1.5 its model) and an embedding"><span class="title">Style</span><span class="sum" id="sum_style"></span><span class="chev">▾</span></div>
+    <div class="card-head" title="A LoRA, an embedding and the look (style words, and for SD 1.5 its model)"><span class="title">Style</span><span class="sum" id="sum_style"></span><span class="chev">▾</span></div>
     <div class="card-body">
-    <div class="sublabel">Embedding</div>
-    <div class="embrow">
-      <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
-      <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
-    </div>
     <div class="sublabel">LoRA</div>
     <select class="model" id="lora" title="An optional LoRA from models/loras, for the mode's family"></select>
     <div class="slider" id="loraBox" style="margin-top:10px">
       <div class="slider-head"><b>Strength</b><span id="loraWV"></span></div>
       <input type="range" id="loraW" min="0" max="1.5" step="0.05">
+    </div>
+    <div class="sublabel">Embedding</div>
+    <div class="embrow">
+      <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
+      <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
     </div>
     <div class="sublabel">Look</div>
     <select class="model" id="presets" title="Style preset"></select>
@@ -574,7 +575,7 @@
       <button id="seedDice" title="New random seed">🎲</button>
       <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
     </div>
-    <div class="sublabel">Size</div>
+    <div class="sublabel" style="margin-bottom:6px">Size</div>
     <div class="seg" id="size" style="margin-bottom:10px"></div>
     </div></div>
   </section>
@@ -742,22 +743,37 @@ const T2V_FPS = 24;                         // Text -> Video's clock (FPS 2s / 3
 const laneFrames = () => state.t2v ? Math.max(2, Math.round(state.t2vLen * T2V_FPS)) : state.clip.source.frames;
 const laneFps = () => state.t2v ? T2V_FPS : (state.clip.source.fps || 24);
 const curVideo = () => state.t2v ? '' : state.clip?.path;     // what a live job of this panel renders from
-function t2vDims(size) {                    // long side = size, the picked aspect, multiples of 8
-  const [a, b] = (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
+// Image -> Video is Text -> Video (state.t2v: no clip, a camera) with a picture as frame 1 (state.i2v)
+function srcKind() { return !state.t2v ? 'v2v' : state.i2v ? 'i2v' : 't2v'; }
+function t2vDims(size) {                    // long side = size, the picked aspect (or the picture's), multiples of 8
+  const [a, b] = state.i2v && state.image ? [state.image.width, state.image.height]
+               : (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
   return [Math.round(a * k / 8) * 8, Math.round(b * k / 8) * 8];
 }
+function imageCard() {
+  const im = state.image;
+  if (!im) return `<div class="clip-empty" id="pick" style="margin-bottom:12px">Drop an image here<small>or click to choose</small></div>`;
+  return `<div class="clip" style="margin-bottom:12px"><div class="clip-top">
+      <button class="clip-thumb" id="swap" title="Replace image (or drop one anywhere)">
+        <img src="/api/image/file?${qs({ path: im.path })}" alt="">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+      </button>
+      <div><div class="clip-name" title="${im.path}">${im.name}</div><div class="clip-meta">${im.width}×${im.height}</div></div>
+    </div></div>`;
+}
 function renderT2V() {
-  $('clipBox').innerHTML = `<div class="card" data-card="length">
+  $('clipBox').innerHTML = (state.i2v ? imageCard() : '') + `<div class="card" data-card="length">
     <div class="card-head"><span class="title">Length</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider"><input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
-    <div class="ons"><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
+    <div class="ons"${state.i2v ? ' hidden' : ''}><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes"><span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div></div>
 </div>
   </div>`;
   $('t2vLen').oninput = e => { state.t2vLen = +e.target.value; paintT2V(); save(); };
   $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
+  ($('pick') || $('swap'))?.addEventListener('click', () => $('fileInput').click());
   applyCards(); paintT2V();
 }
 function paintT2V() {
@@ -1127,14 +1143,21 @@ async function setClipPath(path, name) {
 
 function uploadFile(file) {
   if (!file) return;
-  $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
+  if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Length card
+    $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
   const xhr = new XMLHttpRequest();
   xhr.open('POST', `/api/upload?${qs({ filename: file.name })}`);
-  xhr.upload.onprogress = e => { if (e.lengthComputable) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
+  xhr.upload.onprogress = e => { if (e.lengthComputable && $('upBar')) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
   xhr.onload = async () => {
     if (xhr.status >= 300) { setStatus('upload failed: ' + xhr.responseText, 'bad'); renderClip(); return; }
     const res = JSON.parse(xhr.responseText);
-    try { state.t2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
+    if (res.image) {
+      state.image = { path: res.path, name: res.name, width: res.width, height: res.height };
+      state.t2v = state.i2v = true; state.keySel = -1;
+      renderClip(); renderControls(); paintLive(); updateEst(); if (!viewRun) clearStage(); save();
+      setStatus('image loaded'); return;
+    }
+    try { state.t2v = state.i2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
     catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
   };
   xhr.onerror = () => { setStatus('upload failed', 'bad'); renderClip(); };
@@ -1147,8 +1170,8 @@ addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; doc
 addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
-  const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('video/') || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name));
-  if (f) uploadFile(f); else setStatus('that is not a video file', 'bad');
+  const f = [...(e.dataTransfer?.files || [])].find(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|avi|m4v|png|jpe?g|webp|bmp)$/i.test(f.name));
+  if (f) uploadFile(f); else setStatus('that is not a video or image file', 'bad');
 });
 
 // ---------------------------------------------------------------- controls
@@ -1270,12 +1293,14 @@ function renderControls() {
   });
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
-  [...$('srcMode').children].forEach(b => b.classList.toggle('on', (b.dataset.s === 't2v') === !!state.t2v));
+  [...$('srcMode').children].forEach(b => b.classList.toggle('on', b.dataset.s === srcKind()));
   $('camBox').hidden = !state.t2v; if (state.t2v) paintCam();
-  $('guideBox').hidden = !!state.t2v;       // Text -> Video: nothing to guide by
+  $('guideBox').hidden = state.t2v && !state.i2v;   // Text -> Video: nothing to guide by
   applyCards(); paintSums();
-  if (state.t2v) {
-    $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = $('frameMode').hidden = $('srcMixBox').hidden = true;
+  if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
+    $('frameMode').hidden = $('srcMixBox').hidden = true;
+    if (state.i2v) $('gTabs').hidden = false;
+    else $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = true;
   } else {
     $('gTabs').hidden = $('frameMode').hidden = false;
   }
@@ -1341,8 +1366,8 @@ $('prompt').oninput = e => {
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
 $('srcMode').onclick = e => {
-  const m = e.target.dataset.s; if (!m || (m === 't2v') === !!state.t2v) return;
-  state.t2v = m === 't2v'; state.keySel = -1;
+  const m = e.target.dataset.s; if (!m || m === srcKind()) return;
+  state.t2v = m !== 'v2v'; state.i2v = m === 'i2v'; state.keySel = -1;
   renderClip(); renderControls(); paintLive(); updateEst();
   if (!viewRun) state.t2v || !state.clip ? clearStage() : showClip();
   save();
@@ -1468,7 +1493,7 @@ function updateEst() {
   if (state.t2v) {                         // Text -> Video: frame 1, a short start, the whole length
     const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = Math.min(state.size, modeCfg().test_size);
     const tn = Math.min(n, 12);
-    $('frameBtn').title = `frame 1 from the prompt · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
+    $('frameBtn').title = `frame 1 from ${state.i2v ? 'your image' : 'the prompt'} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
     $('testBtn').title = `the first ${tn} frames · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
     $('goBtn').title = `${n} frames${on > 1 ? ` (on ${on}s)` : ''} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
     return;
@@ -1557,12 +1582,12 @@ async function buildConfig(kind) {
     lora: loraOn(), lora_weight: state.loraW,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
-    controlnets: t2v ? [] : controlnets,     // Text -> Video: nothing to follow
+    controlnets: t2v && !state.i2v ? [] : controlnets,     // Text -> Video: nothing to follow
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
-    diff_source: t2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
+    diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
-    ...(t2v ? { t2v_frames: t2vN, cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
+    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? state.image.path : '', cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
                 cam_x: state.cam.x / 100, cam_y: state.cam.y / 100,
                 cam_3d: !!state.cam.d3, cam_yaw: state.cam.d3 ? state.cam.yaw : 0, cam_pitch: state.cam.d3 ? state.cam.pitch : 0 } : {}),
   };
@@ -1638,6 +1663,11 @@ const HELP = {
        picture is lifted into space and the camera moves through it, so near things pass faster than far ones.
        Zoom becomes a dolly, Rotate a roll, and <b>Turn</b> / <b>Tilt</b> swing the camera. The depth it used is on the
        Depth tab.</p>
+    <h4>Image → Video</h4>
+    <p>Text → Video with your picture as frame 1: drop an image (or pick <b>Image</b> in the switch). Frame 1 is the
+       picture repainted at your Denoise, then the camera carries it on — 3D works especially well on photos. Its
+       aspect comes from the picture. Unlike Text → Video, <b>ControlNet</b> and <b>DepthDiff</b> stay: they read each
+       frame's start, so a depth ControlNet keeps the picture's layout while the style comes in.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
@@ -1887,6 +1917,7 @@ addEventListener('keydown', e => {
 async function startJob(kind) {
   const name = { frame: 'single frame', test: 'preview', render: 'render' }[kind];   // shown in status + run labels
   if (!state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
+  if (state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
@@ -2083,7 +2114,7 @@ function setControlTabs(layers = runLayers) {
   runLayers = layers;
   const noRun = !viewRun, dd = state.gtab === 'dd' && !state.t2v;   // Text -> Video: a 3D run's depth
   const entries = dd ? (state.clip && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
-                     : (noRun ? [] : layers.filter(l => l.id !== 'control_diff').map(l => [l.id, l.label]));
+                     : (noRun ? [] : layers.filter(l => l.id !== 'control_diff' || state.t2v).map(l => [l.id, l.label]));   // no live Diff without a clip
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
   for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
@@ -2213,7 +2244,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -2315,7 +2346,10 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
-  $('stage').innerHTML = state.t2v
+  $('stage').innerHTML = state.i2v
+    ? (state.image ? `<img class="stage-pic" src="/api/image/file?${qs({ path: state.image.path })}" alt="">`
+                   : '<div class="placeholder"><b>Image → Video</b>drop an image, then Single Frame for frame 1 or Preview for the start</div>')
+    : state.t2v
     ? '<div class="placeholder"><b>Text → Video</b>write a prompt, then Single Frame for frame 1 or Preview for the start</div>'
     : '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
   $('scrub').hidden = true; $('footInfo').textContent = '';
@@ -2445,7 +2479,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.fresh ??= false;
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
-  state.t2v ??= false; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
+  state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';

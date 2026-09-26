@@ -29,6 +29,7 @@ from models import list_checkpoints  # noqa: E402
 
 INPUTS = HERE / "inputs"
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".gif"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}          # Image -> Video's picture
 jobs = JobManager()
 
 
@@ -188,8 +189,8 @@ def build_app() -> FastAPI:
     @app.post("/api/upload")
     async def upload(request: Request, filename: str = "clip.mp4"):
         suffix = Path(filename).suffix.lower()
-        if suffix not in VIDEO_EXTS:
-            raise HTTPException(422, detail=f"Not a video file: {filename}")
+        if suffix not in VIDEO_EXTS | IMAGE_EXTS:
+            raise HTTPException(422, detail=f"Not a video or image file: {filename}")
         stem = re.sub(r"[^\w\-]+", "_", Path(filename).stem)[:60] or "clip"
         target = INPUTS / f"{stem}-{uuid.uuid4().hex[:6]}{suffix}"
         size = 0
@@ -200,7 +201,23 @@ def build_app() -> FastAPI:
         if size == 0:
             target.unlink(missing_ok=True)
             raise HTTPException(422, detail="Empty upload")
+        if suffix in IMAGE_EXTS:                 # a picture: its size sets Image -> Video's aspect
+            from PIL import Image
+            try:
+                with Image.open(target) as im:
+                    w, h = im.size
+            except Exception:
+                target.unlink(missing_ok=True)
+                raise HTTPException(422, detail=f"Could not read that image: {filename}")
+            return {"path": str(target), "name": filename, "bytes": size, "image": True, "width": w, "height": h}
         return {"path": str(target), "name": filename, "bytes": size}
+
+    @app.get("/api/image/file")
+    def image_file(path: str = ""):
+        """Image -> Video's picture, for the panel and the stage."""
+        if not path or not os.path.isfile(path) or Path(path).suffix.lower() not in IMAGE_EXTS:
+            raise HTTPException(404, detail="No image at that path")
+        return FileResponse(path)
 
     @app.get("/api/video/probe")
     def video_probe(path: str = "", max_size: int = 0, extract_nth_frame: int = 1):
@@ -277,7 +294,8 @@ def build_app() -> FastAPI:
         job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
         if job.get("lora") and not os.path.isfile(job["lora"]):
             raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
-        for key in ("checkpoint",) if job.get("t2v_frames") else ("video", "checkpoint"):   # text -> video: no clip
+        for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
+                    else ("video", "checkpoint")):   # text / image -> video: no clip
             if not job.get(key) or not os.path.isfile(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         for c in job.get("controlnets", []):
