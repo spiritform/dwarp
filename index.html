@@ -634,7 +634,7 @@ function bindRange() {
     const t = e.target.classList;
     drag = t.contains('l') ? 0 : t.contains('r') ? 1 : t.contains('sel') ? 2 : null;   // 2: slide the whole range
     if (drag === 2) { slide = { x: e.clientX, a: state.range[0], b: state.range[1] }; range.classList.add('sliding'); }
-    if (drag !== null) range.setPointerCapture(e.pointerId);
+    if (drag !== null) { range.setPointerCapture(e.pointerId); if (!clipMode()) showClip(); }   // show the source while trimming
   });
   range.addEventListener('pointermove', e => {
     if (drag === null) return;
@@ -646,6 +646,9 @@ function bindRange() {
     } else if (drag === 0) state.range[0] = Math.min(x, state.range[1] - minGap);
     else state.range[1] = Math.max(x, state.range[0] + minGap);
     paintRange();
+    // the stage shows the frame under the handle being dragged (the start while sliding)
+    const f = rangeFrames()[drag === 1 ? 1 : 0];
+    if (clipMode() && f !== clipFrame) { clipFrame = f; $('scrubRange').value = f; paintFrame(); }
   });
   range.addEventListener('pointerup', () => { drag = null; range.classList.remove('sliding'); save(); });
   range.addEventListener('dblclick', () => { state.range = [0, 1]; paintRange(); save(); });
@@ -1318,7 +1321,8 @@ const HELP = {
     <h3>Trimming and prompt keyframes</h3>
     <h4>Trim</h4>
     <p>Drag the handles on the filmstrip to set the range to render; the numbers under it show the start, length and
-       end. Drag <b>inside</b> the selection to slide it along the clip, keeping its length. <b>Double-click</b> the strip to
+       end. While you drag, the stage shows the frame under the handle (Source view), so you see where the render starts
+       and ends. Drag <b>inside</b> the selection to slide it along the clip, keeping its length. <b>Double-click</b> the strip to
        go back to the full clip. Preview and Render use this range; Single Frame
        uses the frame under the playhead.</p>
     <h4>FPS: on ones, twos, threes</h4>
