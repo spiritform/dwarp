@@ -65,6 +65,10 @@ class RenderJob:
     cam_rotate: float = 0.0              # degrees per frame
     cam_x: float = 0.0                   # pan per frame, share of the width (+ = the image drifts right)
     cam_y: float = 0.0                   # share of the height (+ = down)
+    cam_3d: bool = False                 # 3D (Disco / Deforum): the frame's depth lifts it into space, so the
+                                         # camera moves through it with parallax. Zoom = dolly, Rotate = roll
+    cam_yaw: float = 0.0                 # 3D: degrees per frame the camera turns (+ = right)
+    cam_pitch: float = 0.0               # 3D: degrees per frame it tilts (+ = up)
     hold: int = 1                        # mp4: show each rendered frame this many times (on twos: nth 2, hold 2 —
                                          # 12 drawings a second, played at the clip's 24 fps)
     style: float = 0.75                  # img2img strength on the first frame
@@ -386,6 +390,39 @@ def camera_move(img: torch.Tensor, job: RenderJob) -> torch.Tensor:
     c, s_ = math.cos(ang) / zoom, math.sin(ang) / zoom
     theta = torch.tensor([[c, -s_, tx], [s_, c, ty]], dtype=img.dtype, device=img.device)[None]
     grid = F.affine_grid(theta, list(img.shape), align_corners=False)
+    return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
+
+
+CAM_FOV = 50.0                           # 3D camera: horizontal field of view, degrees
+CAM_NEAR, CAM_FAR = 1.0, 6.0             # depth range the MiDaS map spans (nearest = 1): far / near = parallax
+CAM_REF = 2.0                            # the depth where Zoom and Pan match the 2D camera's amounts
+
+
+def camera_move_3d(img: torch.Tensor, disparity: torch.Tensor, job: RenderJob) -> torch.Tensor:
+    """3D Text -> Video: each pixel of the previous frame placed at its depth (MiDaS: 1 = near), the
+    camera moved / turned, the frame projected back. Near things slide and grow faster than far ones.
+    Backward: every new pixel takes the depth found at its own spot (as Deforum does), so no holes."""
+    n = max(1, job.nth)
+    _, _, h, w = img.shape
+    dev, dt = img.device, torch.float32
+    z = 1.0 / (disparity.to(dt).clamp(0, 1) * (1 / CAM_NEAR - 1 / CAM_FAR) + 1 / CAM_FAR)   # 1xHxW-ish
+    fx = 1.0 / math.tan(math.radians(CAM_FOV) / 2)
+    fy = fx * w / h
+    ys, xs = torch.meshgrid((torch.arange(h, device=dev, dtype=dt) + 0.5) / h * 2 - 1,
+                            (torch.arange(w, device=dev, dtype=dt) + 0.5) / w * 2 - 1, indexing="ij")
+    z = z.reshape(h, w)
+    p = torch.stack([xs * z / fx, ys * z / fy, z], -1)                     # HxWx3, the new camera's view
+    r, yw, pt = (math.radians(a * n) for a in (job.cam_rotate, job.cam_yaw, job.cam_pitch))
+    rz = torch.tensor([[math.cos(r), -math.sin(r), 0], [math.sin(r), math.cos(r), 0], [0, 0, 1]], dtype=dt)
+    ry = torch.tensor([[math.cos(yw), 0, math.sin(yw)], [0, 1, 0], [-math.sin(yw), 0, math.cos(yw)]], dtype=dt)
+    rx = torch.tensor([[1, 0, 0], [0, math.cos(pt), -math.sin(pt)], [0, math.sin(pt), math.cos(pt)]], dtype=dt)
+    rot = (ry @ rx @ rz).to(dev)
+    # + zoom = the camera moves forward; + pan = the image drifts right / down, so the camera goes the other way
+    t = torch.tensor([-2 * job.cam_x * n * CAM_REF / fx, -2 * job.cam_y * n * CAM_REF / fy,
+                      (job.cam_zoom ** n - 1) * CAM_REF], dtype=dt, device=dev)
+    q = p @ rot.T + t                                                        # the same points, old camera
+    qz = q[..., 2].clamp(min=0.05)
+    grid = torch.stack([fx * q[..., 0] / qz, fy * q[..., 1] / qz], -1)[None].to(img.dtype)
     return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
 
 
@@ -727,6 +764,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         (out / "control" / c.kind).mkdir(parents=True, exist_ok=True)
     if job.diff_source != "off":
         (out / "control" / "diff").mkdir(parents=True, exist_ok=True)
+    if job.t2v_frames and job.cam_3d:           # the depth each 3D camera move used
+        (out / "control" / "depth").mkdir(parents=True, exist_ok=True)
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
     t0 = time.time()
@@ -734,8 +773,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if t2v:                                     # no clip: the frames come from the prompt and the camera
         src_paths = [None] * job.t2v_frames
         total = job.t2v_frames
-        log(f"text -> video: {total} frames at {job.width}x{job.height}, camera zoom {job.cam_zoom} rotate "
-            f"{job.cam_rotate} pan {job.cam_x}/{job.cam_y} per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
+        log(f"text -> video: {total} frames at {job.width}x{job.height}, {'3D ' if job.cam_3d else ''}camera zoom {job.cam_zoom} rotate "
+            f"{job.cam_rotate} pan {job.cam_x}/{job.cam_y}" + (f" turn {job.cam_yaw} tilt {job.cam_pitch}" if job.cam_3d else "")
+            + " per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
     else:
         progress("extracting", 0, 0, "extracting frames")
         src_paths = extract_frames(job, out / "src")
@@ -803,8 +843,16 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             last_cond = None
         tf = time.time()
         if t2v:                                 # the "source" is where this frame starts: blank, then the camera
-            src = (torch.full((1, 3, job.height, job.width), 0.5, device=device) if prev_out is None
-                   else camera_move(prev_out, job))
+            if prev_out is None:
+                src = torch.full((1, 3, job.height, job.width), 0.5, device=device)
+            elif job.cam_3d:                    # the previous frame's own depth carries it into space
+                prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                dmap = ann("depth", prev_np).convert("L")
+                dmap.save(out / "control" / "depth" / f"{i:06d}.jpg", quality=90)
+                disp = torch.from_numpy(np.asarray(dmap, dtype=np.float32) / 255).to(device)[None, None]
+                src = camera_move_3d(prev_out, gaussian_blur(disp, 2), job)   # soft steps, fewer tears
+            else:
+                src = camera_move(prev_out, job)
             src_np = (src[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             Image.fromarray(src_np).save(out / "src" / f"{i:06d}.jpg", quality=90)   # the viewer's Source layer
         else:

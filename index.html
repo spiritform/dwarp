@@ -12,7 +12,7 @@
     --line: #2a2a31;
     --text: #e8e6e3;
     --dim: #8b8993;
-    --faint: #5a5862;
+    --faint: #726f7b;
     --accent: #ff6a3d;
     --accent-2: #ffb36b;
     --ok: #7bd88f;
@@ -342,6 +342,10 @@
   .setrow input[type=text] { width: 100%; box-sizing: border-box; background: var(--panel-2); color: var(--text); border: 0;
                border-radius: 8px; padding: 8px 10px; font: 12px ui-monospace, Consolas, monospace; }
   .setrow .row { display: flex; gap: 8px; align-items: center; }
+  .setrow input::placeholder { color: var(--faint); }
+  /* the folder icon before a path opens that folder */
+  .setrow .fold { background: none; border: 0; color: var(--dim); cursor: pointer; padding: 4px; display: flex; flex: none; }
+  .setrow .fold:hover { color: var(--text); }
   .setrow label { display: flex; gap: 8px; align-items: center; cursor: pointer; margin: 6px 0; }
   .setrow .ok { color: #7fd68a; } .setrow .bad { color: var(--bad); }
   .setbtn { background: var(--panel-2); color: var(--text); border: 0; border-radius: 7px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
@@ -406,6 +410,7 @@
     <div class="card" data-card="camera">
     <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
     <div class="card-body">
+    <div class="seg" id="cam3d" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><button data-v="2d" title="Moves the flat picture">2D</button><button data-v="3d" title="Reads each frame's depth and moves through it: near things pass faster than far ones (parallax)">3D</button></div>
     <div class="pair">
       <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
       <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
@@ -413,6 +418,10 @@
     <div class="pair">
       <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
       <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
+    </div>
+    <div class="pair" id="cam3dRow">
+      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera turns (+ = right)">Turn</b><span id="camYawV"></span></div><input type="range" id="camYaw" min="-2" max="2" step="0.05"></div>
+      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera tilts (+ = up)">Tilt</b><span id="camPitchV"></span></div><input type="range" id="camPitch" min="-2" max="2" step="0.05"></div>
     </div>
     </div></div>
   </section>
@@ -761,15 +770,20 @@ function paintT2V() {
   paintKeys(); updateEst();
 }
 function paintCam() {
-  const c = state.cam || { zoom: 1, rotate: 0, x: 0, y: 0 }, sign = v => (v > 0 ? '+' : '') + v;
+  const c = state.cam, sign = v => (v > 0 ? '+' : '') + v;
+  [...$('cam3d').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '3d') === !!c.d3));
+  $('cam3dRow').hidden = !c.d3;
+  $('camYaw').value = c.yaw; $('camYawV').textContent = `${sign(+(+c.yaw).toFixed(2))}°`;
+  $('camPitch').value = c.pitch; $('camPitchV').textContent = `${sign(+(+c.pitch).toFixed(2))}°`;
   $('camZoom').value = c.zoom; $('camZoomV').textContent = `${sign(+(+c.zoom).toFixed(1))}%`;
   $('camRot').value = c.rotate; $('camRotV').textContent = `${sign(+(+c.rotate).toFixed(2))}°`;
   $('camX').value = c.x; $('camXV').textContent = `${sign(+(+c.x).toFixed(2))}%`;
   $('camY').value = c.y; $('camYV').textContent = `${sign(+(+c.y).toFixed(2))}%`;
   // the header's summary: what's moving, per frame (folded, this is all you see)
   const moves = [c.zoom && `zoom ${sign(+(+c.zoom).toFixed(1))}%`, c.rotate && `rotate ${sign(+(+c.rotate).toFixed(2))}°`,
-                 (c.x || c.y) && `pan ${sign(+(+c.x).toFixed(2))} / ${sign(+(+c.y).toFixed(2))}%`].filter(Boolean);
-  $('camSum').textContent = moves.length ? moves.join(' · ') : 'still';
+                 (c.x || c.y) && `pan ${sign(+(+c.x).toFixed(2))} / ${sign(+(+c.y).toFixed(2))}%`,
+                 c.d3 && c.yaw && `turn ${sign(+(+c.yaw).toFixed(2))}°`, c.d3 && c.pitch && `tilt ${sign(+(+c.pitch).toFixed(2))}°`].filter(Boolean);
+  $('camSum').textContent = (c.d3 ? '3D · ' : '') + (moves.length ? moves.join(' · ') : 'still');
 }
 // Each card's header summary: what's set inside, so a folded card still tells you
 function paintSums() {
@@ -795,7 +809,8 @@ addEventListener('click', e => {
   state.collapsed = { ...(state.collapsed || {}), [k]: !state.collapsed?.[k] };
   applyCards(); save();
 });
-[['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y']].forEach(([id, k]) => {
+$('cam3d').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.cam.d3 = b.dataset.v === '3d'; paintCam(); save(); };
+[['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y'], ['camYaw', 'yaw'], ['camPitch', 'pitch']].forEach(([id, k]) => {
   $(id).oninput = e => { state.cam[k] = +e.target.value; paintCam(); save(); };
   $(id).ondblclick = () => { state.cam[k] = 0; paintCam(); save(); };   // back at rest
 });
@@ -1548,7 +1563,8 @@ async function buildConfig(kind) {
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
     ...(t2v ? { t2v_frames: t2vN, cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
-                cam_x: state.cam.x / 100, cam_y: state.cam.y / 100 } : {}),
+                cam_x: state.cam.x / 100, cam_y: state.cam.y / 100,
+                cam_3d: !!state.cam.d3, cam_yaw: state.cam.d3 ? state.cam.yaw : 0, cam_pitch: state.cam.d3 ? state.cam.pitch : 0 } : {}),
   };
   // Single Frame with a keyframe selected: that keyframe's prompt, whatever the frame
   const sel = kind === 'frame' && state.keySel >= 0 ? state.keys[state.keySel] : null;
@@ -1618,6 +1634,10 @@ const HELP = {
        and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
        steadier, higher changes faster. Set the length, aspect and FPS in the card; ControlNet, DepthDiff and Source
        mix need a video, so they hide here. Double-click a camera slider to reset it.</p>
+    <p><b>3D</b> (the switch in the Camera card, Disco Diffusion's 3D mode): each frame's depth is read with MiDaS, the
+       picture is lifted into space and the camera moves through it, so near things pass faster than far ones.
+       Zoom becomes a dolly, Rotate a roll, and <b>Turn</b> / <b>Tilt</b> swing the camera. The depth it used is on the
+       Depth tab.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
@@ -1807,43 +1827,48 @@ function toggleHelp(open = $('helpPanel').hidden) {
 
 // ---------------------------------------------------------------- settings
 // Machine settings live in config.json (the server re-reads it every request): the models folder, and
-// whether its embeddings / LoRAs join DWARP's own. Saving reloads the page so every list refreshes.
+// the embeddings / LoRAs folders (blank = DWARP's own). Saving reloads the page so every list refreshes.
 async function paintSettings() {
   const c = await api('/api/config').catch(() => null);
   if (!c) { $('setPanel').innerHTML = '<p>Settings need the server — restart run.bat.</p>'; return; }
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const fold = w => `<button class="fold" data-open="${w}" title="Open this folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></button>`;
+  // a path row: folder icon, the path, Save (Enter saves too)
+  const pathRow = (id, key, value, placeholder) => `<div class="row">${fold(key)}<input type="text" id="${id}" data-key="${key}"
+      value="${esc(value)}" placeholder="${esc(placeholder)}" spellcheck="false"><button class="setbtn" data-save="${id}">Save</button></div>`;
   $('setPanel').innerHTML = `<button class="logbtn close" id="setClose">✕</button>
     <h3>Settings</h3>
     <div class="setrow">
-      <h4>Models folder</h4>
-      <div class="note">Checkpoints, ControlNets and upscalers come from here — a ComfyUI <b>models</b> folder works as it is.</div>
-      <div class="row"><input type="text" id="setRoot" value="${esc(c.models_root)}" spellcheck="false"><button class="setbtn" id="setSave">Save</button></div>
+      <h4>Default model folder</h4>
+      <div class="row">${fold('own')}<input type="text" value="${esc(c.own_models)}" readonly></div>
+    </div>
+    <div class="setrow">
+      <h4>Additional models folder</h4>
+      <div class="note">Checkpoints, ControlNets and upscalers — a ComfyUI <b>models</b> folder works as it is.</div>
+      ${pathRow('setRoot', 'root', c.models_root, '')}
       <div class="note" id="setRootInfo">${c.root_ok ? `<span class="ok">✓</span> ${c.checkpoints} checkpoint${c.checkpoints === 1 ? '' : 's'} found` : '<span class="bad">✗ folder not found</span>'}</div>
     </div>
     <div class="setrow">
-      <h4>Also use from the models folder</h4>
-      <div class="note">Embeddings and LoRAs come from DWARP's own folder, hand-picked. Turn these on to add the models
-        folder's too — a shared ComfyUI folder can hold a lot of unrelated files.</div>
-      <label><input type="checkbox" id="setEmb" ${c.extra_embeddings ? 'checked' : ''}> its embeddings</label>
-      <label><input type="checkbox" id="setLora" ${c.extra_loras ? 'checked' : ''}> its LoRAs</label>
+      <h4>Embeddings</h4>
+      ${pathRow('setEmb', 'embeddings', c.embeddings_dir ?? '', 'Default')}
     </div>
     <div class="setrow">
-      <h4>DWARP's own models folder</h4>
-      <div class="note">Your embeddings (embeddings), LoRAs (loras), downloaded ControlNets and converted checkpoints live here.</div>
-      <div class="row"><input type="text" value="${esc(c.own_models)}" readonly><button class="setbtn" id="setOpen">Open</button></div>
+      <h4>LoRAs</h4>
+      ${pathRow('setLora', 'loras', c.loras_dir ?? '', 'Default')}
     </div>`;
   $('setClose').onclick = () => toggleSettings(false);
-  $('setOpen').onclick = () => api('/api/open-models', { method: 'POST' }).catch(() => {});
   const post = async body => {
     try {
       await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       save(); location.reload();              // every list (checkpoints, embeddings, LoRAs) from the new settings
     } catch (e) { $('setRootInfo').innerHTML = `<span class="bad">✗ ${esc(e.message)}</span>`; }
   };
-  $('setSave').onclick = () => post({ models_root: $('setRoot').value });
-  $('setRoot').onkeydown = e => { if (e.key === 'Enter') post({ models_root: $('setRoot').value }); };
-  $('setEmb').onchange = e => post({ extra_embeddings: e.target.checked });
-  $('setLora').onchange = e => post({ extra_loras: e.target.checked });
+  const field = { root: 'models_root', embeddings: 'embeddings_dir', loras: 'loras_dir' };
+  const send = inp => post({ [field[inp.dataset.key]]: inp.value });
+  $('setPanel').querySelectorAll('[data-save]').forEach(b => b.onclick = () => send($(b.dataset.save)));
+  $('setPanel').querySelectorAll('input[data-key]').forEach(inp => inp.onkeydown = e => { if (e.key === 'Enter') send(inp); });
+  $('setPanel').querySelectorAll('[data-open]').forEach(b =>
+    b.onclick = () => api('/api/open-models?which=' + b.dataset.open, { method: 'POST' }).catch(() => {}));
 }
 function toggleSettings(open = $('setPanel').hidden) {
   $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
@@ -2056,14 +2081,14 @@ function applyView() {
 var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
 function setControlTabs(layers = runLayers) {
   runLayers = layers;
-  const noRun = !viewRun, dd = state.gtab === 'dd';
+  const noRun = !viewRun, dd = state.gtab === 'dd' && !state.t2v;   // Text -> Video: a 3D run's depth
   const entries = dd ? (state.clip && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
                      : (noRun ? [] : layers.filter(l => l.id !== 'control_diff').map(l => [l.id, l.label]));
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
   for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
     $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${id === 'mask'
-      ? 'The DepthDiff mask from the current sliders, live: white repaints, black keeps the source' : 'What the ControlNet saw'}">${label}</button>`);
+      ? 'The DepthDiff mask from the current sliders, live: white repaints, black keeps the source' : state.t2v ? 'The depth the 3D camera moved through' : 'What the ControlNet saw'}">${label}</button>`);
   $('view').querySelector('[data-v="out"]').hidden = noRun;
   $('view').querySelector('[data-v="split"]').hidden = noRun;
   if (((view.startsWith('control_') || view === 'mask') && !controlTabs[view]) || (noRun && (view === 'out' || view === 'split')))
@@ -2421,7 +2446,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
   state.t2v ??= false; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
-  state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, ...(state.cam || {}) };
+  state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }

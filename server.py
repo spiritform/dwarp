@@ -109,15 +109,13 @@ def build_app() -> FastAPI:
         return {"path": path, "checked": bool(p), "exists": bool(p and p.exists())}
 
     def embedding_dirs() -> list[str]:
-        """Textual-inversion embeddings: DWARP's own models/embeddings (a hand-picked set), plus the models
-        folder's when Settings says so (off by default: a shared ComfyUI folder holds a lot)."""
-        own = [str(HERE / "models" / "embeddings")]
-        return own + ([str(Path(settings()["models_root"]) / "embeddings")] if config().get("extra_embeddings") else [])
+        """Textual-inversion embeddings: the folder Settings names, else DWARP's own models/embeddings
+        (a hand-picked set — a shared ComfyUI folder holds a lot)."""
+        return [config().get("embeddings_dir") or str(HERE / "models" / "embeddings")]
 
     def lora_dirs() -> list[Path]:
-        """LoRAs: DWARP's own models/loras, plus the models folder's when Settings says so."""
-        own = [HERE / "models" / "loras"]
-        return own + ([Path(settings()["models_root"]) / "loras"] if config().get("extra_loras") else [])
+        """LoRAs: the folder Settings names, else DWARP's own models/loras."""
+        return [Path(config().get("loras_dir") or HERE / "models" / "loras")]
 
     # -------------------------------------------------------------- settings (config.json, re-read per request)
     @app.get("/api/config")
@@ -125,7 +123,7 @@ def build_app() -> FastAPI:
         c, root = config(), settings()["models_root"]
         ckpts = list_checkpoints(f"{root}/checkpoints")
         return {"models_root": root, "own_models": (HERE / "models").as_posix(),
-                "extra_embeddings": bool(c.get("extra_embeddings")), "extra_loras": bool(c.get("extra_loras")),
+                "embeddings_dir": c.get("embeddings_dir", ""), "loras_dir": c.get("loras_dir", ""),
                 "checkpoints": len(ckpts), "root_ok": os.path.isdir(root)}
 
     @app.post("/api/config")
@@ -137,16 +135,27 @@ def build_app() -> FastAPI:
             if not root or not os.path.isdir(root):
                 raise HTTPException(422, detail=[{"message": f"No folder at {root!r}"}])
             c["models_root"] = root
-        for k in ("extra_embeddings", "extra_loras"):
+        for k in ("embeddings_dir", "loras_dir"):   # blank = DWARP's own folder
             if k in body:
-                c[k] = bool(body[k])
+                d = str(body[k]).strip().strip('"').replace("\\", "/").rstrip("/")
+                if d and not os.path.isdir(d):
+                    raise HTTPException(422, detail=[{"message": f"No folder at {d!r}"}])
+                c[k] = d
+        for k in ("extra_embeddings", "extra_loras"):   # the old "also use the models folder's" switches
+            c.pop(k, None)
         (HERE / "config.json").write_text(json.dumps(c, indent=2), encoding="utf-8")
         return get_config()
 
     @app.post("/api/open-models")
-    def open_models():
-        (HERE / "models").mkdir(exist_ok=True)
-        os.startfile(HERE / "models")  # Windows-only; this is a local tool
+    def open_models(which: str = "own"):
+        """Opens a Settings folder in Explorer: own (DWARP's models), root, embeddings or loras."""
+        folder = {"root": settings()["models_root"], "embeddings": embedding_dirs()[0],
+                  "loras": str(lora_dirs()[0])}.get(which, str(HERE / "models"))
+        if which == "own":
+            (HERE / "models").mkdir(exist_ok=True)
+        if not os.path.isdir(folder):
+            raise HTTPException(404, detail=f"No folder at {folder}")
+        os.startfile(folder)  # Windows-only; this is a local tool
         return {"ok": True}
 
     @app.get("/api/loras")
