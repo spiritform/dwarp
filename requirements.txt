@@ -4,6 +4,7 @@ diffusers>=0.35
 transformers>=4.46
 accelerate
 safetensors
+peft  # LoRAs
 controlnet_aux
 opencv-python-headless
 numpy

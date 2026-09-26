@@ -109,9 +109,58 @@ def build_app() -> FastAPI:
         return {"path": path, "checked": bool(p), "exists": bool(p and p.exists())}
 
     def embedding_dirs() -> list[str]:
-        """Textual-inversion embeddings: only DWARP's own models/embeddings, a hand-picked set (the shared
-        ComfyUI folder is left alone)."""
-        return [str(HERE / "models" / "embeddings")]
+        """Textual-inversion embeddings: DWARP's own models/embeddings (a hand-picked set), plus the models
+        folder's when Settings says so (off by default: a shared ComfyUI folder holds a lot)."""
+        own = [str(HERE / "models" / "embeddings")]
+        return own + ([str(Path(settings()["models_root"]) / "embeddings")] if config().get("extra_embeddings") else [])
+
+    def lora_dirs() -> list[Path]:
+        """LoRAs: DWARP's own models/loras, plus the models folder's when Settings says so."""
+        own = [HERE / "models" / "loras"]
+        return own + ([Path(settings()["models_root"]) / "loras"] if config().get("extra_loras") else [])
+
+    # -------------------------------------------------------------- settings (config.json, re-read per request)
+    @app.get("/api/config")
+    def get_config():
+        c, root = config(), settings()["models_root"]
+        ckpts = list_checkpoints(f"{root}/checkpoints")
+        return {"models_root": root, "own_models": (HERE / "models").as_posix(),
+                "extra_embeddings": bool(c.get("extra_embeddings")), "extra_loras": bool(c.get("extra_loras")),
+                "checkpoints": len(ckpts), "root_ok": os.path.isdir(root)}
+
+    @app.post("/api/config")
+    async def set_config(request: Request):
+        body = await request.json()
+        c = config()
+        if "models_root" in body:
+            root = str(body["models_root"]).strip().strip('"').replace("\\", "/").rstrip("/")
+            if not root or not os.path.isdir(root):
+                raise HTTPException(422, detail=[{"message": f"No folder at {root!r}"}])
+            c["models_root"] = root
+        for k in ("extra_embeddings", "extra_loras"):
+            if k in body:
+                c[k] = bool(body[k])
+        (HERE / "config.json").write_text(json.dumps(c, indent=2), encoding="utf-8")
+        return get_config()
+
+    @app.post("/api/open-models")
+    def open_models():
+        (HERE / "models").mkdir(exist_ok=True)
+        os.startfile(HERE / "models")  # Windows-only; this is a local tool
+        return {"ok": True}
+
+    @app.get("/api/loras")
+    def loras():
+        """LoRAs from DWARP's own models/loras (a hand-picked set), each with the family it was trained for;
+        ones for other model types (Flux, video…) are left out."""
+        from engine.warp import lora_family
+        seen, out = set(), []
+        for folder in lora_dirs():
+            for f in sorted(folder.rglob("*.safetensors")) if folder.is_dir() else []:
+                if f.stem not in seen and (fam := lora_family(f)):
+                    seen.add(f.stem)
+                    out.append({"name": f.stem, "path": f.as_posix(), "family": fam})
+        return {"loras": sorted(out, key=lambda e: e["name"].lower())}
 
     @app.get("/api/embeddings")
     def embeddings():
@@ -217,6 +266,8 @@ def build_app() -> FastAPI:
         body = await request.json()
         job, meta = body.get("job") or {}, body.get("meta") or {}
         job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
+        if job.get("lora") and not os.path.isfile(job["lora"]):
+            raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
         for key in ("checkpoint",) if job.get("t2v_frames") else ("video", "checkpoint"):   # text -> video: no clip
             if not job.get(key) or not os.path.isfile(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])

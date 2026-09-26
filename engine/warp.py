@@ -53,6 +53,8 @@ class RenderJob:
     frame_start: int = 0                 # in extracted-frame units
     frame_end: int = -1                  # inclusive; -1 = to the end
     nth: int = 1                         # use every nth source frame
+    lora: str = ""                       # a LoRA file for the checkpoint ("" = none), at lora_weight
+    lora_weight: float = 0.8
     embeddings_dir: list = field(default_factory=list)   # folders of textual-inversion embeddings (SD 1.5):
                                          # a file's name typed in a prompt loads it, as in A1111 / ComfyUI
     # Text -> Video: no clip. Frame 1 comes from the prompt alone, every later one from the previous
@@ -477,6 +479,40 @@ def embedding_files(dirs) -> dict[str, Path]:
     return found
 
 
+def lora_family(f: Path) -> str | None:
+    """What a LoRA was trained for, from a cross-attention layer's input width (the text features):
+    768 = SD 1.5, 1024 = SD 2.x, 2048 = SDXL. Reads only the safetensors header. None = not an SD LoRA
+    (Flux, video models…) or unreadable."""
+    try:
+        with open(f, "rb") as fh:
+            n = int.from_bytes(fh.read(8), "little")
+            header = json.loads(fh.read(n)) if 0 < n < 100_000_000 else {}
+    except (OSError, ValueError):
+        return None
+    for k, v in header.items():
+        low = k.lower()
+        if "attn2" in low and ("to_k" in low or "k_proj" in low) and ("lora_down" in low or "lora_a" in low)                 and isinstance(v, dict) and len(v.get("shape", [])) == 2:
+            return {768: "sd15", 1024: "sd2", 2048: "sdxl"}.get(v["shape"][1])
+    return None
+
+
+def apply_lora(pipe, job: RenderJob, log) -> None:
+    """The job's LoRA in the loaded pipeline, swapped without reloading the model: the old one unloaded,
+    the new one loaded once, its strength set every render."""
+    cur = getattr(pipe, "_dwarp_lora", "")
+    if cur != job.lora:
+        if cur:
+            pipe.unload_lora_weights()
+        if job.lora:
+            t = time.time()
+            pipe.load_lora_weights(job.lora, adapter_name="style")
+            log(f"LoRA {Path(job.lora).stem} loaded in {time.time() - t:.1f}s")
+        pipe._dwarp_lora = job.lora
+    if job.lora:
+        pipe.set_adapters(["style"], [job.lora_weight])
+        log(f"LoRA {Path(job.lora).stem} at {job.lora_weight}")
+
+
 def embedding_family(f: Path) -> str | None:
     """What an embedding was trained for, from its vector width: 768 = SD 1.5, 1024 = SD 2.x, clip_g /
     clip_l pairs = SDXL. None if unreadable. Only the tensors' shapes matter; files are small."""
@@ -709,6 +745,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     progress("loading", 0, total, "loading models")
     fetch_missing(job, log)
     pipe = cached_pipeline(job, device, log)
+    apply_lora(pipe, job, log)
     pipe.scheduler = make_scheduler(pipe._dwarp_scheduler_config, job.sampler, job.schedule)
     log(f"sampler {job.sampler}, schedule {job.schedule} ({type(pipe.scheduler).__name__})")
     if total > 1 and not job.fresh and not t2v and "flow" not in _CACHE:

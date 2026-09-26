@@ -47,6 +47,31 @@
   .label { margin-bottom: 8px;
            display: flex; justify-content: space-between; }
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
+  /* a collapsible card: header = title · live summary · chevron; click it to fold the card to that line */
+  .card { background: var(--panel-2); border-radius: var(--radius); }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 11px 12px; cursor: pointer; user-select: none; }
+  .card-head .title { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+  .card-head .sum { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card-head .chev { color: var(--faint); font-size: 15px; line-height: 1; transition: transform .15s; width: 14px; text-align: center; }
+  .card-head:hover .chev, .card-head:hover .title { color: var(--text); }
+  .card.collapsed .chev { transform: rotate(-90deg); }
+  .card-body { padding: 0 12px 4px; }
+  .card.collapsed .card-body { display: none; }
+  .card-body .ons { margin: 0 0 10px; }
+  .card-body .slider { margin-bottom: 10px; }
+  .card-body .pair { gap: 12px; }
+  /* inside a card the controls read as plain labels, not headers (like Aspect / FPS) */
+  .card-body .slider-head b, .card-body .sublabel { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: #c9c7cf; }
+  .card-body > .sublabel:first-child, .card-body > .seg:first-child { margin-top: 0; }
+  .card-head .randlink { margin-left: 10px; font-size: 11px; }
+  .card-head .sum + .randlink { margin-left: 10px; }
+  .hint { color: var(--faint); font-size: 11px; margin: -4px 0 8px; }
+  .hint:empty { display: none; }
+  /* fields sit a shade lighter than the card they're in, or they'd vanish into it */
+  .card-body textarea, .card-body select.model, .card-body .seed input, .card-body .seed button, .card-body .seed-tag,
+  .card-body .seg button { background: #25242b; }
+  .card-body .seed button:hover, .card-body .seg button:hover { background: #2d2c33; }
+  .card-body .seg button.on { background: #34333b; }
   .randlink { color: var(--accent-2); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
   .randlink:hover { color: var(--text); }
 
@@ -76,18 +101,19 @@
   .range.sliding .sel { cursor: grabbing; }   /* dragging inside the selection slides it, length kept */
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
-  /* prompt travel: keyframe lane under the filmstrip */
+  /* prompt travel: keyframe lane under the prompt box */
   .keys-label { color: #a9a7b1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
                 margin: 2px 10px 6px; display: flex; justify-content: space-between; }
   .keys-label a { color: #ff9a8a; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
-  .keys { position: relative; height: 16px; margin: 0 10px 10px; border-radius: 4px; background: rgba(255,255,255,.03);
+  .keys { position: relative; height: 16px; margin: 8px 0 8px; border-radius: 4px; background: rgba(255,255,255,.05);
           cursor: copy; touch-action: none; }
-  .keys:hover { background: rgba(255,255,255,.06); }
+  .keys:hover { background: rgba(255,255,255,.08); }
+  .keydel { color: #ff9a8a; cursor: pointer; font-size: 11px; font-weight: 600; margin-left: 8px; }
   .keys .marks { position: absolute; inset: 0; }
-  .keys .key, .keys .ghost, .keybar .dot { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px;
+  .keys .key, .keys .ghost { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px;
                border-radius: 50%; background: #8b8993; cursor: grab; box-sizing: border-box; }
   .keys .key:first-of-type { margin-left: 0; }
-  .keys .key.on, .keybar .dot { background: var(--accent); }
+  .keys .key.on { background: var(--accent); }
   /* hover: a ghost (+) follows the pointer; press to drop a keyframe there */
   .keys .ghost { display: none; background: none; border: 1.5px solid #a9a7b1; pointer-events: none;
                  color: #d4d2da; font-size: 11px; line-height: 9px; text-align: center; }
@@ -101,7 +127,6 @@
   .keys .peek span { position: absolute; left: 4px; bottom: 3px; font-size: 10px; color: #fff; background: rgba(0,0,0,.6);
                      padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
   .keys.peeking .peek { display: block; }
-  .keybar .dot { position: static; display: inline-block; margin: 0; flex: none; cursor: default; }
   .keys .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 10px; pointer-events: none; }
   .keybar { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--dim); font-size: 11px; }
   .keybar b { color: #a9a7b1; font-weight: 600; }
@@ -160,7 +185,7 @@
   .embrow select.model { flex: 1; min-width: 0; }
   .embrow #embedVer { flex: none; width: 92px; }
   .embrow #embedVer[hidden] { display: none; }
-  #cnSel[hidden] { display: none; }
+  #cnSel[hidden], #loraBox[hidden] { display: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -258,7 +283,7 @@
   .stage-foot a.icon.hide { display: none; }
   .stage-foot #cancelLink:hover { background: var(--bad); color: #fff; }
   .stage-foot a.hide { display: none; }
-  .stage-foot #liveBtn { color: var(--dim); }
+  .stage-foot #liveBtn { color: var(--dim); text-transform: uppercase; letter-spacing: .8px; font-weight: 700; font-size: 11px; }
   .stage-foot #liveBtn::before { content: "●"; margin-right: 5px; color: var(--faint); }
   .stage-foot #liveBtn.on { color: var(--text); background: rgba(255,106,61,.2); }
   .stage-foot #liveBtn.on::before { color: var(--accent); }
@@ -311,6 +336,16 @@
   .helppanel .htabs button.on { color: var(--text); background: rgba(255,106,61,.2); }
   .helppanel ol, .helppanel ul { margin: 6px 0; padding-left: 20px; max-width: 70ch; }
   .helppanel li { margin: 3px 0; }
+  /* settings: rows of a label, a note and a control */
+  .setrow { margin: 16px 0; max-width: 640px; }
+  .setrow .note { color: var(--faint); font-size: 11.5px; margin: 2px 0 8px; }
+  .setrow input[type=text] { width: 100%; box-sizing: border-box; background: var(--panel-2); color: var(--text); border: 0;
+               border-radius: 8px; padding: 8px 10px; font: 12px ui-monospace, Consolas, monospace; }
+  .setrow .row { display: flex; gap: 8px; align-items: center; }
+  .setrow label { display: flex; gap: 8px; align-items: center; cursor: pointer; margin: 6px 0; }
+  .setrow .ok { color: #7fd68a; } .setrow .bad { color: var(--bad); }
+  .setbtn { background: var(--panel-2); color: var(--text); border: 0; border-radius: 7px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+  .setbtn:hover { background: #2d2c33; }
   .helppanel a { color: var(--accent-2); text-decoration: none; }
   .helppanel a:hover { text-decoration: underline; }
   .logpanel .hot { color: var(--accent-2); }
@@ -367,20 +402,43 @@
     <input type="file" id="fileInput" accept="video/*" hidden>
   </section>
 
+  <section id="camBox" hidden>
+    <div class="card" data-card="camera">
+    <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
+      <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
+    </div>
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
+      <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
+    </div>
+    </div></div>
+  </section>
+
   <section>
-    <div class="label"><span>Prompt <em id="promptHint"></em></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a></div>
+    <div class="card" data-card="prompt">
+    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="hint" id="promptHint"></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
+    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="keybar" id="keyBar" hidden>
-      <span class="dot"></span><b id="keyWhich"></b>
+      <b id="keyWhich"></b><a id="keyDel" class="keydel" title="Delete the selected keyframe">delete</a>
       <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
         <span>blend</span><input type="range" id="blend" min="0" max="48" step="1"><span id="blendV"></span>
       </div>
     </div>
+    </div></div>
   </section>
 
   <section>
+    <div class="card" data-card="model">
+    <div class="card-head"><span class="title">Model</span><span class="sum" id="sum_model"></span><span class="chev">▾</span></div>
+    <div class="card-body">
     <div class="seg mode" id="mode"></div>
-    <div class="sublabel">Model</div>
+    <div class="sublabel">Checkpoint</div>
     <select class="model" id="model" title="Checkpoint"></select>
     <div class="pair" style="margin-top:4px">
       <div><div class="sublabel">Sampler</div><select class="model" id="sampler" title="How each step moves toward the image"></select></div>
@@ -396,17 +454,34 @@
         <input type="range" id="cfg" min="1" max="12" step="0.5">
       </div>
     </div>
+    </div></div>
+  </section>
+
+  <section>
+    <div class="card" data-card="style">
+    <div class="card-head" title="The look (style words, and for SD 1.5 its model) and an embedding"><span class="title">Style</span><span class="sum" id="sum_style"></span><span class="chev">▾</span></div>
+    <div class="card-body">
     <div class="sublabel">Embedding</div>
     <div class="embrow">
       <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
       <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
     </div>
-    <div class="sublabel">Style</div>
+    <div class="sublabel">LoRA</div>
+    <select class="model" id="lora" title="An optional LoRA from models/loras, for the mode's family"></select>
+    <div class="slider" id="loraBox" style="margin-top:10px">
+      <div class="slider-head"><b>Strength</b><span id="loraWV"></span></div>
+      <input type="range" id="loraW" min="0" max="1.5" step="0.05">
+    </div>
+    <div class="sublabel">Look</div>
     <select class="model" id="presets" title="Style preset"></select>
     <div class="preset-model" id="presetModel" hidden></div>
+    </div></div>
   </section>
 
   <section>
+    <div class="card" data-card="render">
+    <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Render</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
+    <div class="card-body">
     <div class="slider">
       <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely">Denoise</b><span id="styleV"></span></div>
       <input type="range" id="style" min="0" max="1" step="0.01">
@@ -421,6 +496,13 @@
       <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
       <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
     </div>
+    </div></div>
+  </section>
+
+  <section id="guideBox">
+    <div class="card" data-card="guidance">
+    <div class="card-head" title="ControlNet holds the shapes, DepthDiff picks where to repaint"><span class="title">Guidance</span><span class="sum" id="sum_guidance"></span><span class="chev">▾</span></div>
+    <div class="card-body">
     <div class="gtabs" id="gTabs"><button data-t="cn" title="ControlNet: hold the source's shapes">ControlNet</button><button data-t="dd" title="DepthDiff: the source's luma or depth decides where the style repaints">DepthDiff</button></div>
     <div id="cnPane">
       <div class="preset-model" id="cnFetch" hidden></div>
@@ -470,14 +552,22 @@
         </div>
       </div>
     </div>
-    <div class="seed" style="margin-top:4px">
+    </div></div>
+  </section>
+
+  <section>
+    <div class="card" data-card="output">
+    <div class="card-head"><span class="title">Output</span><span class="sum" id="sum_output"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="seed">
       <span class="seed-tag">seed</span>
       <input type="text" id="seed" inputmode="numeric" spellcheck="false" title="Drag left / right to change the seed (Shift: ×100) — click to type one">
       <button id="seedDice" title="New random seed">🎲</button>
       <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
     </div>
-    <div class="label" style="margin-top:14px">Size</div>
-    <div class="seg" id="size"></div>
+    <div class="sublabel">Size</div>
+    <div class="seg" id="size" style="margin-bottom:10px"></div>
+    </div></div>
   </section>
 
 </aside>
@@ -492,6 +582,7 @@
     <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
     <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
     <button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button>
+    <button class="logbtn" id="setBtn" title="Settings">⚙</button>
   </div>
   <div class="progress"><i id="bar"></i></div>
   <div class="stage-wrap">
@@ -500,6 +591,7 @@
     </div>
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
+    <div class="helppanel" id="setPanel" hidden></div>
   </div>
   <div class="scrub" id="scrub" hidden>
     <button id="playBtn" title="Play frames (space)">▶</button>
@@ -512,7 +604,7 @@
       <button class="btn test" id="frameBtn">Single Frame</button>
       <button class="btn test" id="testBtn">Preview</button>
       <button class="btn go" id="goBtn">Render</button>
-      <a id="liveBtn" title="Live: while a Preview / Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
+      <a id="liveBtn" title="Live: starts a Render (or joins the running one); type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
     <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
@@ -554,6 +646,17 @@ const TEST = { frames: 5, nth: 2 };   // test size comes from the mode
 
 let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
 var EMBEDS = [];                           // [{name, family}] from the embeddings folder
+var LORAS = [];                            // [{name, path, family}] from models/loras
+const loraOn = () => LORAS.some(l => l.path === state.lora && l.family === state.mode) ? state.lora : '';
+function renderLora() {
+  const list = LORAS.filter(l => l.family === state.mode);
+  $('lora').innerHTML = (list.length ? '<option value="">none</option>' : '<option value="">none — add some to models/loras</option>') +
+    list.map(l => `<option value="${l.path}">${l.name}</option>`).join('');
+  $('lora').disabled = !list.length;
+  $('lora').value = loraOn();
+  $('loraBox').hidden = !loraOn();
+  $('loraW').value = state.loraW; $('loraWV').textContent = (+state.loraW).toFixed(2);
+}
 // Samplers and the schedules each supports (first = its default) — mirrors SAMPLERS in engine/warp.py
 const SAMPLERS = {
   dpmpp_2m:     ['DPM++ 2M', 'The default: sharp and steady', ['karras', 'normal', 'exponential', 'beta', 'trailing']],
@@ -634,49 +737,68 @@ function t2vDims(size) {                    // long side = size, the picked aspe
   const [a, b] = (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
   return [Math.round(a * k / 8) * 8, Math.round(b * k / 8) * 8];
 }
-const KEYS_HTML = `<div class="keys-label"><span>Prompt keyframes</span><a id="keyDel" title="Delete the selected keyframe">delete</a></div>
-    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>`;
 function renderT2V() {
-  $('clipBox').innerHTML = `<div class="clip"><div class="t2vbody">
-    <div class="slider"><div class="slider-head"><b>Length</b><span id="t2vLenV"></span></div>
-      <input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
+  $('clipBox').innerHTML = `<div class="card" data-card="length">
+    <div class="card-head"><span class="title">Length</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="slider"><input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
     <div class="ons"><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes"><span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div></div>
-    <div class="label">Camera <em>per frame</em></div>
-    <div class="pair">
-      <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
-      <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
-    </div>
-    <div class="pair">
-      <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
-      <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
-    </div></div>
-    ${KEYS_HTML}
+</div>
   </div>`;
-  const cam = (id, key) => $(id).oninput = e => { state.cam[key] = +e.target.value; paintT2V(); save(); };
-  cam('camZoom', 'zoom'); cam('camRot', 'rotate'); cam('camX', 'x'); cam('camY', 'y');
   $('t2vLen').oninput = e => { state.t2vLen = +e.target.value; paintT2V(); save(); };
   $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
-  // a double-click on a camera slider puts it back at rest
-  [['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y']].forEach(([id, k]) =>
-    $(id).ondblclick = () => { state.cam[k] = 0; paintT2V(); save(); });
-  bindKeys(); paintT2V();
+  applyCards(); paintT2V();
 }
 function paintT2V() {
   if (!state.t2v || !$('t2vLen')) return;
-  const on = state.onN || 1, frames = laneFrames(), c = state.cam || { zoom: 1, rotate: 0, x: 0, y: 0 };
+  const on = state.onN || 1, frames = laneFrames();
   $('t2vLen').value = state.t2vLen;
-  $('t2vLenV').textContent = `${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} ${on > 1 ? 'drawings' : 'frames'}`;
+  $('t2vLenV').textContent = `${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} frames`;
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
-  const sign = v => (v > 0 ? '+' : '') + v;
+  paintKeys(); updateEst();
+}
+function paintCam() {
+  const c = state.cam || { zoom: 1, rotate: 0, x: 0, y: 0 }, sign = v => (v > 0 ? '+' : '') + v;
   $('camZoom').value = c.zoom; $('camZoomV').textContent = `${sign(+(+c.zoom).toFixed(1))}%`;
   $('camRot').value = c.rotate; $('camRotV').textContent = `${sign(+(+c.rotate).toFixed(2))}°`;
   $('camX').value = c.x; $('camXV').textContent = `${sign(+(+c.x).toFixed(2))}%`;
   $('camY').value = c.y; $('camYV').textContent = `${sign(+(+c.y).toFixed(2))}%`;
-  paintKeys(); updateEst();
+  // the header's summary: what's moving, per frame (folded, this is all you see)
+  const moves = [c.zoom && `zoom ${sign(+(+c.zoom).toFixed(1))}%`, c.rotate && `rotate ${sign(+(+c.rotate).toFixed(2))}°`,
+                 (c.x || c.y) && `pan ${sign(+(+c.x).toFixed(2))} / ${sign(+(+c.y).toFixed(2))}%`].filter(Boolean);
+  $('camSum').textContent = moves.length ? moves.join(' · ') : 'still';
 }
+// Each card's header summary: what's set inside, so a folded card still tells you
+function paintSums() {
+  const set = (k, t) => { const el = $('sum_' + k); if (el) el.textContent = t; };
+  set('prompt', state.keys.length ? `${state.keys.length + 1} keyframes` : '');
+  set('model', `${modeCfg().label} · ${shortName(checkpointPath())}`);
+  const lo = LORAS.find(l => l.path === loraOn());
+  set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`].filter(Boolean).join(' · '));
+  set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+  const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
+  set('guidance', [nets && cn !== 'off' ? (cn === 'both' ? 'depth + edge' : 'depth') : '',
+                   state.dd.src !== 'off' ? `DepthDiff ${state.dd.src}` : ''].filter(Boolean).join(' · ') || 'off');
+  set('output', `${state.size}px · seed ${state.seedLock ? state.seed : 'random'}`);
+}
+['input', 'change', 'click'].forEach(ev => document.querySelector('aside').addEventListener(ev, () => requestAnimationFrame(paintSums)));
+// Cards fold to their header; which ones are folded is remembered
+function applyCards() {
+  document.querySelectorAll('.card[data-card]').forEach(c => c.classList.toggle('collapsed', !!state.collapsed?.[c.dataset.card]));
+}
+addEventListener('click', e => {
+  const head = e.target.closest('.card-head'); if (!head || e.target.closest('a, button')) return;   // its links act, not fold
+  const k = head.parentElement.dataset.card; if (!k) return;
+  state.collapsed = { ...(state.collapsed || {}), [k]: !state.collapsed?.[k] };
+  applyCards(); save();
+});
+[['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y']].forEach(([id, k]) => {
+  $(id).oninput = e => { state.cam[k] = +e.target.value; paintCam(); save(); };
+  $(id).ondblclick = () => { state.cam[k] = 0; paintCam(); save(); };   // back at rest
+});
 function renderClip() {
   if (state.t2v) return renderT2V();
   const box = $('clipBox');
@@ -705,10 +827,9 @@ function renderClip() {
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
       <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
     </div>
-    ${KEYS_HTML}
   </div>`;
   $('swap').onclick = () => $('fileInput').click();
-  bindRange(); bindKeys();
+  bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
   $('clipInfo').onclick = showClip;
   paintRange();
@@ -730,7 +851,7 @@ function paintRange() {
   [...$('onN').children].forEach(b => {       // each button is its own frame rate for this clip
     const n = +b.dataset.n, d = Math.floor((fb - fa) / n) + 1;
     b.textContent = +(sfps / n).toFixed(1); b.classList.toggle('on', n === on);
-    b.title = n === 1 ? `every frame · ${d} frames` : `on ${n === 2 ? 'twos' : 'threes'}: every ${n === 2 ? '2nd' : '3rd'} frame, held ×${n} · ${d} drawings; the mp4 still plays at ${+sfps.toFixed(2)} fps`;
+    b.title = n === 1 ? `every frame · ${d} frames` : `on ${n === 2 ? 'twos' : 'threes'}: every ${n === 2 ? '2nd' : '3rd'} frame, held ×${n} · ${d} frames; the mp4 still plays at ${+sfps.toFixed(2)} fps`;
   });
   paintKeys();
   updateEst();
@@ -762,10 +883,11 @@ function bindRange() {
   range.addEventListener('dblclick', () => { state.range = [0, 1]; paintRange(); save(); });
 }
 
-// ---- prompt travel: keyframes on a lane under the filmstrip. The base prompt is keyframe 1 at
+// ---- prompt travel: keyframes on a lane under the prompt box. The base prompt is keyframe 1 at
 // frame 0 (fixed); each added keyframe says "from here, morph into this prompt" over Blend frames.
 function keyAt(i) { return i < 0 ? { f: 0, prompt: state.prompt } : state.keys[i]; }
 function paintKeys() {
+  $('keys').hidden = !(state.clip || state.t2v);   // no clip and not Text -> Video: no timeline yet
   const lane = $('keyMarks'); if (!lane || !(state.clip || state.t2v)) return;
   const n = Math.max(1, laneFrames() - 1), fps = laneFps();
   lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
@@ -802,10 +924,10 @@ function liveSig() {                     // the panel's prompt travel as the eng
   return JSON.stringify(pt);
 }
 const liveOn = () => state.live && live && curVideo() === live.video;
-function pushPrompts() {
+function pushPrompts(now = false) {
   if (!live || curVideo() !== live.video) return;
   clearTimeout(liveTimer);
-  liveTimer = setTimeout(() => {
+  const send = () => {
     const pt = promptTravel('render');
     if (!pt.prompt_keys.length) pt.prompt_keys = [[0, withLook(state.prompt)]];
     const sent = JSON.stringify(pt);
@@ -813,11 +935,22 @@ function pushPrompts() {
     live.sent = sent;
     api(`/api/jobs/${live.id}/prompts`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...pt, ui: { prompt: state.prompt, keys: state.keys, blend: state.blend } }) }).catch(() => {});
-  }, 500);
+  };
+  if (now) send(); else liveTimer = setTimeout(send, 500);
+}
+// Live, after a cue: Enter rewrites the keyframe that's playing (the lane keeps state.keySel on it) instead of
+// adding one; Esc in the box, or a click on the empty strip, goes back to adding
+var liveRewrite = false;
+function rewritePlaying(text) {
+  if (!text) return;
+  if (state.keySel >= 0 && state.keys[state.keySel]) state.keys[state.keySel].prompt = text;
+  else state.prompt = text;
+  $('prompt').classList.add('sent'); setTimeout(() => $('prompt').classList.remove('sent'), 600);
+  paintKeys(); save(); pushPrompts(true);
 }
 // Live mode: Enter sends the prompt box into the render as a keyframe at the frame about to render.
-function sendLive() {
-  const text = $('prompt').value.trim(); if (!text || !live) return;
+function sendLive(text = $('prompt').value.trim()) {
+  if (!text || !live) return;
   api(`/api/jobs/${live.id}/prompts`, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ now: withLook(text) }) }).catch(() => {});
   $('prompt').classList.add('sent'); setTimeout(() => $('prompt').classList.remove('sent'), 600);
@@ -849,7 +982,10 @@ function syncLive(snap) {
 }
 function paintLive() {
   $('liveBtn').classList.toggle('on', !!state.live);
-  $('promptHint').textContent = liveOn() ? 'live — press Enter to send it into the render (Shift+Enter: new line)' : '';
+  if (!liveOn()) liveRewrite = false;       // Live over: Enter adds again next time
+  $('promptHint').textContent = !liveOn() ? ''
+    : liveRewrite ? 'live — Enter rewrites the playing keyframe (Esc: add new ones instead)'
+    : 'live — press Enter to send it into the render (Shift+Enter: new line)';
 }
 // ---- random prompt: content only (subject · action · place · detail · light); the look adds the style
 const RAND = {
@@ -877,9 +1013,18 @@ $('promptRandom').onclick = () => {
   if (!liveOn()) $('prompt').dispatchEvent(new Event('input'));   // otherwise it's the prompt (or the keyframe's) now
   $('prompt').focus();
 };
-$('liveBtn').onclick = () => { state.live = !state.live; save(); paintLive(); };
+// Live on with nothing rendering starts a Render (Live only means something while one runs); off never stops one
+$('liveBtn').onclick = () => {
+  state.live = !state.live; save(); paintLive();
+  const busy = job && !['completed', 'cancelled', 'failed'].includes(job.state);
+  if (state.live && !busy) startJob('render');
+};
 $('prompt').addEventListener('keydown', e => {
-  if (liveOn() && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLive(); }
+  if (liveOn() && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (liveRewrite) rewritePlaying($('prompt').value.trim()); else sendLive();
+  }
+  if (liveOn() && e.key === 'Escape' && liveRewrite) { liveRewrite = false; paintLive(); }
 });
 function selectKey(i) { state.keySel = i; $('prompt').value = keyAt(i).prompt; paintKeys(); save(); }
 function sortKeys() {                      // keep keyframes in time order, selection following its keyframe
@@ -916,7 +1061,14 @@ function bindKeys() {
     e.preventDefault();
     const hit = e.target.closest('.key');
     if (hit) {
-      const i = +hit.dataset.i; selectKey(i);
+      const i = +hit.dataset.i;
+      // Live: a keyframe is a cue — the render morphs into its prompt from the frame being rendered
+      // (recorded there, like Enter); the lane keeps following the render
+      if (liveOn()) {
+        sendLive(keyAt(i).prompt); $('prompt').value = keyAt(i).prompt;   // cue it, and its words are ready to edit
+        liveRewrite = true; paintLive(); setStatus(`live: cued keyframe ${i + 2}`, 'live'); return;
+      }
+      selectKey(i);
       if (i >= 0) { drag = i; lane.setPointerCapture(e.pointerId); }
       return;
     }
@@ -940,6 +1092,7 @@ function bindKeys() {
     const click = Math.abs(e.clientX - press.x) <= 4, f = press.f;
     press = null;
     if (!click) return;                    // that was a scrub
+    if (liveRewrite) { liveRewrite = false; paintLive(); }   // a click on the strip: back to adding keyframes
     if (f === 0) return selectKey(-1);
     // a new keyframe starts from the prompt in effect there, ready to edit
     const before = [-1, ...state.keys.keys()].map(keyAt).filter(k => k.f <= f).pop();
@@ -1067,9 +1220,11 @@ $('embed').onchange = e => {
   const pick = list.find(x => x.name === base) || list.sort((a, b) => +embedStep(b.name) - +embedStep(a.name))[0];
   state.embed = pick ? pick.name : ''; renderControls(); save();
 };
+$('lora').onchange = e => { state.lora = e.target.value; renderLora(); save(); };
+$('loraW').oninput = e => { state.loraW = +e.target.value; $('loraWV').textContent = state.loraW.toFixed(2); save(); };
 $('embedVer').onchange = e => { state.embed = e.target.value; renderControls(); save(); };
 function renderControls() {
-  renderMode(); renderEmbed(); renderSampler();
+  renderMode(); renderEmbed(); renderSampler(); renderLora();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
@@ -1101,6 +1256,9 @@ function renderControls() {
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
   [...$('srcMode').children].forEach(b => b.classList.toggle('on', (b.dataset.s === 't2v') === !!state.t2v));
+  $('camBox').hidden = !state.t2v; if (state.t2v) paintCam();
+  $('guideBox').hidden = !!state.t2v;       // Text -> Video: nothing to guide by
+  applyCards(); paintSums();
   if (state.t2v) {
     $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = $('frameMode').hidden = $('srcMixBox').hidden = true;
   } else {
@@ -1296,8 +1454,8 @@ function updateEst() {
     const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = Math.min(state.size, modeCfg().test_size);
     const tn = Math.min(n, 12);
     $('frameBtn').title = `frame 1 from the prompt · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
-    $('testBtn').title = `the first ${tn} ${on > 1 ? 'drawings' : 'frames'} · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
-    $('goBtn').title = `${n} ${on > 1 ? `drawings (on ${on}s)` : 'frames'} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
+    $('testBtn').title = `the first ${tn} frames · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
+    $('goBtn').title = `${n} frames${on > 1 ? ` (on ${on}s)` : ''} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
     return;
   }
   if (!state.clip) { $('frameBtn').title = $('testBtn').title = $('goBtn').title = 'drop a video first'; return; }
@@ -1308,7 +1466,7 @@ function updateEst() {
   const testSize = Math.min(state.size, modeCfg().test_size);
   $('testBtn').title = `${testN} frames · every ${testStep === 2 ? '2nd' : '3rd'} · ${testSize}px · ≈ ${fmtDur(testN * spf(testSize))}`;
   const n = Math.floor((fb - fa) / on) + 1;
-  $('goBtn').title = `${n} ${on > 1 ? `drawings (on ${on}s)` : 'frames'} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
+  $('goBtn').title = `${n} frames${on > 1 ? ` (on ${on}s)` : ''} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
 }
 
 // ---------------------------------------------------------------- config mapping
@@ -1381,6 +1539,7 @@ async function buildConfig(kind) {
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
+    lora: loraOn(), lora_weight: state.loraW,
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets: t2v ? [] : controlnets,     // Text -> Video: nothing to follow
@@ -1391,6 +1550,9 @@ async function buildConfig(kind) {
     ...(t2v ? { t2v_frames: t2vN, cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
                 cam_x: state.cam.x / 100, cam_y: state.cam.y / 100 } : {}),
   };
+  // Single Frame with a keyframe selected: that keyframe's prompt, whatever the frame
+  const sel = kind === 'frame' && state.keySel >= 0 ? state.keys[state.keySel] : null;
+  if (sel) { job.prompt = withLook(sel.prompt); job.prompt_keys = []; }
   const fps = (t2v ? T2V_FPS : (state.clip.source.fps || 24)) / nth;
   return { job, total: t2v ? t2vN : end - start + 1, size, fps };
 }
@@ -1450,7 +1612,8 @@ const HELP = {
     <h4>Boil</h4>
     <p>Every frame is repainted fresh from its source, so the strokes shimmer and redraw like hand-painted animation.</p>
     <h4>Text → Video</h4>
-    <p>No video at all (the switch at the top). The prompt paints frame 1; every next frame is the previous one moved
+    <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. No video at all (the switch at the
+       top). The prompt paints frame 1; every next frame is the previous one moved
        by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted at your Denoise, so the picture keeps travelling
        and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
        steadier, higher changes faster. Set the length, aspect and FPS in the card; ControlNet, DepthDiff and Source
@@ -1517,6 +1680,11 @@ const HELP = {
        twice as slow, <b>LCM</b> only for LCM checkpoints. The <b>schedule</b> spaces the noise levels: Karras spends
        more steps on fine detail; <b>Trailing</b> suits few-step (⚡) models. Each sampler lists the schedules it
        supports.</p>
+    <h4>LoRAs</h4>
+    <p>Drop LoRA files (.safetensors) into DWARP's <b>models/loras</b> folder and pick one in the Style card, with its
+       strength. Like embeddings, each is listed in the mode it was trained for (SD 1.5, SD 2.1 or SDXL); LoRAs for
+       other model types are left out. Switching one doesn't reload the model. SDXL Flash Mini is a slimmed-down SDXL,
+       so SDXL LoRAs only partly fit it — a full SDXL checkpoint takes them best.</p>
     <h4>Steps, CFG, Size</h4>
     <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
        is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
@@ -1567,21 +1735,24 @@ const HELP = {
     <h4>FPS: on ones, twos, threes</h4>
     <p>Hand-drawn animation is often shot <b>on twos</b>: a new drawing every 2nd frame, each held for two. The
        <b>FPS</b> buttons under the trim offer the clip's rate, half and a third: at half or a third, every 2nd / 3rd frame
-       of the range is rendered and held, so a 24 fps clip gets 12 or 8 drawings a second — a stepped, hand-made rhythm (lovely with <b>Boil</b>), and half or a third of the render time. The mp4
+       of the range is rendered and held, so a 24 fps clip gets 12 or 8 new frames a second — a stepped, hand-made rhythm (lovely with <b>Boil</b>), and half or a third of the render time. The mp4
        still plays at the clip's fps, so it drops straight into an edit. Keyframes stay where they are in time.</p>
     <h4>Prompt keyframes — prompt travel</h4>
-    <p>The lane under the filmstrip changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
+    <p>The thin lane under the prompt box changes the prompt over time. The main prompt is keyframe 1, at the start.</p>
     <ul>
       <li><b>Hover</b> the lane to scrub, <b>click</b> to add a keyframe there, <b>drag</b> one to move it,
           click one to <b>edit</b> its prompt in the box (the badge says which keyframe you're editing).</li>
       <li>From each keyframe the video <b>morphs into its prompt over Blend frames</b> — 0 is a hard cut, 12–30 a
           smooth change. The look's style words are added to every keyframe.</li>
-      <li><b>delete</b> (in the lane's header) removes the selected keyframe.</li>
+      <li><b>delete</b> (next to the keyframe's blend, under the box) removes the selected keyframe.</li>
+      <li>With a keyframe selected, <b>Single Frame</b> renders with its prompt — a quick check of each one.</li>
     </ul>
     <h4>Live</h4>
-    <p>Turn on <b>live</b> next to Render, and while a Preview or Render runs, type a prompt and press Enter — the
+    <p>Turn on <b>live</b> next to Render — it starts a Render if none is running — then type a prompt and press Enter: the
        video morphs into it from the frame being rendered. Each one is saved as a keyframe, so the run can be
-       repeated.</p>`],
+       repeated. Your keyframes become <b>cues</b>: click one and the render morphs into its prompt right away — and its words
+       land in the box, so editing them and pressing Enter <b>rewrites</b> the playing keyframe instead of adding one.
+       Esc (or a click on the empty strip) goes back to adding.</p>`],
 
   finish: ['Finishing', () => `
     <h3>Runs, seeds and Enhance</h3>
@@ -1607,6 +1778,7 @@ const HELP = {
       <li><a href="https://github.com/CompVis/stable-diffusion" target="_blank">Stable Diffusion</a>, <a href="https://github.com/lllyasviel/ControlNet" target="_blank">ControlNet</a> (Lvmin Zhang),
           <a href="https://github.com/huggingface/diffusers" target="_blank">diffusers</a>, <a href="https://github.com/huggingface/controlnet_aux" target="_blank">controlnet_aux</a></li>
       <li><a href="https://huggingface.co/thibaud/controlnet-sd21" target="_blank">SD 2.1 ControlNets</a> (thibaud) — depth and HED edges</li>
+      <li>Text → Video follows the 2D animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a></li>
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
       <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
           <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
@@ -1630,8 +1802,55 @@ function paintHelp() {
 }
 function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
-  if (open) paintHelp();
+  if (open) { toggleSettings(false); paintHelp(); }
 }
+
+// ---------------------------------------------------------------- settings
+// Machine settings live in config.json (the server re-reads it every request): the models folder, and
+// whether its embeddings / LoRAs join DWARP's own. Saving reloads the page so every list refreshes.
+async function paintSettings() {
+  const c = await api('/api/config').catch(() => null);
+  if (!c) { $('setPanel').innerHTML = '<p>Settings need the server — restart run.bat.</p>'; return; }
+  const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  $('setPanel').innerHTML = `<button class="logbtn close" id="setClose">✕</button>
+    <h3>Settings</h3>
+    <div class="setrow">
+      <h4>Models folder</h4>
+      <div class="note">Checkpoints, ControlNets and upscalers come from here — a ComfyUI <b>models</b> folder works as it is.</div>
+      <div class="row"><input type="text" id="setRoot" value="${esc(c.models_root)}" spellcheck="false"><button class="setbtn" id="setSave">Save</button></div>
+      <div class="note" id="setRootInfo">${c.root_ok ? `<span class="ok">✓</span> ${c.checkpoints} checkpoint${c.checkpoints === 1 ? '' : 's'} found` : '<span class="bad">✗ folder not found</span>'}</div>
+    </div>
+    <div class="setrow">
+      <h4>Also use from the models folder</h4>
+      <div class="note">Embeddings and LoRAs come from DWARP's own folder, hand-picked. Turn these on to add the models
+        folder's too — a shared ComfyUI folder can hold a lot of unrelated files.</div>
+      <label><input type="checkbox" id="setEmb" ${c.extra_embeddings ? 'checked' : ''}> its embeddings</label>
+      <label><input type="checkbox" id="setLora" ${c.extra_loras ? 'checked' : ''}> its LoRAs</label>
+    </div>
+    <div class="setrow">
+      <h4>DWARP's own models folder</h4>
+      <div class="note">Your embeddings (embeddings), LoRAs (loras), downloaded ControlNets and converted checkpoints live here.</div>
+      <div class="row"><input type="text" value="${esc(c.own_models)}" readonly><button class="setbtn" id="setOpen">Open</button></div>
+    </div>`;
+  $('setClose').onclick = () => toggleSettings(false);
+  $('setOpen').onclick = () => api('/api/open-models', { method: 'POST' }).catch(() => {});
+  const post = async body => {
+    try {
+      await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      save(); location.reload();              // every list (checkpoints, embeddings, LoRAs) from the new settings
+    } catch (e) { $('setRootInfo').innerHTML = `<span class="bad">✗ ${esc(e.message)}</span>`; }
+  };
+  $('setSave').onclick = () => post({ models_root: $('setRoot').value });
+  $('setRoot').onkeydown = e => { if (e.key === 'Enter') post({ models_root: $('setRoot').value }); };
+  $('setEmb').onchange = e => post({ extra_embeddings: e.target.checked });
+  $('setLora').onchange = e => post({ extra_loras: e.target.checked });
+}
+function toggleSettings(open = $('setPanel').hidden) {
+  $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
+  if (open) { toggleHelp(false); paintSettings(); }
+}
+$('setBtn').onclick = () => toggleSettings();
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('setPanel').hidden) toggleSettings(false); });
 $('helpBtn').onclick = () => toggleHelp();
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('helpPanel').hidden) toggleHelp(false); });
 addEventListener('keydown', e => {
@@ -1690,7 +1909,8 @@ async function startJob(kind) {
         text += ` · ${per.toFixed(1)} s/f · ${fmtDur(per * (total - snap.frame))} left`;
       }
     }
-    if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) { live = null; paintLive(); }
+    // the render Live was steering ended: Live switches off too (the next click starts a fresh one)
+    if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) { live = null; state.live = false; save(); paintLive(); }
     if (snap.state === 'completed') {
       es.close();
       if (times.length >= 3) {  // learn this machine's speed for the estimates
@@ -1968,7 +2188,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'sampler', 'schedule', 't2v', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -2199,15 +2419,17 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.srcMix ??= 0.15;
   state.fresh ??= false;
   state.onN ??= 1;
-  state.embed ??= '';
-  state.t2v ??= false; state.t2vLen ??= 5; state.t2vAspect ??= '1:1';
+  state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
+  state.t2v ??= false; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   EMBEDS = (await api('/api/embeddings').catch(() => ({ embeddings: [] }))).embeddings;
+  LORAS = (await api('/api/loras').catch(() => ({ loras: [] }))).loras;
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
+  bindKeys();                               // the lane is static markup: bound once
   renderControls(); paintLive();
   // grey out presets whose checkpoint isn't on disk
   await Promise.all(PRESETS.map(async p => {
@@ -2237,7 +2459,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
       $('bar').style.width = (snap.progress || 0) + '%';
       if (snap.frame !== prev && snap.frame > 0 && snap.run_id) showRun(snap.run_id, { follow: true });
       if (['completed', 'cancelled', 'failed'].includes(snap.state)) {
-        if (live?.id === snap.id) { live = null; paintLive(); }
+        if (live?.id === snap.id) { live = null; state.live = false; save(); paintLive(); }
         es.close(); setButtons(false); $('cancelLink').classList.add('hide');
         setStatus(`render ${snap.state}`, snap.state === 'completed' ? 'done' : snap.state === 'failed' ? 'bad' : '');
         refreshRuns(); return;
