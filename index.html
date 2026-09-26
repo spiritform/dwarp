@@ -267,6 +267,12 @@
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
   .outputs { display: flex; gap: 8px; }
+  /* an enhanced mp4: the chip plays it, its ✕ takes it off the list (the file stays) */
+  .outchip { display: inline-flex; align-items: center; background: #2a2930; border-radius: 7px; }
+  .outchip:hover { background: #34333b; }
+  .stage-foot .outchip a { background: none; }
+  .stage-foot .outchip a.outx { padding: 6px 10px 6px 2px; color: var(--faint); }
+  .stage-foot .outchip a.outx:hover { color: #ff9a8a; }
   .enh { position: absolute; right: 18px; bottom: 44px; width: 300px; background: var(--panel-2);
          border-radius: var(--radius); padding: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 5; }
   .enh h4 { margin: 0 0 12px; font-size: 13px; display: flex; justify-content: space-between; }
@@ -518,7 +524,7 @@
     <a id="openFolder" class="hide icon" title="Open the run's folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></a>
   </div>
   <div class="enh" id="enh" hidden>
-    <h4>Enhance run <span id="enhRun"></span><button id="enhClose">✕</button></h4>
+    <h4>Enhance<button id="enhClose">✕</button></h4>
     <div class="row">
       <div class="label">Upscale</div>
       <select id="enhModel"></select>
@@ -2110,8 +2116,12 @@ async function renderOutputs(runId) {
   if (runId !== viewRun) return;
   $('outputs').innerHTML = outs.map(o => {
     const label = o.name.replace(/\.mp4$/, '').replace(/_/g, ' ');
-    return `<a href="/api/runs/${runId}/post/${encodeURIComponent(o.name)}?v=${Math.round(o.modified)}" target="_blank" title="${(o.bytes / 1e6).toFixed(1)} MB">▶ ${label}</a>`;
+    return `<span class="outchip"><a href="/api/runs/${runId}/post/${encodeURIComponent(o.name)}?v=${Math.round(o.modified)}" target="_blank" title="${(o.bytes / 1e6).toFixed(1)} MB">▶ ${label}</a><a class="outx" data-name="${o.name}" title="Remove from the list — the file stays in the run's post folder">✕</a></span>`;
   }).join('');
+  $('outputs').querySelectorAll('.outx').forEach(x => x.onclick = async () => {
+    await api(`/api/runs/${runId}/post/${encodeURIComponent(x.dataset.name)}`, { method: 'DELETE' }).catch(() => {});
+    renderOutputs(runId);
+  });
 }
 
 function segPick(el, v) { [...el.children].forEach(b => b.classList.toggle('on', b.dataset.v == v)); }
@@ -2133,7 +2143,6 @@ function paintEnhance() {
 }
 async function openEnhance() {
   if (!viewRun) return;
-  $('enhRun').textContent = runsCache.find(r => r.id === viewRun)?.label || 'run ' + viewRun;
   $('enhModel').innerHTML = '<option value="">none</option>' +
     POST_OPTS.upscalers.map(u => `<option value="${u}">${u.replace(/\.(pth|safetensors|pt|ckpt)$/, '')}</option>`).join('');
   if (postPrefs().upscaler && !POST_OPTS.upscalers.includes(postPrefs().upscaler)) postPrefs().upscaler = POST_OPTS.upscalers[0] || '';

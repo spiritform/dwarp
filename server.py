@@ -400,14 +400,38 @@ def build_app() -> FastAPI:
             raise HTTPException(404, detail="Unknown post job")
         return job
 
+    def hidden_outputs(folder: Path) -> dict:
+        """Enhanced mp4s taken off the list: {name: its mtime then}. The files stay; a newer file of the
+        same name (enhanced again) shows up again."""
+        try:
+            return json.loads((folder / ".hidden").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
     @app.get("/api/runs/{run_id}/outputs")
     def outputs(run_id: str):
         folder = run_or_404(run_id) / "post"
         if not folder.is_dir():
             return []
-        files = [f for f in folder.glob("*.mp4") if not f.name.endswith(".part.mp4")]
+        hidden = hidden_outputs(folder)
+        files = [f for f in folder.glob("*.mp4") if not f.name.endswith(".part.mp4")
+                 and hidden.get(f.name) != int(f.stat().st_mtime)]
         return [{"name": f.name, "bytes": f.stat().st_size, "modified": f.stat().st_mtime}
                 for f in sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)]
+
+    @app.delete("/api/runs/{run_id}/post/{name}")
+    def hide_output(run_id: str, name: str):
+        """Take an enhanced mp4 off the list — the file stays in the run's post folder."""
+        if not re.fullmatch(r"[\w.\-]+\.mp4", name):
+            raise HTTPException(400, detail="Bad file name")
+        folder = run_or_404(run_id) / "post"
+        path = folder / name
+        if not path.is_file():
+            raise HTTPException(404, detail="No such output")
+        hidden = hidden_outputs(folder)
+        hidden[name] = int(path.stat().st_mtime)
+        (folder / ".hidden").write_text(json.dumps(hidden, indent=2), encoding="utf-8")
+        return {"removed": name}
 
     @app.get("/api/runs/{run_id}/post/{name}")
     def output_file(run_id: str, name: str):
