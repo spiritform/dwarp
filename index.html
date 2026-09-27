@@ -2227,7 +2227,7 @@ async function showRun(runId, { follow = false } = {}) {
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
   $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
-  $('mp4Link').download = `dwarp_${runId}.mp4`;
+  $('mp4Link').download = mp4Name(runId);
   $('openFolder').classList.remove('hide'); $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
   if (switched || !follow) renderOutputs(runId);
@@ -2408,9 +2408,13 @@ addEventListener('keydown', e => {
 });
 
 $('openFolder').onclick = () => viewRun && api(`/api/runs/${viewRun}/open`, { method: 'POST' });
+function mp4Name(id) {                     // dwarp_12_seed123456.mp4 (runs from before the seed was listed: no seed)
+  const seed = runsCache.find(r => r.id === id)?.seed;
+  return `dwarp_${id}${seed != null ? '_seed' + seed : ''}.mp4`;
+}
 function saveMp4(id) {
   const a = document.createElement('a');
-  a.href = `/api/runs/${id}/video?${runQ()}&t=${Date.now()}`; a.download = `dwarp_${id}.mp4`; a.click();
+  a.href = `/api/runs/${id}/video?${runQ()}&t=${Date.now()}`; a.download = mp4Name(id); a.click();
 }
 $('mp4Link').onclick = async e => {
   e.preventDefault();                       // decided below, after a fresh look at the run
@@ -2542,7 +2546,14 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
 }
 // A stage image that isn't there yet (a frame still rendering) shows as the empty viewport, not the
 // browser's broken-image icon; it comes back the moment a frame loads. Load / error don't bubble: capture.
-addEventListener('error', e => { if (e.target.tagName === 'IMG' && e.target.closest('#stage')) e.target.style.visibility = 'hidden'; }, true);
+// The failed src is dropped: setting the same URL again (the frame once it exists) would otherwise not
+// reload, fire no load event, and leave the image hidden for good.
+addEventListener('error', e => {
+  const el = e.target;
+  if (el.tagName !== 'IMG' || !el.closest('#stage')) return;
+  el.style.visibility = 'hidden';
+  if (el.getAttribute('src')) el.removeAttribute('src');
+}, true);
 addEventListener('load', e => { if (e.target.tagName === 'IMG' && e.target.closest('#stage')) e.target.style.visibility = ''; }, true);
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it

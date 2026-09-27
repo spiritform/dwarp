@@ -184,6 +184,7 @@ def summary(run_id: str) -> dict:
         "prompt": (meta.get("ui") or {}).get("prompt", ""),
         "video_available": bool(video), "video_modified": video.stat().st_mtime if video else None,
         "legacy": is_legacy(run_id), "fps": fps(run_id, meta),
+        "seed": (meta.get("ui") or {}).get("seed"),
     }
 
 
