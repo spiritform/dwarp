@@ -27,7 +27,8 @@
   ::-webkit-scrollbar-corner { background: transparent; }
   html, body { margin: 0; height: 100%; }
   /* controls don't highlight when clicked or dragged across (text in prompts, help and the log still selects) */
-  button, a, label, select, .seg, .card-head, .slider-head, .ons > span, .sublabel { user-select: none; -webkit-user-select: none; }
+  button, a, label, select, .seg, .card-head, .slider-head, .ons > span, .sublabel, aside { user-select: none; -webkit-user-select: none; }
+  aside textarea, aside input[type="text"] { user-select: text; -webkit-user-select: text; }
   body {
     background: var(--bg); color: var(--text);
     font: 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
@@ -50,7 +51,9 @@
            display: flex; justify-content: space-between; }
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
   /* a collapsible card: header = title · live summary · chevron; click it to fold the card to that line */
-  .card { background: var(--panel-2); border-radius: var(--radius); }
+  .card { background: var(--panel-2); border-radius: var(--radius); transition: background .12s; }
+  /* the card under the pointer, or holding the focus, lifts a shade: where you are in the panel */
+  .card:hover, .card:focus-within, .clip:hover { background: #222227; }
   .card-head { display: flex; align-items: center; gap: 8px; padding: 11px 12px; cursor: pointer; user-select: none; }
   .card-head .title { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
   .card-head .sum { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -79,7 +82,7 @@
   .randlink:hover { color: var(--text); }
 
   /* clip card */
-  .clip { border-radius: var(--radius); overflow: hidden; background: var(--panel-2); }
+  .clip { border-radius: var(--radius); overflow: hidden; background: var(--panel-2); transition: background .12s; }
   .clip-empty { padding: 26px 12px; text-align: center; color: var(--dim); cursor: pointer; background: var(--panel-2);
                 border-radius: var(--radius); }
   .clip-empty:hover { background: #24232a; color: var(--text); }
@@ -143,7 +146,7 @@
   .keybar.single { opacity: .4; }                        /* one prompt: nothing to blend or delete yet */
   .keybar.single .slider, .keybar.single .keydel { pointer-events: none; }
   /* a keyframe picked: the lane and its bar are one grey panel (lane on top, delete + blend under it) */
-  .keywrap { margin: 8px 0 10px; }
+  .keywrap { margin: 8px 0 6px; }
   .keywrap .keys { margin: 0; }
   .keywrap:has(.keybar:not([hidden])) .keys { border-radius: 4px 4px 0 0; }
   .keybar b { color: #a9a7b1; font-weight: 600; }
@@ -155,6 +158,8 @@
   .ons { display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; font-size: 11px; color: #a9a7b1; }
   .ons .seg { grid-template-columns: repeat(3, 1fr); flex: 1; }
   .ons .seg button { padding: 3px 0; font-size: 11px; }
+  .ons > span:first-child { min-width: 38px; }
+  .sizeSlot { flex: 1; }                  /* Size lives in the source card: the clip's, or Size / Duration */
   .uploading { padding: 10px; color: var(--dim); font-size: 12px; }
   .uploading i { display: block; height: 3px; background: var(--accent); margin-top: 6px; width: 0; transition: width .2s; }
 
@@ -203,7 +208,7 @@
   #styleRef .ref button:hover { color: #ff9a8a; }
   #styleRefCtl[hidden] { display: none; }
   /* the optional negative prompt: a small fold under the prompt box */
-  .negtoggle { display: inline-block; margin-top: 4px; font-size: 11px; color: var(--dim); cursor: pointer; }
+  .negtoggle { display: inline-block; margin-top: 0; font-size: 11px; color: var(--dim); cursor: pointer; }
   .negtoggle:hover { color: var(--text); }
   .negtoggle.set::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                           background: var(--accent); margin-left: 6px; vertical-align: 1px; }   /* folded, but in use */
@@ -410,6 +415,9 @@
   .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
   .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
+  .run .thumb .num { position: absolute; top: 4px; left: 4px; font-size: 10px; color: #ddd; background: rgba(0,0,0,.7);
+                     padding: 1px 5px; border-radius: 3px; display: none; }   /* the run number, on hover */
+  .run:hover .thumb .num { display: block; }
   .run.on .thumb { border-color: var(--accent); }
   .run .x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: 0;
             background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 12px; line-height: 20px; padding: 0; }
@@ -513,6 +521,38 @@
         <input type="range" id="cfg" min="1" max="12" step="0.5">
       </div>
     </div>
+    <div class="seed" style="margin-bottom:14px">
+      <span class="seed-tag">seed</span>
+      <input type="text" id="seed" inputmode="numeric" spellcheck="false" title="Drag left / right to change the seed (Shift: ×100) — click to type one">
+      <button id="seedDice" title="New random seed">🎲</button>
+      <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
+    </div>
+    </div></div>
+  </section>
+
+  <section>
+    <div class="card" data-card="render">
+    <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Render</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="slider">
+      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With Warp, this is frame 1 — Frame Lock sets the rest">Denoise</b><span id="styleV"></span></div>
+      <input type="range" id="style" min="0" max="1" step="0.01">
+      <div class="ends"><span>keep source</span><span>repaint</span></div>
+    </div>
+    <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
+      <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
+    </div>
+    <div class="slider" id="nextBox">
+      <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look. High keeps it and just follows the motion (only what the motion uncovers is painted fresh); low repaints every frame more. Double-click: the old default (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
+      <input type="range" id="styleNext" min="0" max="1" step="0.01">
+      <div class="ends"><span>repaint</span><span>lock to frame 1</span></div>
+    </div>
+    <div class="slider" id="srcMixBox">
+      <div class="slider-head"><b title="How much of the fresh source frame goes into each frame's start, where the paint is carried along the motion. 0 carries the paint only — it can build up and overcook over long clips; more keeps it anchored to the footage">Source mix</b><span id="srcMixV"></span></div>
+      <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
+      <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
+    </div>
     </div></div>
   </section>
 
@@ -546,32 +586,6 @@
     <div class="sublabel">Look</div>
     <select class="model" id="presets" title="Style preset"></select>
     <div class="preset-model" id="presetModel" hidden></div>
-    </div></div>
-  </section>
-
-  <section>
-    <div class="card" data-card="render">
-    <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Render</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
-    <div class="card-body">
-    <div class="slider">
-      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With Warp, this is frame 1 — Frame Lock sets the rest">Denoise</b><span id="styleV"></span></div>
-      <input type="range" id="style" min="0" max="1" step="0.01">
-      <div class="ends"><span>keep source</span><span>repaint</span></div>
-    </div>
-    <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
-      <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
-      <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
-    </div>
-    <div class="slider" id="nextBox">
-      <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look. High keeps it and just follows the motion (only what the motion uncovers is painted fresh); low repaints every frame more. Double-click: the old default (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
-      <input type="range" id="styleNext" min="0" max="1" step="0.01">
-      <div class="ends"><span>repaint</span><span>lock to frame 1</span></div>
-    </div>
-    <div class="slider" id="srcMixBox">
-      <div class="slider-head"><b title="How much of the fresh source frame goes into each frame's start, where the paint is carried along the motion. 0 carries the paint only — it can build up and overcook over long clips; more keeps it anchored to the footage">Source mix</b><span id="srcMixV"></span></div>
-      <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
-      <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
-    </div>
     </div></div>
   </section>
 
@@ -631,20 +645,7 @@
     </div></div>
   </section>
 
-  <section>
-    <div class="card" data-card="output">
-    <div class="card-head"><span class="title">Output</span><span class="sum" id="sum_output"></span><span class="chev">▾</span></div>
-    <div class="card-body">
-    <div class="seed">
-      <span class="seed-tag">seed</span>
-      <input type="text" id="seed" inputmode="numeric" spellcheck="false" title="Drag left / right to change the seed (Shift: ×100) — click to type one">
-      <button id="seedDice" title="New random seed">🎲</button>
-      <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
-    </div>
-    <div class="sublabel" style="margin-bottom:6px">Size</div>
-    <div class="seg" id="size" style="margin-bottom:10px"></div>
-    </div></div>
-  </section>
+  <div id="sizeHome" hidden><div class="seg" id="size"></div></div>   <!-- parked here while the source card is redrawn -->
 
 </aside>
 
@@ -857,7 +858,8 @@ function renderT2V() {
     <div class="card-head"><span class="title">Size / Duration</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider"><input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
-    <div class="ons"${state.i2v ? ' hidden' : ''}><span>Size</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
+    <div class="ons" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
+    <div class="ons"${state.i2v ? ' hidden' : ''}><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes"><span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div></div>
 </div>
   </div>`;
@@ -865,13 +867,14 @@ function renderT2V() {
   $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
   ($('pick') || $('swap'))?.addEventListener('click', () => $('fileInput').click());
+  $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
   applyCards(); paintT2V();
 }
 function paintT2V() {
   if (!state.t2v || !$('t2vLen')) return;
   const on = state.onN || 1, frames = laneFrames();
   $('t2vLen').value = state.t2vLen;
-  $('t2vLenV').textContent = `${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} frames`;
+  $('t2vLenV').textContent = `${state.size}px · ${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} frames`;
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
   paintKeys(); updateEst();
@@ -966,11 +969,11 @@ function paintSums() {
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
-  // the picked tab's setting, when it's on: "ControlNet – depth + edge" or "DepthDiff – luma"; off = blank
+  // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
+  // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
-  set('guidance', state.gtab === 'dd' ? (state.dd.src !== 'off' ? `DepthDiff – ${state.dd.src}` : '')
-                  : (nets && cn !== 'off' ? `ControlNet – ${cn === 'both' ? 'depth + edge' : 'depth'}` : ''));
-  set('output', `${state.size}px · seed ${state.seedLock ? state.seed : 'random'}`);
+  set('guidance', [nets && cn !== 'off' && `ControlNet ${cn === 'both' ? 'depth + edge' : 'depth'}`,
+                   state.dd.src !== 'off' && (!state.t2v || state.i2v) && `DepthDiff ${state.dd.src}`].filter(Boolean).join(' · '));
 }
 ['input', 'change', 'click'].forEach(ev => document.querySelector('aside').addEventListener(ev, () => requestAnimationFrame(paintSums)));
 // Cards fold to their header; which ones are folded is remembered
@@ -988,7 +991,10 @@ $('cam3d').onclick = e => { const b = e.target.closest('button'); if (!b) return
   $(id).oninput = e => { state.cam[k] = +e.target.value; paintCam(); save(); pushCamera(); };
   $(id).ondblclick = () => { state.cam[k] = 0; paintCam(); save(); pushCamera(); };   // back at rest
 });
+// Size lives inside the source card, so it's moved out before anything redraws that card (or it's lost)
+function parkSize() { const el = $('size'); if (el && el.parentNode !== $('sizeHome')) $('sizeHome').appendChild(el); }
 function renderClip() {
+  parkSize();
   if (state.t2v) return renderT2V();
   const box = $('clipBox');
   if (!state.clip) {
@@ -1013,6 +1019,7 @@ function renderClip() {
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
+    <div class="ons" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
       <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
     </div>
@@ -1021,6 +1028,7 @@ function renderClip() {
   bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
   $('clipInfo').onclick = showClip;
+  $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
   paintRange();
 }
 
@@ -1330,7 +1338,7 @@ async function useInput(res) {             // an uploaded (or run-fed) file on t
 function uploadFile(file) {
   if (!file) return;
   if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Size / Duration card
-    $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
+    parkSize(); $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
   const xhr = new XMLHttpRequest();
   xhr.open('POST', `/api/upload?${qs({ filename: file.name })}`);
   xhr.upload.onprogress = e => { if (e.lengthComputable && $('upBar')) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
@@ -1574,6 +1582,11 @@ function renderSize() {
 // Source and Diff are about the input: they scrub the whole clip, run or no run. Output / Split /
 // Depth / Edge are about a run and scrub its frames.
 function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view === 'src' || view === 'mask'); }
+// Image -> Video with no run on show: the picture is the source (Source / live Diff), at render size
+function picMode() { return state.t2v && state.i2v && !!state.image && !viewRun; }
+function picFrameUrl(kind) {
+  return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind })}`;
+}
 function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
 function toSource() {                      // e.g. scrubbing away from a Single Frame result
   view = 'src'; setControlTabs(); setupTransport();
@@ -1598,7 +1611,7 @@ function showClip() {
   if (view !== 'mask') view = 'src';
   ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
-  $('footInfo').textContent = `${state.clip.name} · source`;
+  setFoot(`${state.clip.name} · source`);
   ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
@@ -1610,10 +1623,12 @@ function drawMask() {
   requestAnimationFrame(() => { maskQueued = false; paintMask(); });
 }
 function paintMask() {
-  if (view !== 'mask' || !$('cvMask') || !state.clip || state.dd.src === 'off') return;
+  if (view !== 'mask' || !$('cvMask') || !(clipMode() || picMode() || viewRun) || state.dd.src === 'off') return;
   const kind = state.dd.src;
   const src = clipMode()
     ? { key: ['clip', state.clip.path, clipFrame, ...renderSize(), kind].join('|'), url: clipFrameUrl(kind) }
+    : picMode()
+    ? { key: ['pic', state.image.path, ...t2vDims(state.size), kind].join('|'), url: picFrameUrl(kind) }
     : { key: ['run', viewRun, frames[frameIdx], kind].join('|'),
         url: `/api/diff/base?${qs({ run: viewRun, frame: frames[frameIdx], kind })}` };
   if (maskBase.key !== src.key) {         // new frame / source: fetch (debounced for scrubs), keep the old one meanwhile
@@ -1666,7 +1681,15 @@ for (const [k, digits] of DD_SLIDERS) {
 }
 $('steps').oninput = e => { state.steps = +e.target.value; $('stepsV').textContent = state.steps; save(); updateEst(); };
 $('cfg').oninput = e => { state.cfg = +e.target.value; $('cfgV').textContent = state.cfg.toFixed(1); save(); };
-$('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); save(); };
+// the frame each size gives (long side = size, the source's aspect), worked out on hover so it's always current
+$('size').onmouseover = e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const size = +btn.dataset.s, c = state.clip?.source;
+  const [w, h] = state.t2v ? t2vDims(size) : c
+    ? [c.width, c.height].map(v => Math.max(8, Math.round(v * size / Math.max(c.width, c.height) / 8) * 8)) : [size, size];
+  btn.title = `${w}×${h}`;
+};
+$('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); paintT2V(); save(); };
 
 function fmtDur(s) { return s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`; }
 function spf(size) {
@@ -1967,7 +1990,10 @@ const HELP = {
        <b>luma</b> uses the frame's brightness, <b>depth</b> its distance. <b>◐ invert</b> swaps which end repaints
        (the tooltip says which). Black / White / Gamma / Contrast shape the map like levels, Blur softens its edges,
        Amount scales it. Watch the <b>Diff</b> tab while you drag — it shows the map live.</p>
-    <p>Both can be on together: ControlNet holds the shapes, DepthDiff picks the areas.</p>
+    <p>Both can be on together: DepthDiff is the mask (<i>where</i> to repaint), ControlNet the guide (<i>what shape</i>
+       to paint there). Say a person in front of a room, DepthDiff on depth: alone, the person repaints fully and can
+       lose their pose; add ControlNet and they're restyled but keep their pose, while the room stays as it was.
+       A dot on each tab marks the ones that are on, and the card header names them all.</p>
     <h4>Seeing the maps</h4>
     <p>The tabs above the image show what the guidance sees. They follow the panel: with <b>ControlNet</b> selected
        you get <b>Depth</b> and <b>Edge</b> (a run's maps, frame by frame); with <b>DepthDiff</b> selected you get
@@ -2242,7 +2268,7 @@ async function showRun(runId, { follow = false } = {}) {
   setupTransport();
   if (!(follow && playing)) paintFrame();
   const r = runsCache.find(r => r.id === runId);
-  $('footInfo').textContent = `${r?.label || 'run ' + runId} · ${frames.length} frames`;
+  setFoot(`${r?.label || 'run ' + runId} · ${frames.length} frames`);
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
   $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
@@ -2256,6 +2282,13 @@ async function showRun(runId, { follow = false } = {}) {
 }
 // Every image fills the stage (aspect kept), whatever size it was rendered at: a 384 px Preview shows as big
 // as a 768 px Render, and the frame box hugs the image, so overlays and the split line up.
+// The bar under the stage: what's shown, plus a run frame's actual size once it has loaded
+var footBase = '';                         // var: set before this line runs
+function setFoot(t) { footBase = t; paintFootSize(); }
+function paintFootSize() {
+  const im = $('imgOut'), dims = !clipMode() && viewRun && im?.naturalWidth ? ` · ${im.naturalWidth}×${im.naturalHeight}` : '';
+  $('footInfo').textContent = footBase + dims;
+}
 function fitOut() {
   const im = $('imgOut'), st = $('stage');
   if (!im || !im.naturalWidth) return;
@@ -2278,6 +2311,7 @@ function ensureFrameEl(hasInit) {
     <button class="save" id="frameSave" title="Save this image"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg></button>
     </div>`;
   $('imgOut').addEventListener('load', fitOut);
+  $('imgOut').addEventListener('load', paintFootSize);
   // drag the render back to the panel: onto the source slot (the run's mp4 as the clip, or this frame
   // as the picture) or the style ref slot (this frame)
   const fr = $('frame'); fr.draggable = true;
@@ -2307,10 +2341,11 @@ function saveFrame() {
   const clipName = () => state.clip.name.replace(/\.[^.]+$/, '').replace(/[^\w\-]+/g, '_');
   const grab = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; a.click(); };
   if (view === 'mask') {
-    const where = clipMode() ? `${clipName()}_${pad(clipFrame, 4)}` : `run${viewRun}_${pad(frames[frameIdx], 6)}`;
+    const where = clipMode() ? `${clipName()}_${pad(clipFrame, 4)}` : picMode() ? 'image' : `run${viewRun}_${pad(frames[frameIdx], 6)}`;
     return $('cvMask').toBlob(b => { const u = URL.createObjectURL(b); grab(u, `dwarp_${where}_diff.png`); setTimeout(() => URL.revokeObjectURL(u), 5000); });
   }
   if (clipMode()) return grab(clipFrameUrl('luma'), `dwarp_${clipName()}_source_${pad(clipFrame, 4)}.jpg`);
+  if (picMode()) return grab(picFrameUrl('luma'), 'dwarp_image_source.jpg');
   const n = frames[frameIdx];
   if (view === 'src') return grab(img(viewRun, 'init', n), `dwarp_run${viewRun}_source_${pad(n, 6)}.jpg`);
   if (view.startsWith('control_')) return grab(img(viewRun, view, n), `dwarp_run${viewRun}_${view.slice(8)}_${pad(n, 6)}.jpg`);
@@ -2318,7 +2353,7 @@ function saveFrame() {
 }
 function applyView() {
   if (!$('frame')) return;
-  const src = $('imgSrc'), div = $('divider'), f = $('frame'), clip = clipMode();
+  const src = $('imgSrc'), div = $('divider'), f = $('frame'), clip = clipMode() || picMode();
   const ctl = view.startsWith('control_'), mask = view === 'mask';
   // clip view: #imgOut itself carries the source frame, so the overlay source image is never needed
   src.style.display = view === 'out' || ctl || mask || clip ? 'none' : '';
@@ -2334,8 +2369,9 @@ function applyView() {
 var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
 function setControlTabs(layers = runLayers) {
   runLayers = layers;
-  const noRun = !viewRun, dd = state.gtab === 'dd' && !state.t2v;   // Text -> Video: a 3D run's depth
-  const entries = dd ? (state.clip && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
+  const noRun = !viewRun, dd = state.gtab === 'dd' && (!state.t2v || state.i2v);   // Text -> Video: a 3D run's depth; Image -> Video: the live Diff
+  const hasSrc = state.t2v ? state.i2v && !!state.image : !!state.clip;
+  const entries = dd ? (hasSrc && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
                      : (noRun ? [] : layers.filter(l => l.id !== 'control_diff' || state.t2v).map(l => [l.id, l.label]));   // no live Diff without a clip
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
@@ -2353,9 +2389,14 @@ $('view').onclick = e => {
   const v = e.target.dataset.v; if (!v) return; view = v;
   [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target));
   stopPlay(); applyView(); setupTransport();
-  if ((frames.length || clipMode()) && $('frame')) paintFrame();
+  if ((frames.length || clipMode() || picMode()) && $('frame')) paintFrame();
 };
 function paintFrame() {
+  if (picMode()) {                         // Image mode, no run: the picture (and its live Diff)
+    $('imgOut').src = picFrameUrl('luma');
+    if (view === 'mask') drawMask();
+    return;
+  }
   // a still is on show: the clip-playback video (black until it has a frame) must not sit over it
   const v = $('vidSrc');
   if (v && !v.hidden && playing !== 'clip') { console.warn('DWARP: clip video was left over the stage'); v.pause(); v.hidden = true; }
@@ -2515,7 +2556,7 @@ async function refreshRuns() {
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
     return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''} ${removingIds.includes(r.id) ? 'removing' : ''}" data-id="${r.id}">
-      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="num">#${r.id}</span><span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
@@ -2617,13 +2658,20 @@ addEventListener('load', e => {
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
+  if (picMode()) {                         // the picture on the stage, with Source / Diff like a clip
+    if (!$('frame')) { $('stage').innerHTML = ''; ensureFrameEl(); }
+    if (view !== 'mask') view = 'src';
+    setControlTabs(); $('scrub').hidden = true; setFoot(`${state.image.name} · source`); paintFrame();
+    ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+    $('outputs').innerHTML = ''; $('enh').hidden = true;
+    return;
+  }
   $('stage').innerHTML = state.i2v
-    ? (state.image ? `<img class="stage-pic" src="/api/image/file?${qs({ path: state.image.path })}" alt="">`
-                   : '<div class="placeholder"><b>Image → Video</b>drop an image, then Single Frame for frame 1 or Preview for the start</div>')
+    ? '<div class="placeholder"><b>Image → Video</b>drop an image, then Single Frame for frame 1 or Preview for the start</div>'
     : state.t2v
     ? '<div class="placeholder"><b>Text → Video</b>write a prompt, then Single Frame for frame 1 or Preview for the start</div>'
     : '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
-  $('scrub').hidden = true; $('footInfo').textContent = '';
+  $('scrub').hidden = true; setFoot('');
   ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }

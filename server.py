@@ -82,8 +82,22 @@ def probe(path: str) -> dict:
     fps = float(num) / float(den or 1) if float(den or 1) else 24.0
     duration = float((data.get("format") or {}).get("duration") or 0)
     frames = int(st.get("nb_read_packets") or round(duration * fps))
+    if not duration or fps > 240:          # e.g. a browser-recorded WebM: no duration, "1000 fps" = its clock
+        fps, duration = _measured_rate(path, frames) or (fps, duration)
     return {"width": int(st["width"]), "height": int(st["height"]), "fps": fps, "frames": frames,
             "duration": duration, "codec": st.get("codec_name", "")}
+
+
+def _measured_rate(path: str, frames: int) -> tuple[float, float] | None:
+    """fps and duration from the frames' own timestamps, for files whose header doesn't say."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time",
+                          "-of", "csv=p=0", path], capture_output=True, text=True)
+    times = sorted(float(t) for t in (line.strip().rstrip(",") for line in out.stdout.splitlines())
+                   if t and t != "N/A")
+    if len(times) < 2 or times[-1] <= times[0]:
+        return None
+    fps = round((len(times) - 1) / (times[-1] - times[0]), 3)
+    return fps, round(max(frames, len(times)) / fps, 3)
 
 
 def fit(width: int, height: int, max_size: int) -> tuple[int, int]:
