@@ -2234,7 +2234,9 @@ async function showRun(runId, { follow = false } = {}) {
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
   // following a render jumps to each new frame, unless it's playing: then the loop just grows
-  if (switched || (follow && !playing)) frameIdx = frames.length - 1;
+  // a picked run opens at its start
+  if (switched && !follow) frameIdx = 0;
+  else if (switched || (follow && !playing)) frameIdx = frames.length - 1;
   frameIdx = Math.min(frameIdx, frames.length - 1);
   ensureFrameEl(!!initL);
   setupTransport();
@@ -2354,6 +2356,9 @@ $('view').onclick = e => {
   if ((frames.length || clipMode()) && $('frame')) paintFrame();
 };
 function paintFrame() {
+  // a still is on show: the clip-playback video (black until it has a frame) must not sit over it
+  const v = $('vidSrc');
+  if (v && !v.hidden && playing !== 'clip') { console.warn('DWARP: clip video was left over the stage'); v.pause(); v.hidden = true; }
   if (clipMode()) {
     $('imgOut').src = clipFrameUrl('luma');
     scrubReadout(clipSec(clipFrame), clipFrame, state.clip.source.frames);
@@ -2369,6 +2374,8 @@ function paintFrame() {
     else scrubReadout(t ? (t.frame_start + n) * t.nth / t.fps : clipSec(frameIdx),
                       frameIdx, rendering && job.total_frames || frames.length);
   }
+  const im = $('imgOut');                  // same URL again: no new load event, so show it if it's already there
+  if (im.complete && im.naturalWidth && im.style.visibility) im.style.visibility = '';
   if (view === 'mask') drawMask();
 }
 $('scrubRange').oninput = e => {
@@ -2597,6 +2604,7 @@ addEventListener('error', e => {
   el.style.visibility = 'hidden';
   el.removeAttribute('src');
   const tries = +(el.dataset.tries || 0);
+  console.warn(`DWARP: stage image #${el.id} failed (try ${tries + 1}/6): ${url}`);
   if (tries < 5) {
     el.dataset.tries = tries + 1;
     setTimeout(() => { if (!el.getAttribute('src')) el.src = url; }, 400 * (tries + 1));   // unless a newer frame took over
