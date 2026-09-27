@@ -55,6 +55,15 @@ class RenderJob:
     nth: int = 1                         # use every nth source frame
     lora: str = ""                       # a LoRA file for the checkpoint ("" = none), at lora_weight
     lora_weight: float = 0.8
+    # Style ref (IP-Adapter): a picture whose look steers every frame. style_only: only the layers that carry
+    # style (InstantStyle), so its colours / strokes / mood come through without its content
+    style_image: str = ""
+    style_scale: float = 0.6
+    style_only: bool = True
+    ip_adapter: str = ""                 # the mode's IP-Adapter file; missing = fetched from ip_adapter_repo
+    ip_adapter_repo: str = ""            # "repo::path/in/repo"
+    image_encoder: str = ""              # its CLIP ViT-H image encoder (HF layout, one safetensors file)
+    image_encoder_repo: str = ""
     embeddings_dir: list = field(default_factory=list)   # folders of textual-inversion embeddings (SD 1.5):
                                          # a file's name typed in a prompt loads it, as in A1111 / ComfyUI
     # Text -> Video: no clip. Frame 1 comes from the prompt alone, every later one from the previous
@@ -487,6 +496,76 @@ def fetch_missing(job: RenderJob, log) -> None:
             log(f"downloaded {p.name} ({p.stat().st_size / 1e6:.0f} MB) in {time.time() - t:.0f}s")
 
 
+def fetch_file(path: str, repo: str, log) -> None:
+    """A model file that downloads on first use: `repo` is "hf-repo::path/in/repo", saved as `path`."""
+    p = Path(path)
+    if p.is_file() or not repo:
+        return
+    import shutil
+    from huggingface_hub import hf_hub_download
+    rid, rfile = repo.split("::")
+    log(f"downloading {p.name} from {rid} (first use, once)…")
+    t = time.time()
+    got = hf_hub_download(rid, rfile)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(got, p)
+    log(f"downloaded {p.name} ({p.stat().st_size / 1e6:.0f} MB) in {time.time() - t:.0f}s")
+
+
+# Style ref: which attention layers get the picture. None = all of them (content and style).
+STYLE_LAYERS = {"sdxl": {"up": {"block_0": [0.0, 1.0, 0.0]}},    # InstantStyle's style block
+                "sd15": {"up": {"block_1": [0.0, 1.0, 0.0]}}}
+
+
+def style_embeds(pipe, job: RenderJob, device, log):
+    """The job's style ref, ready to pass to every call as ip_adapter_image_embeds (None = no style ref).
+    The IP-Adapter stays loaded between jobs; the image encoder only visits the GPU to encode the picture."""
+    cur = getattr(pipe, "_dwarp_ipa", "")
+    if not job.style_image:
+        if cur:
+            pipe.unload_ip_adapter()
+            pipe._dwarp_ipa = ""
+        return None
+    if cur != job.ip_adapter:
+        from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
+        from safetensors.torch import load_file
+        if cur:
+            pipe.unload_ip_adapter()
+        fetch_file(job.ip_adapter, job.ip_adapter_repo, log)
+        fetch_file(job.image_encoder, job.image_encoder_repo, log)
+        t = time.time()
+        if _CACHE.get("img_enc_path") != job.image_encoder:
+            cfg = CLIPVisionConfig(hidden_size=1280, intermediate_size=5120, num_hidden_layers=32, num_attention_heads=16,
+                                   patch_size=14, image_size=224, projection_dim=1024, hidden_act="gelu")
+            enc = CLIPVisionModelWithProjection(cfg)
+            enc.load_state_dict(load_file(job.image_encoder), strict=False)
+            _CACHE["img_enc"], _CACHE["img_enc_path"] = enc.to(torch.float16).eval(), job.image_encoder
+        pipe.image_encoder, pipe.feature_extractor = _CACHE["img_enc"], CLIPImageProcessor()
+        ipa = Path(job.ip_adapter)
+        pipe.load_ip_adapter(str(ipa.parent), subfolder="", weight_name=ipa.name, image_encoder_folder=None)
+        pipe._dwarp_ipa = job.ip_adapter
+        log(f"style ref: {ipa.stem} loaded in {time.time() - t:.1f}s")
+    layers = STYLE_LAYERS.get(job.family) if job.style_only else None
+    pipe.set_ip_adapter_scale(_scaled(layers, job.style_scale) if layers else job.style_scale)
+    enc = pipe.image_encoder.to(device)
+    embeds = pipe.prepare_ip_adapter_image_embeds(
+        ip_adapter_image=Image.open(job.style_image).convert("RGB"), ip_adapter_image_embeds=None, device=device,
+        num_images_per_prompt=1, do_classifier_free_guidance=job.cfg > 1)
+    enc.to("cpu")                               # ~1.2 GB back for the frames
+    torch.cuda.empty_cache()
+    log(f"style ref {Path(job.style_image).name} at {job.style_scale}" + (" (style only)" if layers else ""))
+    return embeds
+
+
+def _scaled(layers, k: float):
+    """STYLE_LAYERS with every weight times k."""
+    if isinstance(layers, dict):
+        return {n: _scaled(v, k) for n, v in layers.items()}
+    if isinstance(layers, list):
+        return [v * k for v in layers]
+    return layers * k
+
+
 def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     from diffusers import ControlNetModel, DPMSolverMultistepScheduler
 
@@ -860,6 +939,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     fetch_missing(job, log)
     pipe = cached_pipeline(job, device, log)
     apply_lora(pipe, job, log)
+    ip_embeds = style_embeds(pipe, job, device, log)
     pipe.scheduler = make_scheduler(pipe._dwarp_scheduler_config, job.sampler, job.schedule)
     log(f"sampler {job.sampler}, schedule {job.schedule} ({type(pipe.scheduler).__name__})")
     if total > 1 and not job.fresh and not t2v and "flow" not in _CACHE:
@@ -1005,6 +1085,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             """One img2img pass over init_t (a whole frame or a tile) -> 1x3xHxW tensor."""
             kw = dict(**text, image=to_image(init_t), strength=strength, num_inference_steps=job.steps,
                       guidance_scale=job.cfg, generator=gen)
+            if ip_embeds is not None:
+                kw["ip_adapter_image_embeds"] = ip_embeds
             if init_t.shape[2:] != (job.height, job.width):
                 kw.update(height=init_t.shape[2], width=init_t.shape[3])
             dd = DiffDiffusion(pipe, amt) if amt is not None else contextlib.nullcontext()

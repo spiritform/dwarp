@@ -47,6 +47,11 @@ def settings() -> dict:
     d["checkpoint_dir"] = f"{root}/checkpoints"
     d["upscale_dir"] = f"{root}/upscale_models"
     for mode in d.get("modes", {}).values():
+        sr = mode.get("style_ref")
+        for c in [sr, sr["encoder"]] if sr else []:   # IP-Adapter + its image encoder: missing ones download on first use
+            paths = [str(HERE / "models" / c["dir"] / n) for n in c["file"]] + [f"{root}/{c['dir']}/{n}" for n in c["file"]]
+            c["path"] = next((q for q in paths if os.path.isfile(q)), str(HERE / "models" / c["dir"] / c.get("save_as", c["file"][0])))
+            c["have"] = os.path.isfile(c["path"])
         refine_cn = [mode["refine"]["controlnet"]] if mode.get("refine", {}).get("controlnet") else []
         for c in list(mode.get("controlnets", {}).values()) + refine_cn:
             names = c["file"] if isinstance(c["file"], list) else [c["file"]]
@@ -299,6 +304,8 @@ def build_app() -> FastAPI:
                     else ("video", "checkpoint")):   # text / image -> video: no clip
             if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
+        if job.get("style_image") and not os.path.isfile(job["style_image"]):
+            raise HTTPException(422, detail=[{"message": f"style image not found: {job['style_image']!r}"}])
         for c in job.get("controlnets", []):
             if not os.path.isfile(c.get("path", "")) and not c.get("repo"):   # a repo = downloads on first use
                 raise HTTPException(422, detail=[{"message": f"ControlNet not found: {c.get('path')!r}"}])

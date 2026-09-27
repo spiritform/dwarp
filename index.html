@@ -111,7 +111,10 @@
   .keys { position: relative; height: 16px; margin: 8px 0 8px; border-radius: 4px; background: rgba(255,255,255,.05);
           cursor: copy; touch-action: none; }
   .keys:hover { background: rgba(255,255,255,.08); }
-  .keydel { color: #ff9a8a; cursor: pointer; font-size: 11px; font-weight: 600; margin-left: 8px; }
+  /* the keyframe bar's delete: a ✕ in a small circle, far right */
+  .keybar .keydel { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+                   background: #34333b; color: #a9a7b1; font-size: 9px; line-height: 1; cursor: pointer; }
+  .keybar .keydel:hover { background: var(--bad); color: #fff; }
   .keys .marks { position: absolute; inset: 0; }
   .keys .key, .keys .ghost { position: absolute; top: 2px; width: 12px; height: 12px; margin-left: -6px;
                border-radius: 50%; background: #8b8993; cursor: grab; box-sizing: border-box; }
@@ -131,8 +134,18 @@
                      padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
   .keys.peeking .peek { display: block; }
   .keys .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 10px; pointer-events: none;
-                line-height: 16px; }   /* the lane's height: the text sits in its middle, not by the inherited line box */
-  .keybar { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--dim); font-size: 11px; }
+                line-height: 16px; padding-top: 2px; }   /* the lane's height, then 1px lower: lowercase text with no
+                                                            descenders reads high when its line box is centred */
+  .keybar { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 11px;
+            background: rgba(255,255,255,.025); border-radius: 0 0 6px 6px; padding: 7px 10px; margin-top: 2px; }
+            /* a shade darker than the lane, a 2px seam between: grouped, still two parts (like the segmented controls) */
+  .keybar[hidden] { display: none; }
+  .keybar.single { opacity: .4; }                        /* one prompt: nothing to blend or delete yet */
+  .keybar.single .slider, .keybar.single .keydel { pointer-events: none; }
+  /* a keyframe picked: the lane and its bar are one grey panel (lane on top, delete + blend under it) */
+  .keywrap { margin: 8px 0 10px; }
+  .keywrap .keys { margin: 0; }
+  .keywrap:has(.keybar:not([hidden])) .keys { border-radius: 4px 4px 0 0; }
   .keybar b { color: #a9a7b1; font-weight: 600; }
   .keybar a { color: #ff9a8a; cursor: pointer; }
   .keybar .slider { flex: 1; margin: 0; display: flex; align-items: center; gap: 8px; }
@@ -177,6 +190,20 @@
   .gtabs button.on { color: #ecebef; background: #3a3941; }
   .gtabs button.live::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                               background: var(--accent); margin-left: 6px; vertical-align: 1px; }
+  /* Style ref: an empty drop box, or the picture's thumbnail + name + remove */
+  #styleRef .clip-empty { padding: 12px; font-size: 12px; }
+  #styleRef .ref { display: flex; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 8px; padding: 6px; }
+  #styleRef .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: 5px; cursor: pointer; flex: none; }
+  #styleRef .ref span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
+  #styleRef .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
+  #styleRef .ref button:hover { color: #ff9a8a; }
+  #styleRefCtl[hidden] { display: none; }
+  /* the optional negative prompt: a small fold under the prompt box */
+  .negtoggle { display: inline-block; margin-top: 4px; font-size: 11px; color: var(--dim); cursor: pointer; }
+  .negtoggle:hover { color: var(--text); }
+  .negtoggle.set::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+                          background: var(--accent); margin-left: 6px; vertical-align: 1px; }   /* folded, but in use */
+  textarea.neg { min-height: 48px; margin-top: 6px; }
   .ddrow { display: flex; gap: 6px; margin-bottom: 14px; }
   .ddrow .seg { flex: 1; }
   /* a lighter grey than the segs so it reads as a switch on the mask, not another source */
@@ -400,7 +427,8 @@
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
 
-  body.dragging::after { content: "drop video"; position: fixed; inset: 0; display: grid; place-items: center;
+  body.dragging::after { content: "drop a video or image"; position: fixed; pointer-events: none;   /* drops reach what's under it (the style ref slot) */
+     inset: 0; display: grid; place-items: center;
      background: rgba(255,106,61,.12); border: 3px dashed var(--accent); color: var(--accent-2); font-size: 22px; z-index: 10; }
 </style>
 </head>
@@ -441,13 +469,18 @@
     <div class="card-body">
     <div class="hint" id="promptHint"></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
-    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
+    <div class="keywrap">
+    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it (drag the first past others to reorder)"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="keybar" id="keyBar" hidden>
-      <b id="keyWhich"></b><a id="keyDel" class="keydel" title="Delete the selected keyframe">delete</a>
+      <b id="keyWhich"></b>
       <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
         <span>blend</span><input type="range" id="blend" min="0" max="48" step="1"><span id="blendV"></span>
       </div>
+      <a id="keyDel" class="keydel" title="Delete this keyframe">✕</a>
     </div>
+    </div>
+    <a id="negToggle" class="negtoggle" title="What to keep out — added to DWARP's own negative (bad quality, blurry, text…) and the look's"></a>
+    <textarea id="negative" class="neg" placeholder="things to keep out: extra fingers, frame, signature" spellcheck="false" hidden></textarea>
     </div></div>
   </section>
 
@@ -477,7 +510,7 @@
 
   <section>
     <div class="card" data-card="style">
-    <div class="card-head" title="A LoRA, an embedding and the look (style words, and for SD 1.5 its model)"><span class="title">Style</span><span class="sum" id="sum_style"></span><span class="chev">▾</span></div>
+    <div class="card-head" title="A LoRA, an embedding, a style ref picture and the look (style words)"><span class="title">Style</span><span class="sum" id="sum_style"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="sublabel">LoRA</div>
     <select class="model" id="lora" title="An optional LoRA from models/loras, for the mode's family"></select>
@@ -489,6 +522,18 @@
     <div class="embrow">
       <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
       <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
+    </div>
+    <div class="sublabel">Style ref</div>
+    <div id="styleRef"></div>
+    <input type="file" id="styleFile" accept="image/*" hidden>
+    <div id="styleRefCtl">
+      <div class="slider" style="margin-top:10px">
+        <div class="slider-head"><b title="How strongly the picture steers every frame">Strength</b><span id="styleRefWV"></span></div>
+        <input type="range" id="styleRefW" min="0" max="1.2" step="0.05">
+      </div>
+      <div class="seg" id="styleOnly" style="grid-template-columns:1fr 1fr;margin-top:-4px">
+        <button data-v="style" title="Only its look — colours, strokes, mood — not what's in it (InstantStyle)">style only</button>
+        <button data-v="full" title="Its look and its content: things in the picture can show up too">style + content</button></div>
     </div>
     <div class="sublabel">Look</div>
     <select class="model" id="presets" title="Style preset"></select>
@@ -837,6 +882,52 @@ function pushCamera() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ camera: camJob(), ui: { cam: state.cam } }) }).catch(() => {}), 120);
 }
+// Style ref (IP-Adapter): a picture whose look steers every frame. SD 1.5 / SDXL (SD 2.1 has none)
+function renderStyleRef() {
+  const sr = modeCfg().style_ref, r = state.styleRef, box = $('styleRef');
+  if (!sr) { box.innerHTML = '<div class="hint">not for SD 2.1</div>'; $('styleRefCtl').hidden = true; return; }
+  box.innerHTML = r
+    ? `<div class="ref"><img src="/api/image/file?${qs({ path: r.path })}" alt="" title="Replace the picture"><span title="${r.path}">${r.name}</span><button title="No style ref">✕</button></div>`
+    : `<div class="clip-empty" title="${sr.have ? '' : 'The IP-Adapter downloads on the first render that uses it'}">Drop a style picture<small>or click to choose</small></div>`;
+  $('styleRefCtl').hidden = !r;
+  $('styleRefW').value = state.styleRefW; $('styleRefWV').textContent = (+state.styleRefW).toFixed(2);
+  segPick($('styleOnly'), state.styleOnly ? 'style' : 'full');
+}
+$('styleRef').onclick = e => {
+  if (e.target.closest('button')) { state.styleRef = null; renderStyleRef(); save(); return; }
+  if (e.target.closest('img, .clip-empty')) $('styleFile').click();
+};
+function uploadStyleRef(file) {
+  if (!file || !/^image\//.test(file.type)) return setStatus('the style ref needs an image', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(res => { state.styleRef = { path: res.path, name: res.name }; renderStyleRef(); save(); setStatus('style ref set'); })
+    .catch(e => setStatus('style ref upload failed: ' + e.message, 'bad'));
+}
+$('styleFile').onchange = e => { uploadStyleRef(e.target.files[0]); e.target.value = ''; };
+// a picture dropped on the slot is the style ref (not Image -> Video's frame 1)
+$('styleRef').addEventListener('dragover', e => e.preventDefault());
+$('styleRef').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  uploadStyleRef(e.dataTransfer?.files?.[0]);
+});
+$('styleRefW').oninput = e => { state.styleRefW = +e.target.value; $('styleRefWV').textContent = state.styleRefW.toFixed(2); save(); };
+$('styleOnly').onclick = e => { const v = e.target.dataset.v; if (!v) return; state.styleOnly = v === 'style'; renderStyleRef(); save(); };
+function styleRefJob() {                     // the job's style-ref fields (empty = none)
+  const sr = modeCfg().style_ref, r = state.styleRef;
+  if (!sr || !r) return { style_image: '' };
+  return { style_image: r.path, style_scale: state.styleRefW, style_only: !!state.styleOnly,
+           ip_adapter: sr.path, ip_adapter_repo: `${sr.repo}::${sr.repo_file}`,
+           image_encoder: sr.encoder.path, image_encoder_repo: `${sr.encoder.repo}::${sr.encoder.repo_file}` };
+}
+// Negative prompt: optional, folded by default; a dot on the fold when it holds something
+function paintNeg() {
+  $('negative').hidden = !state.negOpen;
+  $('negative').value = state.negative;
+  $('negToggle').textContent = (state.negOpen ? '▾' : '▸') + ' negative';
+  $('negToggle').classList.toggle('set', !state.negOpen && !!state.negative.trim());
+}
+$('negToggle').onclick = () => { state.negOpen = !state.negOpen; paintNeg(); save(); if (state.negOpen) $('negative').focus(); };
+$('negative').oninput = e => { state.negative = e.target.value; save(); };
 function paintCam() {
   const c = state.cam, sign = v => (v > 0 ? '+' : '') + v;
   [...$('cam3d').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '3d') === !!c.d3));
@@ -859,7 +950,8 @@ function paintSums() {
   set('prompt', state.keys.length ? `${state.keys.length + 1} keyframes` : '');
   set('model', `${modeCfg().label} · ${shortName(checkpointPath())}`);
   const lo = LORAS.find(l => l.path === loraOn());
-  set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`].filter(Boolean).join(' · '));
+  set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
+                 state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // the picked tab's setting, when it's on: "ControlNet – depth + edge" or "DepthDiff – luma"; off = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -969,9 +1061,11 @@ function bindRange() {
 
 // ---- prompt travel: keyframes on a lane under the prompt box. The base prompt is keyframe 1 at
 // frame 0 (fixed); each added keyframe says "from here, morph into this prompt" over Blend frames.
-function keyAt(i) { return i < 0 ? { f: 0, prompt: state.prompt } : state.keys[i]; }
+// prompt 1 lives at frame 0; firstDrag = where it's being dragged to (reordering), else null
+var firstDrag = null;
+function keyAt(i) { return i < 0 ? { f: firstDrag ?? 0, prompt: state.prompt } : state.keys[i]; }
 function paintKeys() {
-  $('keys').hidden = !(state.clip || state.t2v);   // no clip and not Text -> Video: no timeline yet
+  $('keys').hidden = $('keyBar').hidden = !(state.clip || state.t2v);   // no clip and not Text -> Video: no timeline yet
   const lane = $('keyMarks'); if (!lane || !(state.clip || state.t2v)) return;
   const n = Math.max(1, laneFrames() - 1), fps = laneFps();
   lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
@@ -982,14 +1076,16 @@ function paintKeys() {
     const k = keyAt(+el.dataset.i);
     el.title = `${(k.f / fps).toFixed(1)}s · ${k.prompt || '(empty prompt)'}`;
   });
+  // the bar stays (no jump when keyframes come and go); with a single prompt there's nothing to blend or delete: dim
   const on = state.keys.length > 0;
-  $('keyDel').style.visibility = state.keySel >= 0 ? 'visible' : 'hidden';
-  $('keyBar').hidden = !on;
-  if (on) {
-    const k = keyAt(state.keySel), all = state.keys.length + 1;
-    $('keyWhich').textContent = `keyframe ${state.keySel + 2}/${all} · ${(k.f / fps).toFixed(1)}s`;
-    $('blend').value = state.blend; $('blendV').textContent = `${state.blend} f · ${(state.blend / fps).toFixed(1)}s`;
-  }
+  $('keyBar').hidden = !(state.clip || state.t2v);
+  $('keyBar').classList.toggle('single', !on);
+  $('keyDel').title = state.keySel >= 0 ? 'Delete this keyframe' : 'Delete prompt 1 — prompt 2 takes over from the start';
+  if (!state.keys[state.keySel]) state.keySel = -1;
+  const k = keyAt(state.keySel), all = state.keys.length + 1;
+  $('keyWhich').textContent = `prompt ${state.keySel + 2}`;   // its place and time: on hover
+  $('keyWhich').title = `keyframe ${state.keySel + 2} of ${all}, at ${(k.f / fps).toFixed(1)}s`;
+  $('blend').value = state.blend; $('blendV').textContent = `${state.blend} f · ${(state.blend / fps).toFixed(1)}s`;
   pushPrompts();
 }
 // Live prompts: while a Preview / Render of this clip runs, prompt, keyframe and blend edits go to it
@@ -1121,7 +1217,11 @@ function bindKeys() {
   // there; dragging an existing keyframe moves it.
   const lane = $('keys'); let drag = null, press = null, peekTimer = null, peekFrame = -1;
   $('keyDel').onclick = () => {
-    if (state.keySel < 0) return;
+    if (state.keySel < 0) {                 // prompt 1: the next keyframe's prompt takes over from the start
+      if (!state.keys.length) return;
+      state.prompt = state.keys.shift().prompt;
+      return selectKey(-1);
+    }
     state.keys.splice(state.keySel, 1); state.keySel = Math.min(state.keySel, state.keys.length - 1);
     selectKey(state.keys.length ? state.keySel : -1);
   };
@@ -1153,7 +1253,7 @@ function bindKeys() {
         liveRewrite = true; paintLive(); setStatus(`live: cued keyframe ${i + 2}`, 'live'); return;
       }
       selectKey(i);
-      if (i >= 0) { drag = i; lane.setPointerCapture(e.pointerId); }
+      drag = i; lane.setPointerCapture(e.pointerId);   // prompt 1 too: dragged past others, it reorders them
       return;
     }
     press = { x: e.clientX, f: frameAt(e) }; lane.setPointerCapture(e.pointerId);
@@ -1167,10 +1267,20 @@ function bindKeys() {
     }
     lane.classList.toggle('peeking', drag === null);
     if (drag === null) peek(e);
-    if (drag !== null) { state.keys[drag].f = Math.max(1, frameAt(e)); paintKeys(); lane.classList.add('peeking'); peek(e); }
+    if (drag === -1) { firstDrag = frameAt(e); paintKeys(); lane.classList.add('peeking'); peek(e); }
+    else if (drag !== null) { state.keys[drag].f = Math.max(1, frameAt(e)); paintKeys(); lane.classList.add('peeking'); peek(e); }
   });
   lane.addEventListener('pointerleave', () => { if (!press && drag === null) lane.classList.remove('peeking'); });
   lane.addEventListener('pointerup', e => {
+    if (drag === -1) {                     // prompt 1 dropped: the earliest prompt is the new prompt 1 (at 0)
+      const moved = { f: firstDrag ?? 0, prompt: state.prompt };
+      const all = [moved, ...state.keys].sort((a, b) => a.f - b.f), first = all.shift();
+      firstDrag = null; drag = null;
+      state.prompt = first.prompt;
+      state.keys = all.map(k => k === moved ? { f: Math.max(1, k.f), prompt: k.prompt } : k);
+      const at = state.keys.findIndex(k => k.prompt === moved.prompt && k.f === Math.max(1, moved.f));
+      return selectKey(first === moved ? -1 : at);
+    }
     if (drag !== null) { drag = null; sortKeys(); paintKeys(); save(); return; }
     if (!press) return;
     const click = Math.abs(e.clientX - press.x) <= 4, f = press.f;
@@ -1318,6 +1428,7 @@ function renderControls() {
   renderMode(); renderEmbed(); renderSampler(); renderLora();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
+  renderStyleRef(); paintNeg();
   $('styleNext').value = 1 - state.styleNext; $('styleNextV').textContent = (1 - state.styleNext).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   [...$('frameMode').children].forEach(b => b.classList.toggle('on', (b.dataset.f === 'fresh') === !!state.fresh));
@@ -1626,7 +1737,7 @@ async function buildConfig(kind) {
     family: state.mode,
     prompt: withLook(state.prompt),
     ...promptTravel(kind),
-    negative: [embedNeg() ? embedOn() : '', 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
+    negative: [embedNeg() ? embedOn() : '', state.negative.trim(), 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: W, height: H,
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
@@ -1637,7 +1748,7 @@ async function buildConfig(kind) {
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
-    lora: loraOn(), lora_weight: state.loraW,
+    lora: loraOn(), lora_weight: state.loraW, ...styleRefJob(),
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets: t2v && !state.i2v ? [] : controlnets,     // Text -> Video: nothing to follow
@@ -1796,6 +1907,16 @@ const HELP = {
        strength. Like embeddings, each is listed in the mode it was trained for (SD 1.5, SD 2.1 or SDXL); LoRAs for
        other model types are left out. Switching one doesn't reload the model. SDXL Flash Mini is a slimmed-down SDXL,
        so SDXL LoRAs only partly fit it — a full SDXL checkpoint takes them best.</p>
+    <h4>Negative prompt</h4>
+    <p>Under the prompt box, <b>▸ negative</b> opens an optional box for things to keep out. It's added to DWARP's own
+       negative (bad quality, blurry, text, watermark) and the look's; folded, a dot shows it's in use.</p>
+    <h4>Style ref</h4>
+    <p>Drop a picture on the <b>Style ref</b> slot (Style card) and its look steers every frame, through an
+       <a href="https://github.com/tencent-ailab/IP-Adapter" target="_blank">IP-Adapter</a>. <b>style only</b> takes its
+       colours, strokes and mood but not what's in it (the <a href="https://github.com/instantX-research/InstantStyle" target="_blank">InstantStyle</a>
+       trick: only the style layers see the picture); <b>style + content</b> lets things from the picture show up too.
+       <b>Strength</b> around 0.5–0.8; with a strong LoRA or look, lower. SD 1.5 and SDXL; it uses your models folder's
+       <b>ipadapter</b> / <b>clip_vision</b> files, or downloads them on first use. Refine uses it too.</p>
     <h4>Steps, CFG, Size</h4>
     <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
        is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
@@ -2310,7 +2431,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -2537,7 +2658,7 @@ function refineConfig() {
     style: r.denoise, style_next: r.denoise,   // the same Denoise every frame: the warp carries the detail on
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
-    lora: loraOn(), lora_weight: state.loraW, seed: src.seed ?? randomSeed(),
+    lora: loraOn(), lora_weight: state.loraW, ...styleRefJob(), seed: src.seed ?? randomSeed(),
     controlnets: rf.controlnet?.have ? [{ kind: 'tile', path: rf.controlnet.path, start: 0, end: 1, repo: '', weight: r.hold }] : [],
     flow_blend: 0.85, color_match: 0.5, tile: rf.tile || 0, tile_overlap: 128,
     diff_source: 'off', prompt_keys: [], prompt_blend: 12,
@@ -2595,6 +2716,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.styleNext ??= +((state.style ?? 0.75) * 0.65).toFixed(2);   // older saves: what the engine used to pick
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
+  state.styleRef ??= null; state.styleRefW ??= 0.6; state.styleOnly ??= true;
+  state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up

@@ -43,6 +43,27 @@
           "end": 1.0,
           "file": "control_v11f1e_sd15_tile_fp16.safetensors"
         }
+      },
+      "style_ref": {
+        "file": [
+          "ip-adapter-plus_sd15.safetensors"
+        ],
+        "dir": "ipadapter",
+        "repo": "h94/IP-Adapter",
+        "repo_file": "models/ip-adapter-plus_sd15.safetensors",
+        "encoder": {
+          "file": [
+            "clip_vision_h.safetensors",
+            "clip_vision_h_fp16.safetensors",
+            "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+            "clip-vision_vit-h.safetensors",
+            "image_encoder_vit-h.safetensors"
+          ],
+          "dir": "clip_vision",
+          "repo": "h94/IP-Adapter",
+          "repo_file": "models/image_encoder/model.safetensors",
+          "save_as": "image_encoder_vit-h.safetensors"
+        }
       }
     },
     "sd2": {
@@ -137,6 +158,27 @@
             "controlnet-union-sdxl-1.0-promax.safetensors",
             "PROMAX_controlnet-union-sdxl-1.0.safetensors"
           ]
+        }
+      },
+      "style_ref": {
+        "file": [
+          "ip-adapter-plus_sdxl_vit-h.safetensors"
+        ],
+        "dir": "ipadapter",
+        "repo": "h94/IP-Adapter",
+        "repo_file": "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors",
+        "encoder": {
+          "file": [
+            "clip_vision_h.safetensors",
+            "clip_vision_h_fp16.safetensors",
+            "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+            "clip-vision_vit-h.safetensors",
+            "image_encoder_vit-h.safetensors"
+          ],
+          "dir": "clip_vision",
+          "repo": "h94/IP-Adapter",
+          "repo_file": "models/image_encoder/model.safetensors",
+          "save_as": "image_encoder_vit-h.safetensors"
         }
       }
     }

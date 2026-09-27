@@ -60,6 +60,7 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - **Text → Video**: no video needed, in the spirit of [Deforum](https://github.com/deforum-art/deforum-stable-diffusion)'s animation mode. The prompt paints frame 1, a camera move (zoom, rotate, pan) carries every next frame on from the last, prompt keyframes and Live steer it — the camera too: move its sliders while it renders; set a length, aspect and FPS
 - **3D camera**: switch the camera to 3D and each frame's MiDaS depth lifts it into space — zoom becomes a dolly, plus turn and tilt, with near things passing faster than far ones (Disco Diffusion's 3D mode)
 - **Image → Video**: the same, starting from your picture — frame 1 is the image repainted at your Denoise, and ControlNet / DepthDiff can hold its layout while the style comes in
+- **Style ref**: drop a picture and its look steers every frame ([IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)); *style only* borrows colours and strokes without the content ([InstantStyle](https://github.com/instantX-research/InstantStyle)'s style layers). SD 1.5 and SDXL
 - **LoRAs**: pick one per render from `models/loras` (or your models folder's, in Settings) with a strength; SD 1.5, SD 2.1 and SDXL, kohya / Stability / diffusers layouts
 - **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
@@ -99,6 +100,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - [Stable Diffusion](https://github.com/CompVis/stable-diffusion), [ControlNet](https://github.com/lllyasviel/ControlNet) (Lvmin Zhang), [diffusers](https://github.com/huggingface/diffusers), [controlnet_aux](https://github.com/huggingface/controlnet_aux)
 - [SD 2.1 ControlNets](https://huggingface.co/thibaud/controlnet-sd21) (thibaud): depth and HED edges
 - Text → Video and its 3D camera follow the animation modes of [Deforum](https://github.com/deforum-art/deforum-stable-diffusion) and [Disco Diffusion](https://github.com/alembics/disco-diffusion); depth by [MiDaS](https://github.com/isl-org/MiDaS)
+- [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter) (Tencent AI Lab) and [InstantStyle](https://github.com/instantX-research/InstantStyle) (InstantX) for the style ref
 - Refine's tiling follows [Ultimate SD Upscale](https://github.com/Coyote-A/ultimate-upscale-for-automatic1111); tile ControlNets by Lvmin Zhang (SD 1.5) and xinsir (SDXL Union ProMax)
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
