@@ -432,6 +432,7 @@
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
 
+  body.runDrag #clipBox, body.runDrag #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }   /* a run dragged off the stage: where it can land */
   body.dragging::after { content: "drop a video or image"; position: fixed; pointer-events: none;   /* drops reach what's under it (the style ref slot) */
      inset: 0; display: grid; place-items: center;
      background: rgba(255,106,61,.12); border: 3px dashed var(--accent); color: var(--accent-2); font-size: 22px; z-index: 10; }
@@ -913,6 +914,10 @@ $('styleFile').onchange = e => { uploadStyleRef(e.target.files[0]); e.target.val
 $('styleRef').addEventListener('dragover', e => e.preventDefault());
 $('styleRef').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);               // a render dragged off the stage: the frame shown
+  if (run) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
+    .then(res => { state.styleRef = { path: res.path, name: res.name }; renderStyleRef(); save(); setStatus('style ref set'); })
+    .catch(err => setStatus('style ref failed: ' + err.message, 'bad'));
   uploadStyleRef(e.dataTransfer?.files?.[0]);
 });
 $('styleRefW').oninput = e => { state.styleRefW = +e.target.value; $('styleRefWV').textContent = state.styleRefW.toFixed(2); save(); };
@@ -1309,6 +1314,16 @@ async function setClipPath(path, name) {
   save(); renderClip();
 }
 
+async function useInput(res) {             // an uploaded (or run-fed) file on the server: the picture or the clip
+  if (res.image) {
+    state.image = { path: res.path, name: res.name, width: res.width, height: res.height };
+    state.t2v = state.i2v = true; state.keySel = -1;
+    renderClip(); renderControls(); paintLive(); updateEst(); if (!viewRun) clearStage(); save();
+    setStatus('image loaded'); return;
+  }
+  try { state.t2v = state.i2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
+  catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
+}
 function uploadFile(file) {
   if (!file) return;
   if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Size / Duration card
@@ -1318,15 +1333,7 @@ function uploadFile(file) {
   xhr.upload.onprogress = e => { if (e.lengthComputable && $('upBar')) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
   xhr.onload = async () => {
     if (xhr.status >= 300) { setStatus('upload failed: ' + xhr.responseText, 'bad'); renderClip(); return; }
-    const res = JSON.parse(xhr.responseText);
-    if (res.image) {
-      state.image = { path: res.path, name: res.name, width: res.width, height: res.height };
-      state.t2v = state.i2v = true; state.keySel = -1;
-      renderClip(); renderControls(); paintLive(); updateEst(); if (!viewRun) clearStage(); save();
-      setStatus('image loaded'); return;
-    }
-    try { state.t2v = state.i2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
-    catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
+    useInput(JSON.parse(xhr.responseText));
   };
   xhr.onerror = () => { setStatus('upload failed', 'bad'); renderClip(); };
   xhr.send(file);
@@ -1338,6 +1345,8 @@ addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; doc
 addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run) { if (e.target.closest('aside')) runAsInput(run); return; }   // dropped back on the stage: nothing
   const f = [...(e.dataTransfer?.files || [])].find(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|avi|m4v|png|jpe?g|webp|bmp)$/i.test(f.name));
   if (f) uploadFile(f); else setStatus('that is not a video or image file', 'bad');
 });
@@ -2259,6 +2268,17 @@ function ensureFrameEl(hasInit) {
     <button class="save" id="frameSave" title="Save this image"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg></button>
     </div>`;
   $('imgOut').addEventListener('load', fitOut);
+  // drag the render back to the panel: onto the source slot (the run's mp4 as the clip, or this frame
+  // as the picture) or the style ref slot (this frame)
+  const fr = $('frame'); fr.draggable = true;
+  fr.addEventListener('dragstart', e => {
+    if (!viewRun || clipMode() || !frames.length || e.target.closest('.divider, .save')) return e.preventDefault();
+    e.dataTransfer.setData(RUN_MIME, JSON.stringify({ run: viewRun, frame: frames[frameIdx], count: frames.length }));
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setDragImage($('imgOut'), e.offsetX, e.offsetY);
+    stopPlay(); document.body.classList.add('runDrag');
+  });
+  fr.addEventListener('dragend', () => document.body.classList.remove('runDrag'));
   const div = $('divider'); let on = false;
   div.addEventListener('pointerdown', e => { e.preventDefault(); on = true; div.setPointerCapture(e.pointerId); });
   div.addEventListener('pointermove', e => {
@@ -2416,26 +2436,41 @@ function saveMp4(id) {
   const a = document.createElement('a');
   a.href = `/api/runs/${id}/video?${runQ()}&t=${Date.now()}`; a.download = mp4Name(id); a.click();
 }
+async function ensureMp4(id) {             // the run's mp4, built first if it has none yet (cancelled, or just finished)
+  await refreshRuns();                      // the list may predate the mp4 the render just made
+  if (runsCache.find(x => x.id === id)?.video_available) return;
+  setStatus('assembling mp4…', 'live');
+  const j = await api(`/api/runs/${id}/video?${runQ()}`, { method: 'POST' });
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1000));
+    const s = await api(`/api/jobs/${j.id}`);
+    if (s.state === 'completed') break;
+    if (['failed', 'cancelled'].includes(s.state)) throw new Error('mp4 ' + s.state);
+  }
+  setStatus('mp4 ready', 'done');
+  await refreshRuns();
+}
 $('mp4Link').onclick = async e => {
   e.preventDefault();                       // decided below, after a fresh look at the run
   if (!viewRun) return;
   const id = viewRun;
-  await refreshRuns();                      // the list may predate the mp4 the render just made
-  if (runsCache.find(x => x.id === id)?.video_available) return saveMp4(id);
-  setStatus('assembling mp4…', 'live');     // none yet: build it, then download
-  try {
-    const j = await api(`/api/runs/${id}/video?${runQ()}`, { method: 'POST' });
-    const poll = setInterval(async () => {
-      const s = await api(`/api/jobs/${j.id}`);
-      if (!['completed', 'failed', 'cancelled'].includes(s.state)) return;
-      clearInterval(poll);
-      if (s.state !== 'completed') return setStatus('mp4 failed', 'bad');
-      setStatus('mp4 ready', 'done');
-      await refreshRuns();
-      saveMp4(id);
-    }, 1000);
-  } catch (err) { setStatus('mp4 failed: ' + err.message, 'bad'); }
+  try { await ensureMp4(id); saveMp4(id); } catch (err) { setStatus('mp4 failed: ' + err.message, 'bad'); }
 };
+// A run dragged off the stage onto the panel becomes the input: one frame (or the Image tab) -> that
+// frame as the picture, otherwise the run's mp4 as the clip.
+var RUN_MIME = 'application/x-dwarp-run';   // var: the stage's dragstart is wired before this line
+function runDragData(e) {
+  document.body.classList.remove('runDrag');
+  try { return JSON.parse(e.dataTransfer?.getData(RUN_MIME) || 'null'); } catch { return null; }
+}
+async function runAsInput({ run, frame, count }) {
+  const still = count <= 1 || (state.t2v && state.i2v);
+  try {
+    if (!still) await ensureMp4(run);
+    setStatus(`loading run ${run}…`, 'live');
+    await useInput(await api(`/api/runs/${run}/as_input?${still ? qs({ frame }) : ''}`, { method: 'POST' }));
+  } catch (err) { setStatus('could not use that run: ' + err.message, 'bad'); }
+}
 $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));

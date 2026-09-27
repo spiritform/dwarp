@@ -424,6 +424,33 @@ def build_app() -> FastAPI:
             raise HTTPException(422, detail="This run has no frames")
         return jobs.submit("video", run_id, {"fps": runs.fps(run_id)}).snapshot()
 
+    @app.post("/api/runs/{run_id}/as_input")
+    def run_as_input(run_id: str, frame: int | None = None):
+        """A run fed back in (dragged from the stage onto the source slot): its mp4 as a new clip, or with
+        `frame`, that output frame as a picture. Copied into inputs/, so it outlives the run."""
+        import shutil
+        run_or_404(run_id)
+        seed = runs.summary(run_id).get("seed")
+        stem = f"run{run_id}" + (f"_seed{seed}" if seed is not None else "")
+        if frame is not None:
+            src = runs.output_frames(run_id).get(frame)
+            if not src:
+                raise HTTPException(404, detail=f"Run {run_id} has no frame {frame}")
+            name = f"{stem}_{frame:06d}.png"
+        else:
+            src = runs.video_path(run_id)
+            if not src:
+                raise HTTPException(404, detail="This run has no video yet")
+            name = f"{stem}.mp4"
+        target = INPUTS / f"{Path(name).stem}-{uuid.uuid4().hex[:6]}{src.suffix}"
+        shutil.copyfile(src, target)
+        if frame is None:
+            return {"path": str(target), "name": name}
+        from PIL import Image
+        with Image.open(target) as im:
+            w, h = im.size
+        return {"path": str(target), "name": name, "image": True, "width": w, "height": h}
+
     @app.put("/api/runs/{run_id}/label")
     async def set_label(run_id: str, request: Request):
         run_or_404(run_id)
