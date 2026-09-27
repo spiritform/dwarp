@@ -184,15 +184,19 @@
      cousin of .seg: no fill, thin line, small caps */
   .gtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border-radius: 8px;
            overflow: hidden; margin-bottom: 8px; }
-  .gtabs button { background: #1f1e24; border: 0; padding: 5px 0; cursor: pointer; color: var(--dim);
+  .gtabs button { background: #2a2930; border: 0; padding: 5px 0; cursor: pointer; color: #b3b1bb;   /* the other tab: clearly there */
                   font: inherit; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
-  .gtabs button:hover { color: #bdbbc4; }
+  .gtabs button:hover { color: var(--text); background: #323139; }
   .gtabs button.on { color: #ecebef; background: #3a3941; }
   .gtabs button.live::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                               background: var(--accent); margin-left: 6px; vertical-align: 1px; }
   /* Style ref: an empty drop box, or the picture's thumbnail + name + remove */
-  #styleRef .clip-empty { padding: 12px; font-size: 12px; }
-  #styleRef .ref { display: flex; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 8px; padding: 6px; }
+  #styleRef { margin-top: 8px; }
+  #styleRef .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
+                          align-items: center; gap: 5px; color: var(--dim); }   /* the dropdowns' grey */
+  #styleRef .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #styleRef .clip-empty svg { width: 18px; height: 18px; }
+  #styleRef .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
   #styleRef .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: 5px; cursor: pointer; flex: none; }
   #styleRef .ref span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
   #styleRef .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
@@ -204,6 +208,7 @@
   .negtoggle.set::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                           background: var(--accent); margin-left: 6px; vertical-align: 1px; }   /* folded, but in use */
   textarea.neg { min-height: 48px; margin-top: 6px; }
+  .run.removing { opacity: .3; pointer-events: none; }   /* confirmed, waiting on the server */
   .ddrow { display: flex; gap: 6px; margin-bottom: 14px; }
   .ddrow .seg { flex: 1; }
   /* a lighter grey than the segs so it reads as a switch on the mask, not another source */
@@ -888,7 +893,7 @@ function renderStyleRef() {
   if (!sr) { box.innerHTML = '<div class="hint">not for SD 2.1</div>'; $('styleRefCtl').hidden = true; return; }
   box.innerHTML = r
     ? `<div class="ref"><img src="/api/image/file?${qs({ path: r.path })}" alt="" title="Replace the picture"><span title="${r.path}">${r.name}</span><button title="No style ref">✕</button></div>`
-    : `<div class="clip-empty" title="${sr.have ? '' : 'The IP-Adapter downloads on the first render that uses it'}">Drop a style picture<small>or click to choose</small></div>`;
+    : `<div class="clip-empty" title="A picture whose look steers every frame — click, or drop one here${sr.have ? '' : ' (the IP-Adapter downloads on the first render that uses it)'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload image</div>`;
   $('styleRefCtl').hidden = !r;
   $('styleRefW').value = state.styleRefW; $('styleRefWV').textContent = (+state.styleRefW).toFixed(2);
   segPick($('styleOnly'), state.styleOnly ? 'style' : 'full');
@@ -2455,7 +2460,7 @@ async function refreshRuns() {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
-    return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''}" data-id="${r.id}">
+    return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''} ${removingIds.includes(r.id) ? 'removing' : ''}" data-id="${r.id}">
       <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
@@ -2479,7 +2484,7 @@ function paintSel() {
   renderSelBar();
 }
 // Inline yes/no in the Runs header (no system dialog). The runs at stake are outlined in red.
-var pendingAsk = null, doomedIds = [];   // var: read by renderSelBar/refreshRuns, which can run first
+var pendingAsk = null, doomedIds = [], removingIds = [];   // var: read by renderSelBar/refreshRuns, which can run first
 function confirmInline(ids, question) {
   pendingAsk?.(false);
   doomedIds = ids;
@@ -2521,15 +2526,24 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
   if (!confirmed && !await confirmInline(ids, `Remove ${what} from the list?`)) return;
   const failed = [];
+  // dim them at once: while a render is loading its model the server can take a while to answer
+  removingIds = ids;
+  document.querySelectorAll('.run').forEach(el => { if (ids.includes(el.dataset.id)) el.classList.add('removing'); });
   for (const id of ids) {
     try { await api(`/api/runs/${id}`, { method: 'DELETE' }); runGen[id] = (runGen[id] || 0) + 1; selected.delete(id); }
     catch (e) { failed.push(`${id}: ${e.message}`); }
   }
+  removingIds = [];
   if (ids.includes(viewRun)) clearStage();
   await refreshRuns(); renderSelBar();
   if (!viewRun && runsCache.length) showRun(runsCache[0].id);
-  setStatus(failed.length ? `couldn't remove ${failed.join('; ')}` : `removed ${what} — the files stay in renders/`, failed.length ? 'bad' : 'done');
+  if (failed.length) showError(`couldn't remove ${failed.join('; ')}`);   // not the status line: a render overwrites it
+  else if (!job || ['completed', 'cancelled', 'failed'].includes(job.state)) setStatus(`removed ${what} — the files stay in renders/`, 'done');
 }
+// A stage image that isn't there yet (a frame still rendering) shows as the empty viewport, not the
+// browser's broken-image icon; it comes back the moment a frame loads. Load / error don't bubble: capture.
+addEventListener('error', e => { if (e.target.tagName === 'IMG' && e.target.closest('#stage')) e.target.style.visibility = 'hidden'; }, true);
+addEventListener('load', e => { if (e.target.tagName === 'IMG' && e.target.closest('#stage')) e.target.style.visibility = ''; }, true);
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
