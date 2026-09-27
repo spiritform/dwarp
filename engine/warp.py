@@ -1023,6 +1023,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 wt = tile_weight(th, tw, y, x, H, W, job.tile_overlap, device)
                 acc[sl] += t_out * wt
                 wsum[sl] += wt
+                del t_out, crops
+                torch.cuda.empty_cache()        # each tile's scratch back before the next: full SDXL + CN is ~11 GB
             res = acc / wsum.clamp(min=1e-6)
             if i == 0:
                 log(f"tiled: {len(ys) * len(xs)} tiles of {tw}x{th}, overlap {job.tile_overlap}")

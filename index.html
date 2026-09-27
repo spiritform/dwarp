@@ -130,7 +130,8 @@
   .keys .peek span { position: absolute; left: 4px; bottom: 3px; font-size: 10px; color: #fff; background: rgba(0,0,0,.6);
                      padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
   .keys.peeking .peek { display: block; }
-  .keys .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 10px; pointer-events: none; }
+  .keys .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 10px; pointer-events: none;
+                line-height: 16px; }   /* the lane's height: the text sits in its middle, not by the inherited line box */
   .keybar { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--dim); font-size: 11px; }
   .keybar b { color: #a9a7b1; font-weight: 600; }
   .keybar a { color: #ff9a8a; cursor: pointer; }
@@ -304,10 +305,12 @@
   .stage-foot .outchip a.outx:hover { color: #ff9a8a; }
   /* Enhance: a panel over the stage, like Help / Settings — Refine (a new run) | Upscale & smooth (an mp4) */
   .enhcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 36px; max-width: 860px; }
-  .enhcols h4 { margin-top: 18px; }
+  .enh .enhcols h4 { margin-top: 18px; color: var(--text); font-size: 12px; }   /* Refine / Upscale / Smooth: the sections */
+  /* the controls inside read like the side panel's: plain case, not section headers */
+  .enh .label, .enh .slider-head b { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: #c9c7cf; }
   .enh .note { color: var(--faint); font-size: 11.5px; margin: 0 0 12px; }
   .enh .row { margin-bottom: 12px; }
-  .enh .label { color: #c9c7cf; font-size: 12px; margin-bottom: 6px; }
+  .enh .label { margin-bottom: 6px; }
   .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 0;
                 border-radius: 8px; padding: 7px 8px; font: inherit; margin-bottom: 6px; }
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
@@ -622,7 +625,7 @@
           tile ControlNet, carried frame to frame by the warp. Makes a new run, with the model and LoRA from the panel.</div>
         <div class="row">
           <div class="label">Scale</div>
-          <div class="seg" id="refScale" style="--n:2"><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
+          <div class="seg" id="refScale" style="--n:3"><button data-v="1" title="Same size: a second diffusion pass over the run">1×</button><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
           <div class="hint" id="refSizeHint"></div>
         </div>
         <div class="slider"><div class="slider-head"><b title="How much new noise goes in: low polishes, high repaints">Denoise</b><span id="refDenoiseV"></span></div>
@@ -1860,7 +1863,7 @@ const HELP = {
        seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
        or click it to type one.</p>
     <h4>Enhance</h4>
-    <p><b>Refine</b> renders a finished run again, 1.5× or 2× bigger, with diffusion: <b>Denoise</b> sets how much new
+    <p><b>Refine</b> renders a finished run again with diffusion — at 1× as a second pass at the same size, or 1.5× / 2× bigger: <b>Denoise</b> sets how much new
        detail goes in, the <b>prompt</b> what it looks like, <b>Hold</b> how tightly a tile ControlNet keeps it to the
        run's frames. Big frames are painted in tiles, so the detail comes out at the scale the model knows, and the warp
        carries it from frame to frame. It uses the model and LoRA picked in the panel and makes a new run.</p>

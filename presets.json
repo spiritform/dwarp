@@ -128,7 +128,7 @@
         }
       },
       "refine": {
-        "tile": 1024,
+        "tile": 768,
         "controlnet": {
           "kind": "tile",
           "start": 0.0,
