@@ -26,6 +26,8 @@
   ::-webkit-scrollbar-thumb:hover { background: #4a4852; }
   ::-webkit-scrollbar-corner { background: transparent; }
   html, body { margin: 0; height: 100%; }
+  /* controls don't highlight when clicked or dragged across (text in prompts, help and the log still selects) */
+  button, a, label, select, .seg, .card-head, .slider-head, .ons > span, .sublabel { user-select: none; -webkit-user-select: none; }
   body {
     background: var(--bg); color: var(--text);
     font: 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
@@ -51,7 +53,8 @@
   .card { background: var(--panel-2); border-radius: var(--radius); }
   .card-head { display: flex; align-items: center; gap: 8px; padding: 11px 12px; cursor: pointer; user-select: none; }
   .card-head .title { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
-  .card-head .sum { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card-head .sum { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
+                   min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-left: 10px; }   /* too long: … not past the card */
   .card-head .chev { color: var(--faint); font-size: 15px; line-height: 1; transition: transform .15s; width: 14px; text-align: center; }
   .card-head:hover .chev, .card-head:hover .title { color: var(--text); }
   .card.collapsed .chev { transform: rotate(-90deg); }
@@ -180,7 +183,7 @@
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
   .invert.on { background: rgba(255,106,61,.22); color: var(--text); }
-  #srcMixBox[hidden], #frameMode[hidden], #gTabs[hidden] { display: none; }
+  #srcMixBox[hidden], #nextBox[hidden], #frameMode[hidden], #gTabs[hidden] { display: none; }
   .embrow { display: flex; gap: 6px; }
   .embrow select.model { flex: 1; min-width: 0; }
   .embrow #embedVer { flex: none; width: 92px; }
@@ -213,7 +216,7 @@
   .t2vbody .ons { margin: 0 0 10px; }
   .t2vbody .pair { gap: 12px; }
   .t2vbody .slider { margin-bottom: 10px; }
-  #gTabs button.on { background: #a9a8b0; color: #16161a; }   /* a step down: a panel tab, not a mode */
+  #gTabs button.on { background: #ecebef; color: #16161a; }   /* white, like the other picked main switches */
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 0; }
@@ -299,15 +302,17 @@
   .stage-foot .outchip a { background: none; }
   .stage-foot .outchip a.outx { padding: 6px 10px 6px 2px; color: var(--faint); }
   .stage-foot .outchip a.outx:hover { color: #ff9a8a; }
-  .enh { position: absolute; right: 18px; bottom: 44px; width: 300px; background: var(--panel-2);
-         border-radius: var(--radius); padding: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 5; }
-  .enh h4 { margin: 0 0 12px; font-size: 13px; display: flex; justify-content: space-between; }
-  .enh h4 button { background: none; border: 0; color: var(--dim); cursor: pointer; }
+  /* Enhance: a panel over the stage, like Help / Settings — Refine (a new run) | Upscale & smooth (an mp4) */
+  .enhcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 36px; max-width: 860px; }
+  .enhcols h4 { margin-top: 18px; }
+  .enh .note { color: var(--faint); font-size: 11.5px; margin: 0 0 12px; }
   .enh .row { margin-bottom: 12px; }
+  .enh .label { color: #c9c7cf; font-size: 12px; margin-bottom: 6px; }
   .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 0;
                 border-radius: 8px; padding: 7px 8px; font: inherit; margin-bottom: 6px; }
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
   .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
+  .enh textarea { min-height: 84px; }
   .enh .btn { width: 100%; }
 
   .logbtn { background: var(--panel-2); border: 0; color: var(--dim); border-radius: 6px; padding: 3px 9px;
@@ -493,13 +498,18 @@
     <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Render</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider">
-      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely">Denoise</b><span id="styleV"></span></div>
+      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With Warp, this is frame 1 — Frame Lock sets the rest">Denoise</b><span id="styleV"></span></div>
       <input type="range" id="style" min="0" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
     <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
       <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
+    </div>
+    <div class="slider" id="nextBox">
+      <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look. High keeps it and just follows the motion (only what the motion uncovers is painted fresh); low repaints every frame more. Double-click: the old default (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
+      <input type="range" id="styleNext" min="0" max="1" step="0.01">
+      <div class="ends"><span>repaint</span><span>lock to frame 1</span></div>
     </div>
     <div class="slider" id="srcMixBox">
       <div class="slider-head"><b title="How much of the fresh source frame goes into each frame's start, where the paint is carried along the motion. 0 carries the paint only — it can build up and overcook over long clips; more keeps it anchored to the footage">Source mix</b><span id="srcMixV"></span></div>
@@ -602,6 +612,46 @@
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
     <div class="helppanel" id="setPanel" hidden></div>
+    <div class="helppanel enh" id="enh" hidden>
+      <button class="logbtn close" id="enhClose">✕</button>
+      <h3>Enhance <span id="enhRun" style="color:var(--dim);font-weight:400"></span></h3>
+      <div class="enhcols">
+      <section>
+        <h4>Refine</h4>
+        <div class="note">Renders the run again, bigger, with diffusion: new detail from the prompt, held to the frames by a
+          tile ControlNet, carried frame to frame by the warp. Makes a new run, with the model and LoRA from the panel.</div>
+        <div class="row">
+          <div class="label">Scale</div>
+          <div class="seg" id="refScale" style="--n:2"><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
+          <div class="hint" id="refSizeHint"></div>
+        </div>
+        <div class="slider"><div class="slider-head"><b title="How much new noise goes in: low polishes, high repaints">Denoise</b><span id="refDenoiseV"></span></div>
+          <input type="range" id="refDenoise" min="0.1" max="0.8" step="0.01"></div>
+        <div class="slider" id="refHoldBox"><div class="slider-head"><b title="How tightly each tile sticks to the run's frames (tile ControlNet): high keeps shapes and colour, low lets the prompt wander">Hold</b><span id="refHoldV"></span></div>
+          <input type="range" id="refHold" min="0" max="1" step="0.05"></div>
+        <div class="row">
+          <div class="label">Prompt <a class="randlink" id="refPromptReset" title="Back to the run's own prompt">run's prompt</a></div>
+          <textarea id="refPrompt" spellcheck="false"></textarea>
+        </div>
+        <button class="btn go" id="refGo">Refine</button>
+      </section>
+      <section>
+        <h4>Upscale</h4>
+        <div class="row">
+          <select id="enhModel"></select>
+          <div class="seg" id="enhScale" style="--n:2"><button data-v="2">2×</button><button data-v="4">4×</button></div>
+          <div class="hint" id="enhScaleHint"></div>
+        </div>
+        <h4>Smooth <em style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">RIFE in-between frames</em></h4>
+        <div class="row">
+          <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
+          <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
+          <div class="hint" id="enhSmoothHint"></div>
+        </div>
+        <button class="btn go" id="enhGo">Enhance</button>
+      </section>
+      </div>
+    </div>
   </div>
   <div class="scrub" id="scrub" hidden>
     <button id="playBtn" title="Play frames (space)">▶</button>
@@ -624,22 +674,6 @@
     <span class="spacer"></span>
     <span id="footInfo"></span>
     <a id="openFolder" class="hide icon" title="Open the run's folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></a>
-  </div>
-  <div class="enh" id="enh" hidden>
-    <h4>Enhance<button id="enhClose">✕</button></h4>
-    <div class="row">
-      <div class="label">Upscale</div>
-      <select id="enhModel"></select>
-      <div class="seg" id="enhScale" style="--n:2"><button data-v="2">2×</button><button data-v="4">4×</button></div>
-      <div class="hint" id="enhScaleHint"></div>
-    </div>
-    <div class="row">
-      <div class="label">Smooth <em>RIFE in-between frames</em></div>
-      <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
-      <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
-      <div class="hint" id="enhSmoothHint"></div>
-    </div>
-    <button class="btn go" id="enhGo">Enhance</button>
   </div>
 </main>
 
@@ -808,10 +842,11 @@ function paintSums() {
   set('model', `${modeCfg().label} · ${shortName(checkpointPath())}`);
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+  set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+  // the picked tab's setting, when it's on: "ControlNet – depth + edge" or "DepthDiff – luma"; off = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
-  set('guidance', [nets && cn !== 'off' ? (cn === 'both' ? 'depth + edge' : 'depth') : '',
-                   state.dd.src !== 'off' ? `DepthDiff ${state.dd.src}` : ''].filter(Boolean).join(' · ') || 'off');
+  set('guidance', state.gtab === 'dd' ? (state.dd.src !== 'off' ? `DepthDiff – ${state.dd.src}` : '')
+                  : (nets && cn !== 'off' ? `ControlNet – ${cn === 'both' ? 'depth + edge' : 'depth'}` : ''));
   set('output', `${state.size}px · seed ${state.seedLock ? state.seed : 'random'}`);
 }
 ['input', 'change', 'click'].forEach(ev => document.querySelector('aside').addEventListener(ev, () => requestAnimationFrame(paintSums)));
@@ -1265,9 +1300,10 @@ function renderControls() {
   renderMode(); renderEmbed(); renderSampler(); renderLora();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
+  $('styleNext').value = 1 - state.styleNext; $('styleNextV').textContent = (1 - state.styleNext).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   [...$('frameMode').children].forEach(b => b.classList.toggle('on', (b.dataset.f === 'fresh') === !!state.fresh));
-  $('srcMixBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
+  $('srcMixBox').hidden = $('nextBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
   $('steps').value = state.steps; $('stepsV').textContent = state.steps;
@@ -1298,7 +1334,7 @@ function renderControls() {
   $('guideBox').hidden = state.t2v && !state.i2v;   // Text -> Video: nothing to guide by
   applyCards(); paintSums();
   if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
-    $('frameMode').hidden = $('srcMixBox').hidden = true;
+    $('frameMode').hidden = $('srcMixBox').hidden = $('nextBox').hidden = true;
     if (state.i2v) $('gTabs').hidden = false;
     else $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = true;
   } else {
@@ -1365,6 +1401,8 @@ $('prompt').oninput = e => {
   paintKeys(); save();
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
+$('styleNext').oninput = e => { state.styleNext = +(1 - e.target.value).toFixed(2); $('styleNextV').textContent = (+e.target.value).toFixed(2); save(); };
+$('styleNext').ondblclick = () => { state.styleNext = +(state.style * 0.65).toFixed(2); renderControls(); save(); };
 $('srcMode').onclick = e => {
   const m = e.target.dataset.s; if (!m || m === srcKind()) return;
   state.t2v = m !== 'v2v'; state.i2v = m === 'i2v'; state.keySel = -1;
@@ -1573,7 +1611,9 @@ async function buildConfig(kind) {
     negative: [embedNeg() ? embedOn() : '', 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: W, height: H,
     frame_start: start, frame_end: end, nth,
-    style: state.style,                      // first frame; later frames use 0.65x (engine default)
+    style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
+    style_next: t2v || state.fresh ? -1 : state.styleNext,
+    diff: !t2v && !state.fresh && state.styleNext < state.style,   // Warp: uncovered pixels repaint at Denoise
     flow_blend: t2v ? 1 : +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     fresh: !t2v && !!state.fresh,            // Boil: no warp, full Denoise on every frame
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
@@ -1650,11 +1690,15 @@ const HELP = {
        motion), those areas start from the source instead. Warp is based on
        <a href="https://github.com/Sxela/WarpFusion" target="_blank">WarpFusion</a> by Alex Spirin
        (<a href="https://github.com/Sxela" target="_blank">Sxela</a>) — see <i>Credits</i>.</p>
+    <p><b>Denoise</b> paints frame 1; <b>Frame Lock</b> sets how tightly every later frame holds on to it: high keeps
+       the carried paint and only repaints what the motion uncovers, low repaints each frame more. To lock onto a look:
+       Denoise high (0.9–1) for a strong first frame, Frame Lock high (0.65–0.9) and Source mix low (0–0.05). Over a long
+       clip the look still drifts slowly — much less than repainting every frame.</p>
     <h4>Boil</h4>
     <p>Every frame is repainted fresh from its source, so the strokes shimmer and redraw like hand-painted animation.</p>
     <h4>Text → Video</h4>
-    <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. No video at all (the switch at the
-       top). The prompt paints frame 1; every next frame is the previous one moved
+    <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. No video at all (<b>Text</b> in the switch at
+       the top). The prompt paints frame 1; every next frame is the previous one moved
        by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted at your Denoise, so the picture keeps travelling
        and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
        steadier, higher changes faster. Set the length, aspect and FPS in the card; ControlNet, DepthDiff and Source
@@ -1816,6 +1860,10 @@ const HELP = {
        seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
        or click it to type one.</p>
     <h4>Enhance</h4>
+    <p><b>Refine</b> renders a finished run again, 1.5× or 2× bigger, with diffusion: <b>Denoise</b> sets how much new
+       detail goes in, the <b>prompt</b> what it looks like, <b>Hold</b> how tightly a tile ControlNet keeps it to the
+       run's frames. Big frames are painted in tiles, so the detail comes out at the scale the model knows, and the warp
+       carries it from frame to frame. It uses the model and LoRA picked in the panel and makes a new run.</p>
     <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames (RIFE).
        <b>smoother</b> raises the fps (same length, more fluid); <b>slow-mo</b> keeps the fps (longer, slowed down).
        The results are listed next to the run's mp4.</p>`],
@@ -1852,7 +1900,7 @@ function paintHelp() {
 }
 function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
-  if (open) { toggleSettings(false); paintHelp(); }
+  if (open) { toggleSettings(false); $('enh').hidden = true; paintHelp(); }
 }
 
 // ---------------------------------------------------------------- settings
@@ -1902,7 +1950,7 @@ async function paintSettings() {
 }
 function toggleSettings(open = $('setPanel').hidden) {
   $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
-  if (open) { toggleHelp(false); paintSettings(); }
+  if (open) { toggleHelp(false); $('enh').hidden = true; paintSettings(); }
 }
 $('setBtn').onclick = () => toggleSettings();
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('setPanel').hidden) toggleSettings(false); });
@@ -1915,19 +1963,20 @@ addEventListener('keydown', e => {
 
 // ---------------------------------------------------------------- jobs
 async function startJob(kind) {
-  const name = { frame: 'single frame', test: 'preview', render: 'render' }[kind];   // shown in status + run labels
-  if (!state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
-  if (state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
+  const name = { frame: 'single frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
+  if (kind !== 'refine' && !state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
+  if (kind !== 'refine' && state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
   setStatus(`${name} · starting…`, 'live');
   let built;
   try {
-    built = await buildConfig(kind);
-    const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed };
+    built = kind === 'refine' ? refineConfig() : await buildConfig(kind);
+    const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed,
+                 ...(kind === 'refine' ? { source_run: built.source } : {}) };
     delete ui.spf;
-    const label = `${currentPreset().name.toLowerCase()} · ${name}`;
+    const label = kind === 'refine' ? `refine of run ${built.source}` : `${currentPreset().name.toLowerCase()} · ${name}`;
     job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
                                    body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
   } catch (e) {
@@ -1935,7 +1984,7 @@ async function startJob(kind) {
   }
   let labelled = false;
   const times = [];
-  if (kind !== 'frame') {
+  if (kind === 'render' || kind === 'test') {
     const pt = { prompt_keys: built.job.prompt_keys.length ? built.job.prompt_keys : [[0, built.job.prompt]],
                  prompt_blend: built.job.prompt_blend };
     live = { id: job.id, video: built.job.video, sent: JSON.stringify(pt), fs: built.job.frame_start, nth: built.job.nth };
@@ -1969,7 +2018,7 @@ async function startJob(kind) {
     if (['completed', 'failed', 'cancelled'].includes(snap.state) && live?.id === snap.id) { live = null; state.live = false; save(); paintLive(); }
     if (snap.state === 'completed') {
       es.close();
-      if (times.length >= 3) {  // learn this machine's speed for the estimates
+      if (times.length >= 3 && kind !== 'refine') {  // learn this machine's speed for the estimates (not tiled)
         const per = (times.at(-1) - times[1]) / 1000 / (times.length - 2);
         const stepsF = built.job.steps / 20;
         state.spf[built.job.family] = +(per / (built.size / MODES[built.job.family].ref_size) ** 2 / stepsF).toFixed(2); save(); updateEst();
@@ -2244,7 +2293,7 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -2405,6 +2454,7 @@ async function renderOutputs(runId) {
 
 function segPick(el, v) { [...el.children].forEach(b => b.classList.toggle('on', b.dataset.v == v)); }
 function paintEnhance() {
+  paintRefine();
   const p = postPrefs(), r = runsCache.find(r => r.id === viewRun);
   $('enhModel').value = p.upscaler || '';
   segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth); segPick($('enhTiming'), p.slowmo ? 'slow' : 'fps');
@@ -2427,9 +2477,57 @@ async function openEnhance() {
   if (postPrefs().upscaler && !POST_OPTS.upscalers.includes(postPrefs().upscaler)) postPrefs().upscaler = POST_OPTS.upscalers[0] || '';
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   enhFps = runsCache.find(r => r.id === viewRun)?.fps || (ui.clip?.source?.fps || 24) / (ui.kind === 'test' ? 2 : 1);
+  toggleHelp(false); toggleSettings(false);
+  $('enhRun').textContent = `· run ${viewRun}`;
+  refSrc = await api(`/api/runs/${viewRun}/job`).catch(() => null);
+  if (refSrc && refPromptRun !== viewRun) { $('refPrompt').value = refSrc.prompt || ''; refPromptRun = viewRun; }
   $('enh').hidden = false; paintEnhance();
 }
 $('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hidden = true);
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('enh').hidden) $('enh').hidden = true; });
+// Refine: the run's frames, bigger, through the panel's model at a low Denoise (see refineConfig)
+var refSrc = null, refPromptRun = null;
+const refPrefs = () => (state.refine ||= { scale: 2, denoise: 0.4, hold: 0.6 });
+function refDims(src = refSrc) {
+  const k = refPrefs().scale;
+  return [Math.round(src.width * k / 8) * 8, Math.round(src.height * k / 8) * 8];
+}
+function paintRefine() {
+  const r = refPrefs(), rf = modeCfg().refine || {}, busy = job && !['completed', 'cancelled', 'failed'].includes(job.state);
+  segPick($('refScale'), r.scale);
+  $('refDenoise').value = r.denoise; $('refDenoiseV').textContent = (+r.denoise).toFixed(2);
+  $('refHold').value = r.hold; $('refHoldV').textContent = (+r.hold).toFixed(2);
+  $('refHoldBox').hidden = !rf.controlnet?.have;
+  if (!refSrc) { $('refSizeHint').textContent = 'this run has no engine frames to refine'; $('refGo').disabled = true; return; }
+  const [W, H] = refDims(), tiles = rf.tile && Math.max(W, H) > rf.tile
+    ? Math.ceil((W - 128) / (rf.tile - 128)) * Math.ceil((H - 128) / (rf.tile - 128)) : 1;
+  $('refSizeHint').textContent = `${refSrc.width}×${refSrc.height} → ${W}×${H} · ${refSrc.frame_count} frames` +
+    (tiles > 1 ? ` · ${tiles} tiles each` : '') + ` · ${modeCfg().label}` +
+    (rf.controlnet?.have ? '' : rf.controlnet ? ' · tile ControlNet missing' : ' · no tile ControlNet');
+  $('refGo').disabled = !!busy || !!postJob;
+}
+$('refScale').onclick = e => { if (e.target.dataset.v) { refPrefs().scale = +e.target.dataset.v; save(); paintRefine(); } };
+$('refDenoise').oninput = e => { refPrefs().denoise = +e.target.value; save(); paintRefine(); };
+$('refHold').oninput = e => { refPrefs().hold = +e.target.value; save(); paintRefine(); };
+$('refPromptReset').onclick = () => { if (refSrc) $('refPrompt').value = refSrc.prompt || ''; };
+$('refGo').onclick = () => { $('enh').hidden = true; startJob('refine'); };
+function refineConfig() {
+  const r = refPrefs(), m = modeCfg(), rf = m.refine || {}, src = refSrc, [W, H] = refDims();
+  const job = {
+    video: src.frames_dir, checkpoint: checkpointPath(), family: state.mode,
+    prompt: $('refPrompt').value.trim() || src.prompt, negative: src.negative || '',
+    width: W, height: H, frame_start: 0, frame_end: -1, nth: 1, hold: src.hold || 1,
+    style: r.denoise, style_next: r.denoise,   // the same Denoise every frame: the warp carries the detail on
+    steps: state.steps, cfg: state.cfg,
+    sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
+    lora: loraOn(), lora_weight: state.loraW, seed: src.seed ?? randomSeed(),
+    controlnets: rf.controlnet?.have ? [{ kind: 'tile', path: rf.controlnet.path, start: 0, end: 1, repo: '', weight: r.hold }] : [],
+    flow_blend: 0.85, color_match: 0.5, tile: rf.tile || 0, tile_overlap: 128,
+    diff_source: 'off', prompt_keys: [], prompt_blend: 12,
+  };
+  const fps = runsCache.find(x => x.id === refPromptRun)?.fps || 24;
+  return { job, total: src.frame_count, size: Math.max(W, H), fps, source: refPromptRun };
+}
 $('enhClose').onclick = () => $('enh').hidden = true;
 $('enhModel').onchange = e => { postPrefs().upscaler = e.target.value; save(); paintEnhance(); };
 $('enhScale').onclick = e => { if (e.target.dataset.v) { postPrefs().scale = +e.target.dataset.v; save(); paintEnhance(); } };
@@ -2477,6 +2575,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   state.srcMix ??= 0.15;
   state.fresh ??= false;
+  state.styleNext ??= +((state.style ?? 0.75) * 0.65).toFixed(2);   // older saves: what the engine used to pick
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};

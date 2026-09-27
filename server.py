@@ -47,7 +47,8 @@ def settings() -> dict:
     d["checkpoint_dir"] = f"{root}/checkpoints"
     d["upscale_dir"] = f"{root}/upscale_models"
     for mode in d.get("modes", {}).values():
-        for c in mode.get("controlnets", {}).values():
+        refine_cn = [mode["refine"]["controlnet"]] if mode.get("refine", {}).get("controlnet") else []
+        for c in list(mode.get("controlnets", {}).values()) + refine_cn:
             names = c["file"] if isinstance(c["file"], list) else [c["file"]]
             # DWARP's own models/controlnet first (e.g. the SD 2.1 nets), then the models folder's
             paths = [str(HERE / "models" / "controlnet" / n) for n in names] + [f"{root}/controlnet/{n}" for n in names]
@@ -296,7 +297,7 @@ def build_app() -> FastAPI:
             raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
         for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
                     else ("video", "checkpoint")):   # text / image -> video: no clip
-            if not job.get(key) or not os.path.isfile(job[key]):
+            if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         for c in job.get("controlnets", []):
             if not os.path.isfile(c.get("path", "")) and not c.get("repo"):   # a repo = downloads on first use
@@ -418,6 +419,16 @@ def build_app() -> FastAPI:
         label = " ".join(str((await request.json()).get("label") or "").split())[:120]
         runs.write_meta(run_id, label=label)
         return {"id": run_id, "label": label}
+
+    @app.get("/api/runs/{run_id}/job")
+    def get_job_json(run_id: str):
+        """The engine job a run was rendered from (Refine starts from its size, prompt and frames)."""
+        path = run_or_404(run_id)
+        try:
+            job = json.loads((path / "job.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise HTTPException(404, detail="This run has no engine job")
+        return job | {"frames_dir": str(path / "frames"), "frame_count": len(list((path / "frames").glob("*.png")))}
 
     @app.get("/api/runs/{run_id}/ui")
     def get_ui(run_id: str):

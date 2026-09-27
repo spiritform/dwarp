@@ -94,7 +94,7 @@ class RenderJob:
     mask_blur: int = 3
     color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
     diff: bool = False                   # differential diffusion: per-pixel strength from the trust
-                                         # mask — trusted pixels get style_next, the rest full style
+                                         # mask — trusted pixels get style_next, uncovered ones full style
     # DepthDiff: per-pixel strength from the source frame's luma or depth (0 = keep, 1 = full style)
     diff_source: str = "off"             # off | luma | depth
     diff_invert: bool = True             # dark / far areas repaint most
@@ -119,11 +119,22 @@ class RenderJob:
 
 # ------------------------------------------------------------------ frames
 def extract_frames(job: RenderJob, dest: Path) -> list[Path]:
-    """Source frames at render size, numbered from 0 in extracted-frame units."""
+    """Source frames at render size, numbered from 0 in extracted-frame units. `job.video` may also be a
+    folder of PNGs (Refine: a run's output frames), resized with Lanczos."""
     dest.mkdir(parents=True, exist_ok=True)
     for old in dest.glob("*.jpg"):
         old.unlink()
     nth = max(1, job.nth)
+    if Path(job.video).is_dir():
+        pngs = sorted(Path(job.video).glob("*.png"))[job.frame_start * nth::nth]
+        if job.frame_end >= 0:
+            pngs = pngs[:job.frame_end - job.frame_start + 1]
+        for k, f in enumerate(pngs):
+            Image.open(f).convert("RGB").resize((job.width, job.height), Image.LANCZOS).save(
+                dest / f"{k:06d}.jpg", quality=95)
+        if not pngs:
+            raise RuntimeError(f"no frames in {job.video}")
+        return sorted(dest.glob("*.jpg"))
     start = job.frame_start * nth
     end = "" if job.frame_end < 0 else f"*lte(n\\,{job.frame_end * nth})"
     vf = (f"select=gte(n\\,{start}){end}*not(mod(n\\,{nth})),"
@@ -573,7 +584,9 @@ def load_lora(pipe, path: str) -> None:
     (CLIPTextModelWithProjection, SDXL's second encoder, kept it),
     but diffusers still names text-encoder LoRA layers `text_model.encoder...`, so they matched nothing
     (IndexError in get_peft_kwargs). Renamed here before loading."""
-    sd, alphas = pipe.lora_state_dict(path)
+    # unet_config: maps LoRAs in Stability's layout (input_blocks.8.1...) onto diffusers' names, as
+    # load_lora_weights does; without it those layers matched nothing (NoMatchingPeftModuleError)
+    sd, alphas = pipe.lora_state_dict(path, unet_config=pipe.unet.config)
     for name in ("text_encoder", "text_encoder_2"):    # CLIPTextModel lost it; ...WithProjection kept it
         te = getattr(pipe, name, None)
         if te is not None and not hasattr(te, "text_model"):
@@ -930,11 +943,12 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             warped = warp(prev_out, fb)
             mask = soften_mask(consistency(fb, ff), job.mask_dilate, job.mask_blur)
             init = torch.lerp(src, warped, mask * job.flow_blend)
-            if job.diff and style_next < job.style:
+            # Uncovered pixels (things moving away, new content) have no paint to carry: they start from the
+            # raw source, and at a low Next frames the footage shows through and stays. They get the full
+            # Denoise, the rest style_next. Only when there is some: those frames cost the full step count.
+            if job.diff and style_next < job.style and (mask < 0.5).float().mean() > 0.001:
                 trust = True
-                # trusted -> style_next, untrusted (new content, occlusions) -> full style
-                amount = torch.lerp(torch.ones_like(mask), torch.full_like(mask, style_next / job.style),
-                                    mask * job.flow_blend)
+                amount = torch.lerp(torch.ones_like(mask), torch.full_like(mask, style_next / job.style), mask)
             if i % 10 == 1:                     # a few debug snapshots, not every frame
                 to_image(mask.expand(-1, 3, -1, -1)).save(out / "debug" / f"mask_{i:06d}.png")
                 to_image(init).save(out / "debug" / f"init_{i:06d}.png")

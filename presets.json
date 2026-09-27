@@ -34,6 +34,15 @@
           "end": 0.7,
           "file": "control_v11p_sd15_softedge_fp16.safetensors"
         }
+      },
+      "refine": {
+        "tile": 832,
+        "controlnet": {
+          "kind": "tile",
+          "start": 0.0,
+          "end": 1.0,
+          "file": "control_v11f1e_sd15_tile_fp16.safetensors"
+        }
       }
     },
     "sd2": {
@@ -72,6 +81,9 @@
           "file": "control_v11p_sd21_hed.safetensors",
           "repo": "thibaud/controlnet-sd21"
         }
+      },
+      "refine": {
+        "tile": 832
       }
     },
     "sdxl": {
@@ -109,6 +121,18 @@
           ],
           "start": 0.0,
           "end": 0.7,
+          "file": [
+            "controlnet-union-sdxl-1.0-promax.safetensors",
+            "PROMAX_controlnet-union-sdxl-1.0.safetensors"
+          ]
+        }
+      },
+      "refine": {
+        "tile": 1024,
+        "controlnet": {
+          "kind": "tile",
+          "start": 0.0,
+          "end": 1.0,
           "file": [
             "controlnet-union-sdxl-1.0-promax.safetensors",
             "PROMAX_controlnet-union-sdxl-1.0.safetensors"
