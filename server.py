@@ -488,7 +488,7 @@ def build_app() -> FastAPI:
     @app.get("/api/post/options")
     def post_options():
         return {"upscalers": post.list_upscalers(settings().get("upscale_dir", "")),
-                "rife": post.RIFE_WEIGHTS.is_file(), "active": post.active_job()}
+                "rife": post.RIFE_WEIGHTS.is_file(), "film": post.FILM_WEIGHTS.is_file(), "active": post.active_job()}
 
     @app.post("/api/runs/{run_id}/post")
     async def post_run(run_id: str, request: Request):
@@ -501,6 +501,9 @@ def build_app() -> FastAPI:
             raise HTTPException(422, detail="smooth must be 1–4, scale 2 or 4")
         if smooth == 1 and not name:
             raise HTTPException(422, detail="Pick an upscaler or a smoothing factor")
+        interp = body.get("interp") or "rife"
+        if interp not in post.INTERPS:
+            raise HTTPException(422, detail=f"Unknown interpolation {interp}")
         up_dir = settings().get("upscale_dir", "")
         up_path = None
         if name:
@@ -509,7 +512,7 @@ def build_app() -> FastAPI:
             up_path = os.path.join(up_dir, name)
         try:
             return post.start(path, "warpbox", fps=runs.fps(run_id), smooth=smooth, upscaler_path=up_path, scale=scale,
-                              slowmo=bool(body.get("slowmo")))
+                              slowmo=bool(body.get("slowmo")), interp=interp)
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc))
 

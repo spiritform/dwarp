@@ -1133,7 +1133,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         else:
             res = match_color(res, first_out, job.color_match)
         path = out / "frames" / f"{i:06d}.png"
-        to_image(res).save(path)
+        # written aside, then renamed: the viewer lists frames/*.png and must never get a half-written one
+        to_image(res).save(path.with_suffix(".tmp"), format="PNG")
+        os.replace(path.with_suffix(".tmp"), path)
         written.append(path)
         prev_src, prev_out = src, res
         # Hand this frame's scratch memory back every frame. Without it the caching allocator's

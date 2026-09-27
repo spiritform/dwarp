@@ -1,10 +1,11 @@
-"""Post-process a finished run: RIFE frame interpolation, then model upscale, streamed
+"""Post-process a finished run: frame interpolation (RIFE or FILM), then model upscale, streamed
 straight into ffmpeg. Nothing is written to disk but the final mp4 (in <run>/post/).
 
-Interpolation runs first, at render resolution, where RIFE is cheap; every frame it
+Interpolation runs first, at render resolution, where it is cheap; every frame it
 produces is then upscaled. One post job at a time — they share the GPU with renders.
 """
 import glob
+import hashlib
 import os
 import re
 import subprocess
@@ -22,12 +23,18 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 RIFE_WEIGHTS = HERE / "models" / "rife" / "rife49.pth"
 RIFE_ARCH = "4.7"                      # rife47/rife49 share the 4.7 architecture
+# FILM (Google Research): slower than RIFE, steadier on large motion. TorchScript port by dajes,
+# fetched on first use.
+FILM_WEIGHTS = HERE / "models" / "film" / "film_net_fp32.pt"
+FILM_URL = "https://github.com/dajes/frame-interpolation-pytorch/releases/download/v1.0.0/film_net_fp32.pt"
+FILM_SHA = "10aadc0d25ad586e3af7dd7703f75ec1186fbfe2e11c0d219d30ecfe2db10aa3"
+INTERPS = ("rife", "film")
 MODEL_EXTS = (".pth", ".safetensors", ".pt", ".ckpt")
 TILE, OVERLAP = 512, 32
 
 _jobs: dict = {}
 _lock = threading.Lock()
-_models: dict = {}                     # small cache: rife + last upscaler
+_models: dict = {}                     # small cache: rife / film + last upscaler
 
 
 def list_upscalers(model_dir: str) -> list:
@@ -70,9 +77,9 @@ def run_frames(run_dir: Path, batch: str = "warpbox") -> list:
 
 
 def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: str | None,
-          scale: int, slowmo: bool = False) -> dict:
-    """smooth: RIFE factor. The in-between frames raise the fps (same length, smoother), or with
-    slowmo keep the run's fps, so the clip plays `smooth` times longer."""
+          scale: int, slowmo: bool = False, interp: str = "rife") -> dict:
+    """smooth: interpolation factor (interp: rife | film). The in-between frames raise the fps (same
+    length, smoother), or with slowmo keep the run's fps, so the clip plays `smooth` times longer."""
     with _lock:
         if active_job():
             raise RuntimeError("A post-process job is already running")
@@ -84,6 +91,8 @@ def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: 
             parts.append(f"x{scale}-{Path(upscaler_path).stem}")
         slowmo = slowmo and smooth > 1
         out_fps = fps if slowmo else fps * smooth
+        if smooth > 1 and interp == "film":
+            parts.append("film")
         if slowmo:
             parts.append(f"slowmo{smooth}x")
         parts.append(f"{out_fps:g}fps")
@@ -96,7 +105,7 @@ def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: 
         }
         _jobs[job["id"]] = job
     threading.Thread(target=_run, args=(job, frames, run_dir / "post" / name, out_fps, smooth,
-                                        upscaler_path, scale), daemon=True).start()
+                                        upscaler_path, scale, interp), daemon=True).start()
     return job
 
 
@@ -110,11 +119,35 @@ def _rife():
     return _models["rife"]
 
 
+def _film(job=None):
+    if "film" not in _models:
+        if not FILM_WEIGHTS.is_file():
+            _fetch_film(job)
+        _models["film"] = torch.jit.load(str(FILM_WEIGHTS), map_location="cpu").eval().cuda()
+    return _models["film"]
+
+
+def _fetch_film(job=None):
+    import urllib.request
+    FILM_WEIGHTS.parent.mkdir(parents=True, exist_ok=True)
+    part, digest, got = FILM_WEIGHTS.with_suffix(".part"), hashlib.sha256(), 0
+    with urllib.request.urlopen(FILM_URL) as r, open(part, "wb") as fh:
+        size = int(r.headers.get("Content-Length") or 0)
+        while chunk := r.read(1 << 20):
+            fh.write(chunk); digest.update(chunk); got += len(chunk)
+            if job is not None:
+                job["message"] = f"downloading FILM weights · {got >> 20} / {size >> 20} MB"
+    if digest.hexdigest() != FILM_SHA:
+        part.unlink(missing_ok=True)
+        raise RuntimeError("FILM weights download did not match its checksum")
+    os.replace(part, FILM_WEIGHTS)
+
+
 def _upscaler(path: str):
     key = ("up", path)
     if key not in _models:
         from spandrel import ModelLoader
-        for k in [k for k in _models if k != "rife"]:   # keep one upscaler resident at most
+        for k in [k for k in _models if k not in INTERPS]:   # keep one upscaler resident at most
             del _models[k]
         torch.cuda.empty_cache()
         desc = ModelLoader(device="cuda").load_from_file(path)
@@ -130,6 +163,31 @@ def _upscaler(path: str):
 def _interp(a: torch.Tensor, b: torch.Tensor, t: float) -> torch.Tensor:
     return _rife()(a, b, timestep=t, scale_list=[8, 4, 2, 1], training=False,
                    fastmode=True, ensemble=False).clamp(0, 1)
+
+
+@torch.inference_mode()
+def _inbetweens(a: torch.Tensor, b: torch.Tensor, n: int, interp: str) -> list:
+    """The n - 1 frames between a and b, in order. RIFE takes each time directly. FILM does best near
+    the middle of its pair, so each new frame comes from the two closest frames already made (the
+    order ComfyUI-Frame-Interpolation uses): 2x = one midpoint, 4x = midpoint then quarters."""
+    if interp != "film":
+        return [_interp(a, b, k / n) for k in range(1, n)]
+    film = _film()
+    made = {0: a, n: b}                    # known frames by index 0..n
+    todo = list(range(1, n))
+    while todo:
+        keys = sorted(made)
+        best = None                        # (distance from its pair's middle, k, left, right)
+        for k in todo:
+            lo = max(i for i in keys if i < k); hi = min(i for i in keys if i > k)
+            d = abs((k - lo) / (hi - lo) - 0.5)
+            if best is None or d < best[0]:
+                best = (d, k, lo, hi)
+        _, k, lo, hi = best
+        dt = made[lo].new_full((1, 1), (k - lo) / (hi - lo))
+        made[k] = film(made[lo], made[hi], dt).clamp(0, 1)
+        todo.remove(k)
+    return [made[k] for k in range(1, n)]
 
 
 @torch.inference_mode()
@@ -164,13 +222,13 @@ def _load(path: str) -> torch.Tensor:
     return torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).cuda()
 
 
-def _run(job, frames, out_path: Path, fps, smooth, upscaler_path, scale):
+def _run(job, frames, out_path: Path, fps, smooth, upscaler_path, scale, interp="rife"):
     proc = None
     try:
         job["state"], job["message"] = "running", "loading models"
         first = _load(frames[0])
         if smooth > 1:
-            _rife()
+            _film(job) if interp == "film" else _rife()
         factor = scale if upscaler_path else 1
         h, w = first.shape[2] * factor, first.shape[3] * factor
         w2, h2 = w - w % 2, h - h % 2                  # yuv420p wants even sizes
@@ -203,8 +261,8 @@ def _run(job, frames, out_path: Path, fps, smooth, upscaler_path, scale):
         emit(prev)
         for path in frames[1:]:
             cur = _load(path)
-            for k in range(1, smooth):
-                emit(_interp(prev, cur, k / smooth))
+            for mid in _inbetweens(prev, cur, smooth, interp):
+                emit(mid)
             emit(cur)
             prev = cur
 

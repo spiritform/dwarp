@@ -70,7 +70,7 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
 - A built-in guide: the **?** button explains every control
-- **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) frame interpolation
+- **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
 - **Refine**: a diffusion upscale — render a finished run again (1× for a second pass, or 1.5× / 2× bigger) with a low Denoise and your prompt, held to its frames by a tile ControlNet and carried along by the warp. Big frames are painted in overlapping tiles, so detail comes out at the scale the model was trained at and VRAM stays flat
 
 ## Requirements
@@ -104,6 +104,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - Refine's tiling follows [Ultimate SD Upscale](https://github.com/Coyote-A/ultimate-upscale-for-automatic1111); tile ControlNets by Lvmin Zhang (SD 1.5) and xinsir (SDXL Union ProMax)
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
+- [FILM](https://github.com/google-research/frame-interpolation) (Google Research, Reda et al., Apache-2.0); TorchScript port by [dajes](https://github.com/dajes/frame-interpolation-pytorch)
 - [spandrel](https://github.com/chaiNNer-org/spandrel) for loading upscale models
 - **[Comfy-DepthDiff](https://github.com/spiritform/Comfy-DepthDiff)** (spiritform) — the luma / depth mask behind DepthDiff, ported from the ComfyUI node
 - [Differential Diffusion](https://differential-diffusion.github.io/) (Levin & Fried)

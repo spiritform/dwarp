@@ -346,6 +346,7 @@
   .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 0;
                 border-radius: 8px; padding: 7px 8px; font: inherit; margin-bottom: 6px; }
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
+  .enh .seg button { color: #c9c7cf; }     /* unpicked options read clearly; the pick is the fill */
   .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
   .enh textarea { min-height: 84px; }
   .enh .btn { width: 100%; }
@@ -432,6 +433,7 @@
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
 
+  .seg.idle { opacity: .45; pointer-events: none; }
   body.runDrag #clipBox, body.runDrag #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }   /* a run dragged off the stage: where it can land */
   body.dragging::after { content: "drop a video or image"; position: fixed; pointer-events: none;   /* drops reach what's under it (the style ref slot) */
      inset: 0; display: grid; place-items: center;
@@ -696,9 +698,10 @@
           <div class="seg" id="enhScale" style="--n:2"><button data-v="2">2×</button><button data-v="4">4×</button></div>
           <div class="hint" id="enhScaleHint"></div>
         </div>
-        <h4>Smooth <em style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">RIFE in-between frames</em></h4>
+        <h4>Smooth <em style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">in-between frames</em></h4>
         <div class="row">
           <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
+          <div class="seg" id="enhInterp" style="--n:2;margin-top:6px"><button data-v="rife" title="RIFE: fast">RIFE</button><button data-v="film" title="FILM (Google Research): slower, steadier on big motion — less wobble. Weights download on first use (138 MB)">FILM</button></div>
           <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
           <div class="hint" id="enhSmoothHint"></div>
         </div>
@@ -2016,7 +2019,8 @@ const HELP = {
        detail goes in, the <b>prompt</b> what it looks like, <b>Hold</b> how tightly a tile ControlNet keeps it to the
        run's frames. Big frames are painted in tiles, so the detail comes out at the scale the model knows, and the warp
        carries it from frame to frame. It uses the model and LoRA picked in the panel and makes a new run.</p>
-    <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames (RIFE).
+    <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames: <b>RIFE</b> is fast,
+       <b>FILM</b> slower but steadier on big motion (less wobble).
        <b>smoother</b> raises the fps (same length, more fluid); <b>slow-mo</b> keeps the fps (longer, slowed down).
        The results are listed next to the run's mp4.</p>`],
   credits: ['Credits', () => `
@@ -2032,6 +2036,8 @@ const HELP = {
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
       <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
           <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
+      <li><a href="https://github.com/google-research/frame-interpolation" target="_blank">FILM</a> frame interpolation (Google Research, Reda et al.),
+          PyTorch port by <a href="https://github.com/dajes/frame-interpolation-pytorch" target="_blank">dajes</a></li>
       <li><a href="https://github.com/chaiNNer-org/spandrel" target="_blank">spandrel</a> for loading upscale models</li>
       <li><a href="https://differential-diffusion.github.io/" target="_blank">Differential Diffusion</a> (Levin &amp; Fried); the DepthDiff mask
           comes from <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> by
@@ -2154,7 +2160,8 @@ async function startJob(kind) {
     }
     if (snap.frame !== prevFrame && snap.frame > 0) {
       times.push(Date.now());
-      if (snap.run_id) showRun(snap.run_id, { follow: true });
+      // the stage follows the render only while it's the run on show: picking another run browses freely
+      if (snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
     }
     const total = snap.total_frames || built.total;
     $('bar').style.width = (snap.progress || 0) + '%';
@@ -2176,9 +2183,10 @@ async function startJob(kind) {
         state.spf[built.job.family] = +(per / (built.size / MODES[built.job.family].ref_size) ** 2 / stepsF).toFixed(2); save(); updateEst();
       }
       setStatus(`${name} done · ${total} frames`, 'done'); setButtons(false);
-      // done: show the result on Output
-      if (view === 'src' || view === 'mask') view = 'out';
-      await refreshRuns(); if (snap.run_id) showRun(snap.run_id);
+      // done: show the result on Output, unless another run was picked meanwhile
+      const watching = snap.run_id && viewRun === snap.run_id;
+      if (watching && (view === 'src' || view === 'mask')) view = 'out';
+      await refreshRuns(); if (watching) showRun(snap.run_id);
     } else if (snap.state === 'failed') {
       es.close(); setStatus(`${name} failed`, 'bad'); setButtons(false);
       showError(snap.error || 'render failed', (snap.traceback || '') + '\n' + (snap.logs || []).slice(-25).join('\n'));
@@ -2581,15 +2589,23 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
 }
 // A stage image that isn't there yet (a frame still rendering) shows as the empty viewport, not the
 // browser's broken-image icon; it comes back the moment a frame loads. Load / error don't bubble: capture.
-// The failed src is dropped: setting the same URL again (the frame once it exists) would otherwise not
-// reload, fire no load event, and leave the image hidden for good.
+// The failed src is dropped (the same URL set again would otherwise not reload) and retried a few times:
+// nothing else may set it again, e.g. the last frame of a run that just ended.
 addEventListener('error', e => {
-  const el = e.target;
-  if (el.tagName !== 'IMG' || !el.closest('#stage')) return;
+  const el = e.target, url = el.getAttribute('src');
+  if (el.tagName !== 'IMG' || !el.closest('#stage') || !url) return;
   el.style.visibility = 'hidden';
-  if (el.getAttribute('src')) el.removeAttribute('src');
+  el.removeAttribute('src');
+  const tries = +(el.dataset.tries || 0);
+  if (tries < 5) {
+    el.dataset.tries = tries + 1;
+    setTimeout(() => { if (!el.getAttribute('src')) el.src = url; }, 400 * (tries + 1));   // unless a newer frame took over
+  }
 }, true);
-addEventListener('load', e => { if (e.target.tagName === 'IMG' && e.target.closest('#stage')) e.target.style.visibility = ''; }, true);
+addEventListener('load', e => {
+  const el = e.target;
+  if (el.tagName === 'IMG' && el.closest('#stage')) { el.style.visibility = ''; delete el.dataset.tries; }
+}, true);
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
@@ -2656,13 +2672,14 @@ function paintEnhance() {
   const p = postPrefs(), r = runsCache.find(r => r.id === viewRun);
   $('enhModel').value = p.upscaler || '';
   segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth); segPick($('enhTiming'), p.slowmo ? 'slow' : 'fps');
-  $('enhTiming').style.opacity = p.smooth > 1 ? 1 : .35;
+  segPick($('enhInterp'), p.interp || 'rife');
+  for (const id of ['enhInterp', 'enhTiming']) $(id).classList.toggle('idle', p.smooth === 1);   // nothing to pick with Smooth off
   $('enhScale').style.opacity = p.upscaler ? 1 : .35;
   const w = frames.length && $('imgOut')?.naturalWidth, h = $('imgOut')?.naturalHeight;
   $('enhScaleHint').textContent = !p.upscaler ? 'no upscale' : w ? `${w}×${h} → ${w * p.scale}×${h * p.scale}` : '';
   const n = r?.frames || frames.length;
   const slow = p.slowmo && p.smooth > 1, secs = x => `${(x / enhFps).toFixed(1)}s`;
-  $('enhSmoothHint').textContent = !POST_OPTS.rife ? 'RIFE weights missing'
+  $('enhSmoothHint').textContent = (p.interp || 'rife') === 'rife' && !POST_OPTS.rife ? 'RIFE weights missing'
     : slow ? `${n} → ${(n - 1) * p.smooth + 1} frames at ${enhFps.toFixed(0)} fps · ${secs(n)} → ${secs((n - 1) * p.smooth + 1)}`
     : `${enhFps.toFixed(0)} → ${(enhFps * p.smooth).toFixed(0)} fps · ${n} → ${(n - 1) * p.smooth + 1} frames`;
   $('enhGo').disabled = !!postJob || (!p.upscaler && p.smooth === 1) || (job && !['completed', 'cancelled', 'failed'].includes(job.state));
@@ -2730,12 +2747,13 @@ $('enhClose').onclick = () => $('enh').hidden = true;
 $('enhModel').onchange = e => { postPrefs().upscaler = e.target.value; save(); paintEnhance(); };
 $('enhScale').onclick = e => { if (e.target.dataset.v) { postPrefs().scale = +e.target.dataset.v; save(); paintEnhance(); } };
 $('enhSmooth').onclick = e => { if (e.target.dataset.v) { postPrefs().smooth = +e.target.dataset.v; save(); paintEnhance(); } };
+$('enhInterp').onclick = e => { if (e.target.dataset.v) { postPrefs().interp = e.target.dataset.v; save(); paintEnhance(); } };
 $('enhTiming').onclick = e => { if (e.target.dataset.v) { postPrefs().slowmo = e.target.dataset.v === 'slow'; save(); paintEnhance(); } };
 $('enhGo').onclick = async () => {
   const p = postPrefs(), runId = viewRun;
   try {
     postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo }) });
+      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo, interp: p.interp || 'rife' }) });
   } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }
   $('enh').hidden = true; followPost(runId);
 };
@@ -2815,7 +2833,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     es.onmessage = ev => {
       const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; syncLive(snap); setLog(snap.logs || []);
       $('bar').style.width = (snap.progress || 0) + '%';
-      if (snap.frame !== prev && snap.frame > 0 && snap.run_id) showRun(snap.run_id, { follow: true });
+      if (snap.frame !== prev && snap.frame > 0 && snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
       if (['completed', 'cancelled', 'failed'].includes(snap.state)) {
         if (live?.id === snap.id) { live = null; state.live = false; save(); paintLive(); }
         es.close(); setButtons(false); $('cancelLink').classList.add('hide');
