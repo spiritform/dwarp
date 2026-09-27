@@ -335,6 +335,10 @@ def build_app() -> FastAPI:
             upd["prompt_blend"] = int(body["prompt_blend"])
         if body.get("now"):                     # Live mode: a keyframe at the frame about to render
             upd["now"] = str(body["now"])
+        if isinstance(body.get("camera"), dict):  # Live camera (Text / Image -> Video)
+            cam = body["camera"]
+            upd["camera"] = {k: (bool(v) if k == "cam_3d" else float(v)) for k, v in cam.items()
+                             if k in ("cam_zoom", "cam_rotate", "cam_x", "cam_y", "cam_yaw", "cam_pitch", "cam_3d")}
         job = jobs.set_prompts(job_id, upd) if upd else jobs.get(job_id)
         if not job:
             raise HTTPException(404, detail="Unknown job")

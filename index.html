@@ -417,7 +417,7 @@
 
   <section id="camBox" hidden>
     <div class="card" data-card="camera">
-    <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
+    <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame. While a render runs, the sliders steer it live"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="seg" id="cam3d" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><button data-v="2d" title="Moves the flat picture">2D</button><button data-v="3d" title="Reads each frame's depth and moves through it: near things pass faster than far ones (parallax)">3D</button></div>
     <div class="pair">
@@ -800,10 +800,10 @@ function imageCard() {
 }
 function renderT2V() {
   $('clipBox').innerHTML = (state.i2v ? imageCard() : '') + `<div class="card" data-card="length">
-    <div class="card-head"><span class="title">Length</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
+    <div class="card-head"><span class="title">Size / Duration</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider"><input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
-    <div class="ons"${state.i2v ? ' hidden' : ''}><span>Aspect</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
+    <div class="ons"${state.i2v ? ' hidden' : ''}><span>Size</span><div class="seg" id="t2vAspect"><button data-a="1:1">1:1</button><button data-a="16:9">16:9</button><button data-a="9:16">9:16</button></div></div>
     <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes"><span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div></div>
 </div>
   </div>`;
@@ -821,6 +821,21 @@ function paintT2V() {
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
   paintKeys(); updateEst();
+}
+// The Camera card as engine values (per frame): a job's start, or a Live edit to a running one
+function camJob() {
+  const c = state.cam;
+  return { cam_zoom: +(1 + c.zoom / 100).toFixed(4), cam_rotate: c.rotate, cam_x: c.x / 100, cam_y: c.y / 100,
+           cam_3d: !!c.d3, cam_yaw: c.d3 ? c.yaw : 0, cam_pitch: c.d3 ? c.pitch : 0 };
+}
+// Live camera: while a Text / Image -> Video render runs, the sliders steer it (the engine eases in)
+var camTimer = null;
+function pushCamera() {
+  if (!live || !state.t2v || curVideo() !== live.video) return;
+  clearTimeout(camTimer);
+  camTimer = setTimeout(() => live && api(`/api/jobs/${live.id}/prompts`, { method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ camera: camJob(), ui: { cam: state.cam } }) }).catch(() => {}), 120);
 }
 function paintCam() {
   const c = state.cam, sign = v => (v > 0 ? '+' : '') + v;
@@ -863,10 +878,10 @@ addEventListener('click', e => {
   state.collapsed = { ...(state.collapsed || {}), [k]: !state.collapsed?.[k] };
   applyCards(); save();
 });
-$('cam3d').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.cam.d3 = b.dataset.v === '3d'; paintCam(); save(); };
+$('cam3d').onclick = e => { const b = e.target.closest('button'); if (!b) return; state.cam.d3 = b.dataset.v === '3d'; paintCam(); save(); pushCamera(); };
 [['camZoom', 'zoom'], ['camRot', 'rotate'], ['camX', 'x'], ['camY', 'y'], ['camYaw', 'yaw'], ['camPitch', 'pitch']].forEach(([id, k]) => {
-  $(id).oninput = e => { state.cam[k] = +e.target.value; paintCam(); save(); };
-  $(id).ondblclick = () => { state.cam[k] = 0; paintCam(); save(); };   // back at rest
+  $(id).oninput = e => { state.cam[k] = +e.target.value; paintCam(); save(); pushCamera(); };
+  $(id).ondblclick = () => { state.cam[k] = 0; paintCam(); save(); pushCamera(); };   // back at rest
 });
 function renderClip() {
   if (state.t2v) return renderT2V();
@@ -1181,7 +1196,7 @@ async function setClipPath(path, name) {
 
 function uploadFile(file) {
   if (!file) return;
-  if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Length card
+  if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Size / Duration card
     $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
   const xhr = new XMLHttpRequest();
   xhr.open('POST', `/api/upload?${qs({ filename: file.name })}`);
@@ -1630,9 +1645,7 @@ async function buildConfig(kind) {
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
-    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? state.image.path : '', cam_zoom: +(1 + state.cam.zoom / 100).toFixed(4), cam_rotate: state.cam.rotate,
-                cam_x: state.cam.x / 100, cam_y: state.cam.y / 100,
-                cam_3d: !!state.cam.d3, cam_yaw: state.cam.d3 ? state.cam.yaw : 0, cam_pitch: state.cam.d3 ? state.cam.pitch : 0 } : {}),
+    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? state.image.path : '', ...camJob() } : {}),
   };
   // Single Frame with a keyframe selected: that keyframe's prompt, whatever the frame
   const sel = kind === 'frame' && state.keySel >= 0 ? state.keys[state.keySel] : null;
@@ -1704,8 +1717,9 @@ const HELP = {
        the top). The prompt paints frame 1; every next frame is the previous one moved
        by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted at your Denoise, so the picture keeps travelling
        and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
-       steadier, higher changes faster. Set the length, aspect and FPS in the card; ControlNet, DepthDiff and Source
-       mix need a video, so they hide here. Double-click a camera slider to reset it.</p>
+       steadier, higher changes faster. Set the length, size (aspect) and FPS in the Size / Duration card; ControlNet, DepthDiff and Source
+       mix need a video, so they hide here. Double-click a camera slider to reset it. <b>While it renders, the camera
+       sliders steer it live</b> — push in, start a turn, tilt up — easing into each new value over a few frames.</p>
     <p><b>3D</b> (the switch in the Camera card, Disco Diffusion's 3D mode): each frame's depth is read with MiDaS, the
        picture is lifted into space and the camera moves through it, so near things pass faster than far ones.
        Zoom becomes a dolly, Rotate a roll, and <b>Turn</b> / <b>Tilt</b> swing the camera. The depth it used is on the

@@ -416,6 +416,8 @@ def camera_move(img: torch.Tensor, job: RenderJob) -> torch.Tensor:
     return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
 
 
+CAM_KEYS = ("cam_zoom", "cam_rotate", "cam_x", "cam_y", "cam_yaw", "cam_pitch", "cam_3d")   # Live can change
+CAM_EASE = 0.25                          # Live camera: share of the way to a new value per frame (~90% in 8)
 CAM_FOV = 50.0                           # 3D camera: horizontal field of view, degrees
 CAM_NEAR, CAM_FAR = 1.0, 6.0             # depth range the MiDaS map spans (nearest = 1): far / near = parallax
 CAM_REF = 2.0                            # the depth where Zoom and Pan match the 2D camera's amounts
@@ -824,7 +826,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
            on_keys: Callable[[list, int], None] = lambda keys, blend: None) -> list[Path]:
     """`live` is polled before every frame; it returns None, or edits sent while the job runs, for
     the frames still to come: new prompt travel ("prompt_keys": [[frame, prompt], ...], "prompt_blend")
-    and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode).
+    and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode), and/or
+    "camera": new Text / Image -> Video camera values ({cam_zoom, cam_rotate, ...}), eased in over a few frames.
     `on_keys` hears the keyframes in use at the start and after every edit."""
     device = torch.device("cuda")
     out = Path(job.out_dir)
@@ -881,6 +884,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if len(keys) > 1:
         log(f"prompt travel: {len(keys)} keyframes at source frames {[f for f, _ in keys]}, blend {blend}")
     edits = []                                  # live prompt edits, kept in job.json next to the start state
+    cam_target = {k: getattr(job, k) for k in CAM_KEYS}   # Live camera: where each value is heading
     on_keys(keys, blend)
     last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
@@ -898,7 +902,19 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             log("cancelled")
             break
         upd = live()
-        if upd:
+        if upd and upd.get("camera"):             # Live camera: new targets; the 3D switch flips at once
+            cam = {k: v for k, v in upd.pop("camera").items() if k in CAM_KEYS}
+            cam_target.update(cam)
+            if "cam_3d" in cam:
+                job.cam_3d = bool(cam["cam_3d"])
+                if job.cam_3d:
+                    (out / "control" / "depth").mkdir(parents=True, exist_ok=True)
+            edits.append({"from_frame": i, "camera": cam})
+            (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
+            log(f"live camera from frame {i + 1}: " + ", ".join(f"{k[4:]} {v}" for k, v in cam.items()))
+        for k in CAM_KEYS[:-1]:                 # ease: a share of the way each frame, so moves don't jerk
+            setattr(job, k, getattr(job, k) + (float(cam_target[k]) - getattr(job, k)) * CAM_EASE)
+        if upd and any(k in upd for k in ("prompt_keys", "prompt_blend", "now")):
             keys = sorted([int(f), str(p)] for f, p in upd.get("prompt_keys") or []) or keys
             blend = int(upd.get("prompt_blend", blend))
             if upd.get("now"):                  # Live: from this frame on, morph into the new prompt
