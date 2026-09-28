@@ -319,6 +319,9 @@
   .placeholder { color: var(--faint); text-align: center; }
   .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
+  /* the empty stage: just the name, big and quiet */
+  .wordmark { font-size: clamp(56px, 11vw, 160px); font-weight: 800; letter-spacing: .06em; color: #232228;
+              user-select: none; pointer-events: none; }
 
   .progress { height: 3px; background: var(--line); }
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
@@ -700,7 +703,7 @@
   <div class="progress"><i id="bar"></i></div>
   <div class="stage-wrap">
     <div class="stage" id="stage">
-      <div class="placeholder"><b>Drop a video to start</b>anywhere in this window</div>
+      <div class="wordmark">DWARP</div>
     </div>
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
@@ -2830,11 +2833,7 @@ function clearStage() {
     return;
   }
   if (state.shape && view === 'shape') { setControlTabs(); if (shapeMode()) return showShape(); }
-  $('stage').innerHTML = state.i2v
-    ? '<div class="placeholder"><b>Image → Video</b>drop an image, then Single Frame for frame 1 or Preview for the start</div>'
-    : state.t2v
-    ? '<div class="placeholder"><b>Text → Video</b>write a prompt, then Single Frame for frame 1 or Preview for the start</div>'
-    : '<div class="placeholder"><b>No run selected</b>pick one below or hit Single Frame / Preview</div>';
+  $('stage').innerHTML = '<div class="wordmark">DWARP</div>';   // nothing on show: the name
   $('scrub').hidden = true; setFoot('');
   ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
