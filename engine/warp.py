@@ -273,13 +273,27 @@ def soften_mask(mask: torch.Tensor, dilate: int, blur: int) -> torch.Tensor:
     return mask
 
 
-def match_color(img: torch.Tensor, ref: torch.Tensor, amount: float) -> torch.Tensor:
-    """Per-channel mean/std transfer toward ref — cheap guard against feedback colour drift."""
+def match_color(img: torch.Tensor, ref: torch.Tensor, amount: float,
+                w: torch.Tensor | None = None, wref: torch.Tensor | None = None) -> torch.Tensor:
+    """Per-channel mean/std transfer toward ref — cheap guard against feedback colour drift.
+    With weights (a Shape mask: 1x1xHxW), the stats come from inside each frame's mask and the
+    correction lands there only: a growing bright shape on black isn't read as the frame getting brighter."""
     if amount <= 0:
         return img
-    m, s = img.mean((2, 3), keepdim=True), img.std((2, 3), keepdim=True) + 1e-5
-    rm, rs = ref.mean((2, 3), keepdim=True), ref.std((2, 3), keepdim=True) + 1e-5
-    return torch.lerp(img, ((img - m) / s * rs + rm).clamp(0, 1), amount)
+
+    def stats(x, k):
+        if k is None:
+            return x.mean((2, 3), keepdim=True), x.std((2, 3), keepdim=True) + 1e-5
+        k = k.expand_as(x)
+        n = k.sum((2, 3), keepdim=True).clamp(min=1e-3)
+        mu = (x * k).sum((2, 3), keepdim=True) / n
+        return mu, ((k * (x - mu) ** 2).sum((2, 3), keepdim=True) / n).sqrt() + 1e-5
+    if w is not None and (w.sum() < 16 or wref is None or wref.sum() < 16):
+        return img                              # a (nearly) empty mask: nothing to measure
+    m, s = stats(img, w)
+    rm, rs = stats(ref, wref)
+    matched = ((img - m) / s * rs + rm).clamp(0, 1)
+    return torch.lerp(img, matched, amount if w is None else amount * w)
 
 
 # ------------------------------------------------------------------ DepthDiff mask
@@ -1097,7 +1111,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 if smask is not None and job.shape_nudge > 0:
                     # black outside: what the latent mask holds there. Neutral grey inside: a black start
                     # leaks into step 1 (SD 2.1 then paints the shape black too); grey is near zero in latent
-                    core = ((smask - 0.8) / 0.2).clamp(0, 1)     # the soft edge starts black too: no grey halo
+                    pk = smask.max().clamp(min=1e-3)    # a tiny blurred dot never reaches white: relative to its peak
+                    core = ((smask / pk - 0.8) / 0.2).clamp(0, 1)   # the soft edge starts black too: no grey halo
                     src = src * torch.lerp(torch.ones_like(smask), core, job.shape_nudge)
             elif job.cam_3d:                    # the previous frame's own depth carries it into space
                 prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
@@ -1165,7 +1180,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             ring = (smask - prev_smask).clamp(0, 1) if prev_smask is not None else torch.zeros_like(smask)
             ring = gaussian_blur((ring * 4).clamp(0, 1), 6)
             base_s = job.style if t2v or i == 0 or job.fresh else style_next
-            top = max(base_s, 0.5 + 0.45 * max(job.shape_repaint, job.shape_follow))
+            top = max(base_s, 0.5 + 0.5 * max(job.shape_repaint, job.shape_follow))
+            if job.shape_nudge > 0:             # Text mode: what the mask grows into was black, and a black start
+                # leaks through (new growth came out dim, then stayed dim): start it neutral grey instead
+                init = torch.lerp(init, torch.full_like(init, 0.5), (ring * job.shape_nudge).expand_as(init))
             inside = base_s + (max(base_s, 0.8) - base_s) * job.shape_follow
             per = torch.lerp(torch.full_like(smask, base_s * (1 - job.shape_repaint)), torch.full_like(smask, inside), smask)
             per = torch.maximum(per, ring * top)
@@ -1245,10 +1263,12 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 log(f"tiled: {len(ys) * len(xs)} tiles of {tw}x{th}, overlap {job.tile_overlap}")
         else:
             res = denoise(init, hints, amount, g)
-        if first_out is None:
-            first_out = res
-        else:
-            res = match_color(res, first_out, job.color_match)
+        if first_out is None and (smask is None or smask.mean() >= 0.05):
+            # the colour reference; with a Shape, the first frame where it's big enough to measure (a tiny
+            # dot's stats would pull every later frame toward it: a growing shape went dimmer and dimmer)
+            first_out, first_smask = res, smask
+        elif first_out is not None:
+            res = match_color(res, first_out, job.color_match, smask, first_smask)
         path = out / "frames" / f"{i:06d}.png"
         # written aside, then renamed: the viewer lists frames/*.png and must never get a half-written one
         to_image(res).save(path.with_suffix(".tmp"), format="PNG")
