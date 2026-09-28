@@ -51,13 +51,30 @@ What it's good for:
 
 The **Diff** tab above the image shows the map live on the source while you drag the sliders — no render needed.
 
+## Shape: a latent mask of your own
+
+DepthDiff takes its map from the footage; **Shape** takes it from you. Drop a black-and-white picture or video on the
+Shape card (a colour clip works too: its brightness is the mask) and it becomes a per-pixel mask in the latent, with
+the same differential diffusion underneath:
+
+- **Text → Video**: frame 1 is generated from noise only where the mask is white; outside it's held black. An
+  animated mask (a circle growing, a wipe, a logo) draws its shape into the render over time.
+- **Repaint**: from frame 2 on, white areas keep changing and black ones hold. Where the mask newly spreads is drawn
+  fresh, so wipes and reveals come out clean.
+- **Levels** (black / midtone / white) turn any footage into a crisp mask, **Blur** softens its edges into a fade,
+  **Opacity** makes the whole effect subtler, **◐** swaps which side is the subject.
+- **Background** (Text / Image mode): *off* keeps a clean cut-out on black; *on* fills the frame around the shape —
+  a generated background in Text mode, your picture in Image mode.
+- A filmstrip with **in / out** handles picks the part of a mask video to use, and the **Shape** tab above the image
+  previews it (scrub it, and Single Frame renders at the mask frame shown).
+
 ## Features
 
 - SD 1.5, SD 2.1 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers. SD 2.1 reads the original 768-v / 512 `.ckpt` files (converted once, safely, to fp16 safetensors) and has depth + HED ControlNets
 - **Embeddings**: drop textual-inversion embeddings (your own trained styles too) into `models/embeddings` and pick one above Style, with its training step; DWARP reads which family each was trained for and lists it in that mode
 - Style presets, Denoise (how much it repaints), Frame Lock (how tightly later frames hold frame 1's look), Source mix (how much fresh source each frame gets back) and Hold (how tightly it follows the footage) sliders, sampler + schedule (DPM++ 2M / SDE, Euler, Euler a, UniPC, DDIM, Heun, LCM; Karras, exponential, beta, trailing), steps, CFG, lockable seed
 - **Prompt travel**: drop keyframes on the clip's timeline, give each its own prompt; the render morphs from one to the next over a Blend of frames
-- **Text → Video**: no video needed, in the spirit of [Deforum](https://github.com/deforum-art/deforum-stable-diffusion)'s animation mode. The prompt paints frame 1, a camera move (zoom, rotate, pan) carries every next frame on from the last, prompt keyframes and Live steer it — the camera too: move its sliders while it renders; set a length, aspect and FPS
+- **Text → Video**: no video needed, in the spirit of [Deforum](https://github.com/deforum-art/deforum-stable-diffusion)'s animation mode. The prompt paints frame 1, a camera move (zoom, rotate, pan) carries every next frame on from the last, prompt keyframes and Live steer it — the camera too: move its sliders while it renders; set a length, aspect and FPS. Denoise paints frame 1 and Frame Lock sets how much later frames keep, so long runs don't overcook
 - **3D camera**: switch the camera to 3D and each frame's MiDaS depth lifts it into space — zoom becomes a dolly, plus turn and tilt, with near things passing faster than far ones (Disco Diffusion's 3D mode)
 - **Image → Video**: the same, starting from your picture — frame 1 is the image repainted at your Denoise, and ControlNet / DepthDiff can hold its layout while the style comes in
 - **Style ref**: drop a picture and its look steers every frame ([IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)); *style only* borrows colours and strokes without the content ([InstantStyle](https://github.com/instantX-research/InstantStyle)'s style layers). SD 1.5 and SDXL
@@ -66,6 +83,7 @@ The **Diff** tab above the image shows the map live on the source while you drag
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
+- **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
 - **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
@@ -108,6 +126,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - [spandrel](https://github.com/chaiNNer-org/spandrel) for loading upscale models
 - **[Comfy-DepthDiff](https://github.com/spiritform/Comfy-DepthDiff)** (spiritform) — the luma / depth mask behind DepthDiff, ported from the ComfyUI node
 - [Differential Diffusion](https://differential-diffusion.github.io/) (Levin & Fried)
+- The wordmark is set in [Alien Block](https://github.com/koci-design/AlienBlock) (OFL, see `vendor/fonts`)
 
 ## License
 

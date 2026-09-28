@@ -2151,10 +2151,11 @@ const HELP = {
     <h4>Text → Video</h4>
     <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. No video at all (<b>Text</b> in the switch at
        the top). The prompt paints frame 1; every next frame is the previous one moved
-       by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted at your Denoise, so the picture keeps travelling
-       and turning into new things. Prompt keyframes and <b>Live</b> steer where it goes; start around 0.5 Denoise and adjust — lower keeps it
-       steadier, higher changes faster. Set the length, size (aspect) and FPS in the Size / Duration card; ControlNet, DepthDiff and Source
-       mix need a video, so they hide here. Double-click a camera slider to reset it. <b>While it renders, the camera
+       by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted, so the picture keeps travelling and turning into
+       new things. <b>Denoise</b> paints frame 1; <b>Frame Lock</b> sets how much every later frame keeps — higher is
+       steadier and stops a long run from overcooking (colours and contrast climbing), lower changes faster. Prompt
+       keyframes and <b>Live</b> steer where it goes. Set the length, size (aspect) and FPS in the Size / Duration card;
+       ControlNet, DepthDiff and Source mix need a video, so they hide here — a <b>Shape</b> mask works though. Double-click a camera slider to reset it. <b>While it renders, the camera
        sliders steer it live</b> — push in, start a turn, tilt up — easing into each new value over a few frames.</p>
     <p><b>3D</b> (the switch in the Camera card, Disco Diffusion's 3D mode): each frame's depth is read with MiDaS, the
        picture is lifted into space and the camera moves through it, so near things pass faster than far ones.
@@ -2164,7 +2165,11 @@ const HELP = {
     <p>Text → Video with your picture as frame 1: drop an image (or pick <b>Image</b> in the switch). Frame 1 is the
        picture repainted at your Denoise, then the camera carries it on — 3D works especially well on photos. Its
        aspect comes from the picture. Unlike Text → Video, <b>ControlNet</b> and <b>DepthDiff</b> stay: they read each
-       frame's start, so a depth ControlNet keeps the picture's layout while the style comes in.</p>
+       frame's start, so a depth ControlNet keeps the picture's layout while the style comes in. Frame Lock works as
+       in Text → Video.</p>
+    <h4>Shape</h4>
+    <p>Your own mask — a black-and-white picture or video — as a per-pixel mask in the latent: a cut-out, a growing
+       shape, a wipe, a logo. See the <i>Shape</i> tab of this guide.</p>
     <h4>What's different: DepthDiff</h4>
     <p>DWARP doesn't have to repaint the whole frame. <b>DepthDiff</b> — from spiritform's
        <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> node — turns each
@@ -2189,6 +2194,8 @@ const HELP = {
           renders the frame shown here.</td></tr>
       <tr><td><b>Diff</b></td><td>With DepthDiff on: the repaint map, live from the sliders (white repaints, black keeps
           the source), on the clip frame under the playhead.</td></tr>
+      <tr><td><b>Shape</b></td><td>With a Shape mask loaded: the mask as the engine reads it (levels, invert, blur,
+          opacity), scrubbable. Single Frame renders at the mask frame shown, and its result stays on that frame.</td></tr>
       <tr><td><b>Depth · Edge</b></td><td>With ControlNet on and a run selected: what each ControlNet saw on every frame.</td></tr>
       <tr><td><b>Output</b></td><td>The selected run's frames. Shown when a run finishes.</td></tr>
       <tr><td><b>Split</b></td><td>Source and output in one frame — drag the divider to compare.</td></tr>
@@ -2250,8 +2257,8 @@ const HELP = {
     <h3>Denoise, ControlNet, DepthDiff</h3>
     <h4>Denoise</h4>
     <p>How much of each frame is repainted. Low keeps the footage and adds texture; high follows the prompt and
-       invents. Most looks sit around 0.6–0.85. Later frames use a bit less than the first, since they start from
-       the previous result.</p>
+       invents. Most looks sit around 0.6–0.85. Denoise paints frame 1; <b>Frame Lock</b> sets how much later frames
+       keep (in every mode), since they start from the previous result.</p>
     <h4>Source mix — stops the build-up</h4>
     <p>Where nothing moves, each frame starts from the previous painted one and is painted again, so over a long clip
        a still background can get overcooked: speckled, over-textured, over-saturated. Source mix puts some of the
@@ -2284,6 +2291,34 @@ const HELP = {
        you get <b>Depth</b> and <b>Edge</b> (a run's maps, frame by frame); with <b>DepthDiff</b> selected you get
        <b>Diff</b> (the repaint map, live as you drag the sliders — no render needed).</p>`],
 
+  shape: ['Shape', () => `
+    <h3>Shape — a latent mask of your own</h3>
+    <p>DepthDiff takes its map from the footage; <b>Shape</b> takes it from you. Drop a picture or video on the Shape
+       card: <b>white is the subject</b>, black is left alone (<b>◐</b> swaps them). A colour clip works too — its
+       brightness is the mask. Underneath it's the same differential diffusion as DepthDiff: every pixel gets its own
+       share of the denoise.</p>
+    <h4>In Text → Video</h4>
+    <p>Frame 1 is generated from noise only inside the mask; outside stays black. An animated mask — a circle growing,
+       a wipe, text — draws itself into the render: what it grows into is painted fresh, the rest carries on.</p>
+    <h4>The card</h4>
+    <table>
+      <tr><td><b>Filmstrip</b></td><td>A mask video's frames, shown the way the engine reads them. Drag the handles to
+          set <b>in / out</b>: Preview and Render start at In and hold Out. Double-click for all of it.</td></tr>
+      <tr><td><b>Levels</b></td><td>Black, midtone and white points. Pull black and white together to turn soft footage
+          into a crisp mask; the midtone shifts the greys. Double-click resets.</td></tr>
+      <tr><td><b>Repaint</b></td><td>From frame 2 on: white keeps changing, black holds. Where the mask newly spreads is
+          drawn fresh, so reveals come out clean. Lower lets the black areas change too.</td></tr>
+      <tr><td><b>Blur</b></td><td>Softens the mask's edges — the subject fades into its surroundings instead of a hard
+          cut-out.</td></tr>
+      <tr><td><b>Opacity</b></td><td>Fades the whole effect: black areas are only partly held. 0 = as if there were no mask.</td></tr>
+      <tr><td><b>Background</b></td><td>Text / Image mode. <b>off</b>: a clean cut-out on black. <b>on</b>: the frame
+          around the shape is filled — generated from the prompt in Text mode (name the background in the prompt), your
+          picture in Image mode.</td></tr>
+    </table>
+    <h4>Seeing it</h4>
+    <p>The <b>Shape</b> tab above the image previews the mask with all of the above applied; scrub or play it. Park it
+       on a frame and <b>Single Frame</b> renders there — the result stays on that frame, so you can flip between Shape
+       and Output.</p>`],
   timeline: ['Timeline', () => `
     <h3>Trimming and prompt keyframes</h3>
     <h4>Trim</h4>
@@ -2305,7 +2340,10 @@ const HELP = {
       <li>From each keyframe the video <b>morphs into its prompt over Blend frames</b> — 0 is a hard cut, 12–30 a
           smooth change. The look's style words are added to every keyframe.</li>
       <li><b>delete</b> (next to the keyframe's blend, under the box) removes the selected keyframe.</li>
-      <li>With a keyframe selected, <b>Single Frame</b> renders with its prompt — a quick check of each one.</li>
+      <li>With a keyframe selected, <b>Single Frame</b> renders with its prompt — a quick check of each one. Its time
+          shows next to its name (hover for the frame).</li>
+      <li>If the timeline gets shorter (a shorter duration or clip), keyframes past the end wait at the end, dimmed,
+          until there's room again.</li>
     </ul>
     <h4>Live</h4>
     <p>Turn on <b>live</b> next to Render — it starts a Render if none is running — then type a prompt and press Enter: the
@@ -2353,6 +2391,7 @@ const HELP = {
       <li><a href="https://differential-diffusion.github.io/" target="_blank">Differential Diffusion</a> (Levin &amp; Fried); the DepthDiff mask
           comes from <a href="https://github.com/spiritform/Comfy-DepthDiff" target="_blank">Comfy-DepthDiff</a> by
           <a href="https://github.com/spiritform" target="_blank">spiritform</a></li>
+      <li>The wordmark is set in <a href="https://github.com/koci-design/AlienBlock" target="_blank">Alien Block</a> (OFL)</li>
     </ul>`],
 };
 function paintHelp() {
