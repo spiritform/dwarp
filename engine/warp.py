@@ -39,6 +39,9 @@ class ControlSpec:
     end: float = 1.0
     repo: str = ""       # Hugging Face repo to fetch `path` from on first use, when it isn't on disk yet
 
+    def __post_init__(self):             # JSON sends 1.0 as 1; a single-net pipeline refuses an int weight
+        self.weight, self.start, self.end = float(self.weight), float(self.start), float(self.end)
+
 
 @dataclass
 class RenderJob:
@@ -118,6 +121,18 @@ class RenderJob:
     # prompt over prompt_blend source frames (0 = hard cut). Empty = job.prompt throughout.
     prompt_keys: list = field(default_factory=list)
     prompt_blend: int = 12
+    # Shape: a mask picture / video (white = the subject) that steers the render on its own, apart from the
+    # clip. Mask frame N drives render frame N; a shorter mask holds its last frame.
+    shape: str = ""
+    shape_invert: bool = False           # black is the subject (a dark logo on white)
+    shape_start: int = 0                 # the mask frame (its own numbering) render frame 1 uses: Single Frame at a spot
+    shape_blur: int = 0                  # px of softening on the mask's edges (0 = hard, as drawn)
+    shape_cn: str = ""                   # the mode's depth ControlNet, for Pull
+    shape_cn_repo: str = ""              # where it downloads from on first use, when missing
+    shape_pull: float = 0.0              # the mask as a depth hint at this weight: something near where it's white
+    shape_motion: float = 0.0            # Grow: where the mask spreads this frame repaints almost fully, the
+                                         # outside holds at (1 - motion) of the strength
+    shape_nudge: float = 0.0             # the outside of the mask darkened in each frame's start (Text -> Video frame 1 too)
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -153,6 +168,24 @@ def extract_frames(job: RenderJob, dest: Path) -> list[Path]:
     frames = sorted(dest.glob("*.jpg"))
     if not frames:
         raise RuntimeError("ffmpeg extracted no frames — check the frame range")
+    return frames
+
+
+def shape_frames(job: RenderJob, dest: Path) -> list[Path]:
+    """The Shape mask's frames: a picture (one frame), a folder of images, or a video (every nth frame from
+    its start, at render size)."""
+    src = Path(job.shape)
+    if src.is_dir():
+        return sorted(f for f in src.iterdir() if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"))[::max(1, job.nth)]
+    if src.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+        return [src]
+    dest.mkdir(parents=True, exist_ok=True)
+    vf = f"select=not(mod(n\\,{max(1, job.nth)})),scale={job.width}:{job.height}:flags=lanczos"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", vf, "-vsync", "vfr",
+                    "-q:v", "2", "-start_number", "0", str(dest / "%06d.jpg")], check=True)
+    frames = sorted(dest.glob("*.jpg"))
+    if not frames:
+        raise RuntimeError(f"no frames in the shape video {src.name}")
     return frames
 
 
@@ -330,7 +363,7 @@ UNION_CONFIG = dict(
     in_channels=4, layers_per_block=2, mid_block_scale_factor=1, norm_eps=1e-5, norm_num_groups=32,
     projection_class_embeddings_input_dim=2816, resnet_time_scale_shift="default",
     transformer_layers_per_block=[1, 2, 10], use_linear_projection=True, num_control_type=8)
-UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3, "tile": 6}
+UNION_MODE = {"depth": 1, "softedge": 2, "canny": 3, "lineart": 3, "tile": 6, "shape": 1}   # shape = a mask read as depth
 
 
 # SSD-1B (Segmind's distilled SDXL; SDXL Flash Mini is built on it): same channels and ControlNet
@@ -421,6 +454,29 @@ def camera_move(img: torch.Tensor, job: RenderJob) -> torch.Tensor:
     tx, ty = -2 * job.cam_x * n, -2 * job.cam_y * n          # grid units: the image moves the other way
     c, s_ = math.cos(ang) / zoom, math.sin(ang) / zoom
     theta = torch.tensor([[c, -s_, tx], [s_, c, ty]], dtype=img.dtype, device=img.device)[None]
+    grid = F.affine_grid(theta, list(img.shape), align_corners=False)
+    return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
+
+
+def shape_follow(img: torch.Tensor, prev: torch.Tensor, cur: torch.Tensor, amount: float) -> torch.Tensor:
+    """Move img the way the Shape mask moved from prev to cur: its centre and size (image moments), so
+    what was painted on the shape travels and grows with it. amount 0..1 = how far along."""
+    _, _, h, w = cur.shape
+    ys = torch.linspace(-1, 1, h, device=cur.device)[:, None]
+    xs = torch.linspace(-1, 1, w, device=cur.device)[None, :]
+
+    def moments(m):
+        a = m[0, 0].sum()
+        return a, (m[0, 0] * xs).sum() / a, (m[0, 0] * ys).sum() / a
+    a0, x0, y0 = moments(prev)
+    a1, x1, y1 = moments(cur)
+    if a0 < 1 or a1 < 1:                        # an empty mask: nothing to follow
+        return img
+    k = float((a1 / a0).sqrt()) ** amount      # size ratio
+    x1, y1 = x0 + (x1 - x0) * amount, y0 + (y1 - y0) * amount
+    # each output point samples where it was before the move: prev centre + (p - new centre) / k
+    theta = torch.tensor([[1 / k, 0, float(x0 - x1 / k)], [0, 1 / k, float(y0 - y1 / k)]],
+                         dtype=img.dtype, device=img.device)[None]
     grid = F.affine_grid(theta, list(img.shape), align_corners=False)
     return F.grid_sample(img, grid, mode="bicubic", padding_mode="reflection", align_corners=False).clamp(0, 1)
 
@@ -922,6 +978,20 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
     t0 = time.time()
+    shapes, shape_hint = [], None
+    if job.shape:
+        shapes = shape_frames(job, out / "shape_src")
+        (out / "control" / "shape").mkdir(parents=True, exist_ok=True)
+        # Pull: the mask is a depth hint. With the clip's depth net already on, it joins that hint (the
+        # nearer of the two); otherwise it's a net of its own
+        if job.shape_pull > 0:
+            if any(c.kind == "depth" for c in job.controlnets):
+                shape_hint = "merge"
+            elif job.shape_cn:
+                job.controlnets = [*job.controlnets, ControlSpec("shape", job.shape_cn, job.shape_pull, repo=job.shape_cn_repo)]
+                shape_hint = "own"
+        log(f"shape {Path(job.shape).name}: {len(shapes)} frame{'s' * (len(shapes) > 1)}, pull {job.shape_pull}"
+            f"{' (joins the depth hint)' if shape_hint == 'merge' else ''}, motion {job.shape_motion}, nudge {job.shape_nudge}")
     t2v = job.t2v_frames > 0
     if t2v:                                     # no clip: the frames come from the prompt and the camera
         src_paths = [None] * job.t2v_frames
@@ -968,7 +1038,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     on_keys(keys, blend)
     last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
-    written, prev_src, prev_out, first_out = [], None, None, None
+    written, prev_src, prev_out, first_out, prev_smask = [], None, None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
     if t2v:
         log(f"frame 1 from {'the image ' + Path(job.init_image).name if job.init_image else 'the prompt'}, then denoise {job.style} on the moved previous frame; colour match {job.color_match}")
@@ -1009,12 +1079,23 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             on_keys(keys, blend)
             last_cond = None
         tf = time.time()
+        smask = None
+        if shapes:                              # this frame's Shape mask, 1x1xHxW 0..1 (white = the subject)
+            sm = Image.open(shapes[min(i + job.shape_start // max(1, job.nth), len(shapes) - 1)]).convert("L").resize((job.width, job.height), Image.LANCZOS)
+            smask = torch.from_numpy(np.asarray(sm, dtype=np.float32) / 255).to(device)[None, None]
+            if job.shape_invert:
+                smask = 1 - smask
+            smask = gaussian_blur(smask, int(job.shape_blur))
         if t2v:                                 # the "source" is where this frame starts: blank, then the camera
             if prev_out is None and job.init_image:     # Image -> Video: the picture, at render size
                 pic = Image.open(job.init_image).convert("RGB").resize((job.width, job.height), Image.LANCZOS)
                 src = to_tensor(np.asarray(pic), device)
             elif prev_out is None:
                 src = torch.full((1, 3, job.height, job.width), 0.5, device=device)
+                if smask is not None and job.shape_nudge > 0:
+                    # black outside: what the latent mask holds there. Neutral grey inside: a black start
+                    # leaks into step 1 (SD 2.1 then paints the shape black too); grey is near zero in latent
+                    src = src * torch.lerp(torch.ones_like(smask), smask, job.shape_nudge)
             elif job.cam_3d:                    # the previous frame's own depth carries it into space
                 prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
                 dmap = ann("depth", prev_np).convert("L")
@@ -1023,6 +1104,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 src = camera_move_3d(prev_out, gaussian_blur(disp, 2), job)   # soft steps, fewer tears
             else:
                 src = camera_move(prev_out, job)
+            if prev_out is not None and prev_smask is not None and job.shape_motion > 0:   # it travels with the shape
+                src = shape_follow(src, prev_smask, smask, job.shape_motion)
             src_np = (src[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             Image.fromarray(src_np).save(out / "src" / f"{i:06d}.jpg", quality=90)   # the viewer's Source layer
         else:
@@ -1049,7 +1132,17 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 to_image(mask.expand(-1, 3, -1, -1)).save(out / "debug" / f"mask_{i:06d}.png")
                 to_image(init).save(out / "debug" / f"init_{i:06d}.png")
 
-        hints = [ann(c.kind, src_np) for c in job.controlnets]
+        if smask is not None:
+            if job.shape_nudge > 0:             # a bright subject on dark: the start already has the layout
+                init = init * (1 - job.shape_nudge * (1 - smask))
+        blank = t2v and i == 0 and not job.init_image     # t2v frame 1: from the prompt alone (grey start)
+        hints = [Image.fromarray((smask[0, 0].cpu().numpy() * 255).astype(np.uint8)).convert("RGB") if c.kind == "shape"
+                 else ann(c.kind, src_np) for c in job.controlnets]
+        if shape_hint == "merge":
+            hints = [Image.fromarray(np.maximum(np.asarray(h), (smask[0, 0].cpu().numpy() * 255 * job.shape_pull).astype(np.uint8)[..., None]))
+                     if c.kind == "depth" else h for c, h in zip(job.controlnets, hints)]
+        if smask is not None:
+            to_image(smask.expand(-1, 3, -1, -1)).save(out / "control" / "shape" / f"{i:06d}.jpg", quality=90)
         for c, h in zip(job.controlnets, hints):
             h.convert("RGB").save(out / "control" / c.kind / f"{i:06d}.jpg", quality=90)
         if job.diff_source != "off":
@@ -1061,8 +1154,27 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             dm = diff_mask(base, job)
             to_image(dm.expand(-1, 3, -1, -1)).save(out / "control" / "diff" / f"{i:06d}.jpg", quality=90)
             amount = dm if amount is None else amount * dm
-            if amount.min() >= 1:
-                amount = None
+        grow = None                             # Motion: per-pixel strength, the run's own set below
+        if smask is not None and job.shape_motion > 0 and not blank:   # a blank start has nothing to hold
+            # the ring the mask newly covers gets near-full repaint (new growth has to be drawn), the inside
+            # enough to re-form at its new size, the outside holds
+            ring = (smask - prev_smask).clamp(0, 1) if prev_smask is not None else torch.zeros_like(smask)
+            ring = gaussian_blur((ring * 4).clamp(0, 1), 6)
+            base_s = job.style if t2v or i == 0 or job.fresh else style_next
+            top = max(base_s, 0.5 + 0.45 * job.shape_motion)
+            inside = base_s + (max(base_s, 0.8) - base_s) * job.shape_motion    # room to re-form bigger
+            per = torch.lerp(torch.full_like(smask, base_s * (1 - job.shape_motion)), torch.full_like(smask, inside), smask)
+            per = torch.maximum(per, ring * top)
+            grow = float(per.max())
+            keep = per / grow
+            amount = keep if amount is None else amount * keep
+        prev_smask = smask
+        if smask is not None and blank and job.shape_nudge > 0:
+            # frame 1 from pure noise with the mask in the latent: inside generates from the first step,
+            # outside stays held at black (full Nudge: all of it; less lets some of the outside generate too)
+            amount = torch.lerp(torch.ones_like(smask), smask, job.shape_nudge)
+        if amount is not None and amount.min() >= 1:
+            amount = None
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + i)
         if embeds is None:
             text = dict(prompt=job.prompt, negative_prompt=job.negative or None)
@@ -1071,7 +1183,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if len(keys) > 1 and cond != last_cond and not cond.endswith("%"):
                 log(f"frame {i + 1}: {cond}")
             last_cond = cond
-        strength = (1.0 if t2v and i == 0 and not job.init_image else    # t2v frame 1: from the prompt alone
+        strength = (1.0 if blank else   # Nudge: the shape shows through
+                    max(grow, 1.001 / job.steps) if grow is not None else
                     # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
                     max(job.style if i == 0 or trust or job.fresh or t2v else style_next, 1.001 / job.steps))
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full

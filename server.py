@@ -320,6 +320,8 @@ def build_app() -> FastAPI:
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         if job.get("style_image") and not os.path.isfile(job["style_image"]):
             raise HTTPException(422, detail=[{"message": f"style image not found: {job['style_image']!r}"}])
+        if job.get("shape") and not os.path.exists(job["shape"]):
+            raise HTTPException(422, detail=[{"message": f"shape mask not found: {job['shape']!r}"}])
         for c in job.get("controlnets", []):
             if not os.path.isfile(c.get("path", "")) and not c.get("repo"):   # a repo = downloads on first use
                 raise HTTPException(422, detail=[{"message": f"ControlNet not found: {c.get('path')!r}"}])

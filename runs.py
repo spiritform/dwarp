@@ -98,7 +98,7 @@ def init_frames(run_id: str) -> dict[int, Path]:
 
 # ControlNet hints the engine saved per frame: control/<kind>/NNNNNN.jpg -> layer "control_<kind>"
 CONTROL_LABELS = {"depth": "Depth", "softedge": "Edge", "hed": "Edge", "canny": "Canny", "lineart": "Lineart",
-                  "diff": "Diff"}      # diff = the DepthDiff per-pixel strength mask
+                  "diff": "Diff", "shape": "Shape"}      # diff = the DepthDiff per-pixel strength mask
 
 
 def control_frames(run_id: str, kind: str) -> dict[int, Path]:
@@ -150,7 +150,7 @@ def timing(run_id: str) -> dict | None:
     if job.get("t2v_frames"):                 # text -> video: its own clock, not the panel's clip
         src = None
     return {"frame_start": int(job.get("frame_start", 0)), "nth": nth, "fps": float(src or fps(run_id) * nth),
-            "video": job.get("video", "")}
+            "video": job.get("video", ""), "shape": job.get("shape", ""), "shape_start": int(job.get("shape_start", 0))}
 
 
 def describe(run_id: str) -> dict:
