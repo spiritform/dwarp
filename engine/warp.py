@@ -132,6 +132,7 @@ class RenderJob:
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5
     shape_blur: int = 0                  # px of softening on the mask's edges (0 = hard, as drawn)
+    shape_opacity: float = 1.0           # fades the whole effect: black areas become grey (partly held); 0 = no mask
     shape_cn: str = ""                   # the mode's depth ControlNet, for Pull
     shape_cn_repo: str = ""              # where it downloads from on first use, when missing
     shape_pull: float = 0.0              # the mask as a depth hint at this weight: something near where it's white
@@ -1009,7 +1010,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if any(c.kind == "depth" for c in job.controlnets):
                 shape_hint = "merge"
             elif job.shape_cn:
-                job.controlnets = [*job.controlnets, ControlSpec("shape", job.shape_cn, job.shape_pull, repo=job.shape_cn_repo)]
+                job.controlnets = [*job.controlnets, ControlSpec("shape", job.shape_cn, job.shape_pull * job.shape_opacity, repo=job.shape_cn_repo)]
                 shape_hint = "own"
         log(f"shape {Path(job.shape).name}: {len(shapes)} frame{'s' * (len(shapes) > 1)}, pull {job.shape_pull}"
             f"{' (joins the depth hint)' if shape_hint == 'merge' else ''}, repaint {job.shape_repaint}, follow {job.shape_follow}, nudge {job.shape_nudge}")
@@ -1061,8 +1062,11 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out, prev_smask = [], None, None, None, None
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
+    # Text / Image -> Video: later frames repaint the moved previous frame at Frame Lock's strength when one is
+    # given (a high Denoise every frame compounds: colour and contrast cook); -1 = Denoise throughout
+    t2v_next = job.style_next if job.style_next >= 0 else job.style
     if t2v:
-        log(f"frame 1 from {'the image ' + Path(job.init_image).name if job.init_image else 'the prompt'}, then denoise {job.style} on the moved previous frame; colour match {job.color_match}")
+        log(f"frame 1 from {'the image ' + Path(job.init_image).name if job.init_image else 'the prompt'}, then denoise {t2v_next} on the moved previous frame; colour match {job.color_match}")
     elif job.fresh:
         log(f"boil: every frame repainted from its source (no warp), denoise {job.style}; colour match {job.color_match}")
     else:
@@ -1114,6 +1118,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if job.shape_invert:
                 smask = 1 - smask
             smask = gaussian_blur(smask, int(job.shape_blur))
+            shint = smask                       # the depth pull's hint: the shape itself (its weight fades instead)
+            if job.shape_opacity < 1:
+                smask = 1 - job.shape_opacity * (1 - smask)
         if t2v:                                 # the "source" is where this frame starts: blank, then the camera
             if prev_out is None and job.init_image:     # Image -> Video: the picture, at render size
                 pic = Image.open(job.init_image).convert("RGB").resize((job.width, job.height), Image.LANCZOS)
@@ -1166,10 +1173,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if job.shape_nudge > 0:             # a bright subject on dark: the start already has the layout
                 init = init * (1 - job.shape_nudge * (1 - smask))
         blank = t2v and i == 0 and not job.init_image     # t2v frame 1: from the prompt alone (grey start)
-        hints = [Image.fromarray((smask[0, 0].cpu().numpy() * 255).astype(np.uint8)).convert("RGB") if c.kind == "shape"
+        hints = [Image.fromarray((shint[0, 0].cpu().numpy() * 255).astype(np.uint8)).convert("RGB") if c.kind == "shape"
                  else ann(c.kind, src_np) for c in job.controlnets]
         if shape_hint == "merge":
-            hints = [Image.fromarray(np.maximum(np.asarray(h), (smask[0, 0].cpu().numpy() * 255 * job.shape_pull).astype(np.uint8)[..., None]))
+            hints = [Image.fromarray(np.maximum(np.asarray(h), (shint[0, 0].cpu().numpy() * 255 * job.shape_pull * job.shape_opacity).astype(np.uint8)[..., None]))
                      if c.kind == "depth" else h for c, h in zip(job.controlnets, hints)]
         if smask is not None:
             to_image(smask.expand(-1, 3, -1, -1)).save(out / "control" / "shape" / f"{i:06d}.jpg", quality=90)
@@ -1191,7 +1198,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             # Follow: the inside also gets enough to re-form at the shape's new size
             ring = (smask - prev_smask).clamp(0, 1) if prev_smask is not None else torch.zeros_like(smask)
             ring = gaussian_blur((ring * 4).clamp(0, 1), 6)
-            base_s = job.style if t2v or i == 0 or job.fresh else style_next
+            base_s = job.style if i == 0 or job.fresh else t2v_next if t2v else style_next
             top = max(base_s, 0.5 + 0.5 * max(job.shape_repaint, job.shape_follow))
             if job.shape_nudge > 0:             # Text mode: what the mask grows into was black, and a black start
                 # leaks through (new growth came out dim, then stayed dim): start it neutral grey instead
@@ -1220,7 +1227,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         strength = (1.0 if blank else   # Nudge: the shape shows through
                     max(grow, 1.001 / job.steps) if grow is not None else
                     # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                    max(job.style if i == 0 or trust or job.fresh or t2v else style_next, 1.001 / job.steps))
+                    max(job.style if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, 1.001 / job.steps))
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
         share = style_next / job.style if trust else 1.0
@@ -1275,12 +1282,14 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 log(f"tiled: {len(ys) * len(xs)} tiles of {tw}x{th}, overlap {job.tile_overlap}")
         else:
             res = denoise(init, hints, amount, g)
-        if first_out is None and (smask is None or smask.mean() >= 0.05):
+        cm_mask = smask if job.shape_nudge > 0 else None   # outside black: judge colour by the shape only;
+        # a background (on / Video mode) is part of the picture and drifts too: the whole frame, as without a mask
+        if first_out is None and (cm_mask is None or cm_mask.mean() >= 0.05):
             # the colour reference; with a Shape, the first frame where it's big enough to measure (a tiny
             # dot's stats would pull every later frame toward it: a growing shape went dimmer and dimmer)
-            first_out, first_smask = res, smask
+            first_out, first_smask = res, cm_mask
         elif first_out is not None:
-            res = match_color(res, first_out, job.color_match, smask, first_smask)
+            res = match_color(res, first_out, job.color_match, cm_mask, first_smask)
         path = out / "frames" / f"{i:06d}.png"
         # written aside, then renamed: the viewer lists frames/*.png and must never get a half-written one
         to_image(res).save(path.with_suffix(".tmp"), format="PNG")
