@@ -102,6 +102,9 @@ class RenderJob:
     flow_blend: float = 1.0              # 1 = trust the warped stylized frame fully where consistent
     fresh: bool = False                  # "Boil": no warp, every frame repainted from its source at the
                                          # full style — strokes boil like hand-painted animation
+    edge_pad: float = 0.0                # share of the long side mirrored onto every edge before diffusion and cropped
+                                         # after: the model's "outside is black" lands in a margin that's thrown away,
+                                         # so edges don't darken or smear over a long feedback run (~30% slower at 0.08)
     mask_dilate: int = 5                 # grow the "don't trust" regions a little (px)
     mask_blur: int = 3
     color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
@@ -1281,7 +1284,20 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if i == 0:
                 log(f"tiled: {len(ys) * len(xs)} tiles of {tw}x{th}, overlap {job.tile_overlap}")
         else:
-            res = denoise(init, hints, amount, g)
+            p = int(round(max(H, W) * job.edge_pad / 8)) * 8 if job.edge_pad > 0 else 0
+            p = min(p, (min(H, W) - 1) // 8 * 8)        # reflect padding must stay inside the frame
+            if p:
+                # Edge padding: a mirrored margin repainted with the frame, then cropped off
+                def mirror(h):
+                    a = np.asarray(h)
+                    return Image.fromarray(np.pad(a, ((p, p), (p, p)) + ((0, 0),) * (a.ndim - 2), mode="reflect"))
+                res = denoise(F.pad(init, (p, p, p, p), mode="reflect"), [mirror(h) for h in hints],
+                              None if amount is None else F.pad(amount, (p, p, p, p), mode="replicate"),
+                              g)[:, :, p:p + H, p:p + W]
+                if i == 0:
+                    log(f"edge padding: {p}px mirrored on each side, cropped after")
+            else:
+                res = denoise(init, hints, amount, g)
         cm_mask = smask if job.shape_nudge > 0 else None   # outside black: judge colour by the shape only;
         # a background (on / Video mode) is part of the picture and drifts too: the whole frame, as without a mask
         if first_out is None and (cm_mask is None or cm_mask.mean() >= 0.05):

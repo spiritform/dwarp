@@ -591,6 +591,10 @@
       <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
       <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
     </div>
+    <div class="slider">
+      <div class="slider-head"><b title="padded: every frame is repainted with a mirrored margin that's cropped off after, so the edges don't darken or smear over a long render (about 30% slower). plain: the frame as it is">Edges</b></div>
+      <div class="seg" id="edgePad" style="grid-template-columns:1fr 1fr"><button data-v="0">plain</button><button data-v="1">padded</button></div>
+    </div>
     </div></div>
   </section>
 
@@ -1236,7 +1240,7 @@ function paintSums() {
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}` : '');
-  set('render', (+state.style).toFixed(2) + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+  set('render', (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -1730,6 +1734,7 @@ function renderControls() {
   $('styleNext').value = 1 - state.styleNext; $('styleNextV').textContent = (1 - state.styleNext).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   [...$('frameMode').children].forEach(b => b.classList.toggle('on', (b.dataset.f === 'fresh') === !!state.fresh));
+  [...$('edgePad').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.edgePad ? 1 : 0)));
   $('srcMixBox').hidden = $('nextBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
@@ -1838,6 +1843,7 @@ $('srcMode').onclick = e => {
   if (!viewRun) state.t2v || !state.clip ? clearStage() : showClip();
   save();
 };
+$('edgePad').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.edgePad = +v; renderControls(); save(); };
 $('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; state.fresh = f === 'fresh'; renderControls(); save(); };
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
@@ -2069,6 +2075,7 @@ async function buildConfig(kind) {
     diff: !t2v && !state.fresh && state.styleNext < state.style,   // Warp: uncovered pixels repaint at Denoise
     flow_blend: t2v ? 1 : +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     fresh: !t2v && !!state.fresh,            // Boil: no warp, full Denoise on every frame
+    edge_pad: state.edgePad ? 0.08 : 0,      // Edges: padded = a mirrored margin, cropped after (no dark / smeared edges)
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
