@@ -587,7 +587,7 @@
       <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
       <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
     </div>
-    <div class="sublabel">Style ref</div>
+    <div class="sublabel" id="styleRefLabel">Style ref</div>
     <div id="styleRef"></div>
     <input type="file" id="styleFile" accept="image/*" hidden>
     <div id="styleRefCtl">
@@ -937,7 +937,9 @@ function pushCamera() {
 // Style ref (IP-Adapter): a picture whose look steers every frame. SD 1.5 / SDXL (SD 2.1 has none)
 function renderStyleRef() {
   const sr = modeCfg().style_ref, r = state.styleRef, box = $('styleRef');
-  if (!sr) { box.innerHTML = '<div class="hint">not for SD 2.1</div>'; $('styleRefCtl').hidden = true; return; }
+  // no IP-Adapter was made for SD 2.x: the whole Style ref row steps aside
+  $('styleRefLabel').hidden = box.hidden = !sr;
+  if (!sr) { box.innerHTML = ''; $('styleRefCtl').hidden = true; return; }
   box.innerHTML = r
     ? `<div class="ref"><img src="/api/image/file?${qs({ path: r.path })}" alt="" title="Replace the picture"><span title="${r.path}">${r.name}</span><button title="No style ref">✕</button></div>`
     : `<div class="clip-empty" title="A picture whose look steers every frame — click, or drop one here${sr.have ? '' : ' (the IP-Adapter downloads on the first render that uses it)'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload image</div>`;
