@@ -116,6 +116,14 @@ def build_app() -> FastAPI:
     def index():
         return FileResponse(HERE / "index.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/fonts/{name}")
+    def font(name: str):
+        """The wordmark's font, bundled so the page works offline (vendor/fonts, OFL)."""
+        f = HERE / "vendor" / "fonts" / Path(name).name
+        if f.suffix != ".woff2" or not f.is_file():
+            raise HTTPException(404, detail="No such font")
+        return FileResponse(f, media_type="font/woff2", headers={"Cache-Control": "max-age=86400"})
+
     @app.get("/presets.json")
     def presets():
         return JSONResponse(settings(), headers={"Cache-Control": "no-store"})

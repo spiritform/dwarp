@@ -42,8 +42,11 @@
     grid-row: 1 / 3; background: var(--panel);
     display: flex; flex-direction: column; gap: 18px; padding: 18px; overflow-y: auto;
   }
+  /* the wordmark's face: Alien Block (Google Fonts, OFL), bundled in vendor/fonts so it works offline */
+  @font-face { font-family: 'Alien Block'; font-weight: 400; font-display: swap;
+               src: url(/fonts/AlienBlock-Regular.woff2) format('woff2'); }
   .brand { display: flex; align-items: baseline; gap: 8px; }
-  .brand b { font-size: 15px; letter-spacing: .5px; }
+  .brand b { font-family: 'Alien Block', sans-serif; font-weight: 400; font-size: 17px; letter-spacing: .5px; }
   .brand span { color: var(--faint); font-size: 11px; }
 
   .label, .sublabel, .slider-head b { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
@@ -320,7 +323,7 @@
   .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
   /* the empty stage: just the name, big and quiet */
-  .wordmark { font-size: clamp(56px, 11vw, 160px); font-weight: 800; letter-spacing: -.04em; color: #232228;
+  .wordmark { font-family: 'Alien Block', sans-serif; font-size: clamp(56px, 11vw, 160px); font-weight: 400; letter-spacing: -.02em; color: #232228;
               user-select: none; pointer-events: none; }
 
   .progress { height: 3px; background: var(--line); }
