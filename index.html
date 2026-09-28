@@ -101,6 +101,8 @@
   .clip-top > div { min-width: 0; }
   .clip-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .clip-meta { color: var(--dim); font-size: 11px; margin-top: 2px; }
+  .clip-del { flex: none; align-self: flex-start; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .clip-del:hover { color: #ff9a8a; }
   .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: 5px; overflow: hidden;
            display: flex; background: #000; touch-action: none; }
   .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
@@ -213,15 +215,27 @@
     align-items: center; gap: 6px; border-radius: 8px; }
   #shapeSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #shapeSlot .clip-empty svg { width: 18px; height: 18px; }
-  #shapeSlot .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
-  #shapeSlot .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: 5px; cursor: pointer; flex: none; background: #000; }
-  #shapeSlot .ref span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
-  #shapeSlot .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
-  #shapeSlot .ref button:hover { color: #ff9a8a; }
-  #shapeSlot .ref button.inv { font-size: 14px; }
-  #shapeSlot .ref button.inv:hover { color: var(--text); }
-  #shapeSlot .ref button.inv.on { color: var(--accent, #ff6a3d); }
-  #shapeSlot .ref img.inv { filter: invert(1); }
+  #shapeSlot { margin-bottom: 8px; }                      /* breathing room under the slot, empty or loaded */
+  #shapeSlot .clip { background: #25242b; }
+  #shapeSlot .clip-top { padding: 8px; }
+  #shapeSlot .clip-thumb { width: 44px; height: 44px; background: #000; }
+  #shapeSlot .clip-name { flex: 1; font-weight: 400; font-size: 12px; color: #c9c7cf; }
+  #shapeSlot .clip-top > button:not(.clip-thumb) { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 6px; flex: none; }
+  #shapeSlot .clip-top > button.del:hover { color: #ff9a8a; }
+  #shapeSlot .clip-top > button.inv { font-size: 14px; }
+  #shapeSlot .clip-top > button.inv:hover { color: var(--text); }
+  #shapeSlot .clip-top > button.inv.on { color: var(--accent); }
+  #shapeSlot .range { margin: 0 8px 8px; }
+  #shapeSlot img.fx { filter: url(#shapeFx); }             /* greyscale + levels + invert: the mask as the engine reads it */
+  /* 3-point levels: a black -> white bar, black / mid / white handles under it */
+  .levels { position: relative; height: 26px; margin: 6px 0 2px; touch-action: none; user-select: none; }
+  .levels .bar { position: absolute; left: 0; right: 0; top: 0; height: 10px; border-radius: 3px;
+                 background: linear-gradient(90deg, #000, #fff); }
+  .levels .pt { position: absolute; top: 12px; width: 0; height: 0; margin-left: -6px; cursor: ew-resize;
+                border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 9px solid #8a8893; }
+  .levels .pt:hover, .levels .pt.drag { border-bottom-color: var(--accent); }
+  .levels .pt.b { border-bottom-color: #111; filter: drop-shadow(0 0 1px #aaa); }
+  .levels .pt.w { border-bottom-color: #fff; }
   #styleRefCtl[hidden] { display: none; }
   /* the optional negative prompt: a small fold under the prompt box */
   .negtoggle { display: inline-block; margin-top: 0; font-size: 11px; color: var(--dim); cursor: pointer; }
@@ -664,6 +678,19 @@
     </div></div>
   </section>
 
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="shapeFx" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values=".299 .587 .114 0 0  .299 .587 .114 0 0  .299 .587 .114 0 0  0 0 0 1 0"/>
+      <feComponentTransfer class="lvLin"><feFuncR type="linear"/><feFuncG type="linear"/><feFuncB type="linear"/></feComponentTransfer>
+      <feComponentTransfer class="lvGam"><feFuncR type="gamma"/><feFuncG type="gamma"/><feFuncB type="gamma"/></feComponentTransfer>
+    </filter>
+    <filter id="shapeFxBlur" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values=".299 .587 .114 0 0  .299 .587 .114 0 0  .299 .587 .114 0 0  0 0 0 1 0"/>
+      <feComponentTransfer class="lvLin"><feFuncR type="linear"/><feFuncG type="linear"/><feFuncB type="linear"/></feComponentTransfer>
+      <feComponentTransfer class="lvGam"><feFuncR type="gamma"/><feFuncG type="gamma"/><feFuncB type="gamma"/></feComponentTransfer>
+      <feGaussianBlur id="shapeFxStd" stdDeviation="0" edgeMode="duplicate"/>
+    </filter>
+  </svg>
   <section id="shapeBox">
     <div class="card" data-card="shape">
     <div class="card-head" title="A mask picture or video (white = the subject) that steers where things are and how they move, apart from the clip"><span class="title">Shape</span><span class="sum" id="sum_shape"></span><span class="chev">▾</span></div>
@@ -672,6 +699,10 @@
     <input type="file" id="shapeFile" accept="image/*,video/*" hidden>
     <div id="shapeCtl">
       <div class="slider" style="margin-top:10px">
+        <div class="slider-head"><b title="3-point levels: drag black / midtone / white to turn footage into a crisp mask. Double-click to reset">Levels</b><span id="shapeLvV"></span></div>
+        <div class="levels" id="shapeLv"><div class="bar"></div><b class="pt b" data-p="b"></b><b class="pt m" data-p="m"></b><b class="pt w" data-p="w"></b></div>
+      </div>
+      <div class="slider">
         <div class="slider-head"><b title="White repaints, black holds. Where the mask newly spreads (a wipe's edge, a growing shape) is drawn fresh. Works with any shape or animation">Repaint</b><span id="shapeRepaintV"></span></div>
         <input type="range" id="shapeRepaint" min="0" max="1" step="0.05">
       </div>
@@ -680,7 +711,7 @@
         <input type="range" id="shapeBlur" min="0" max="48" step="1">
       </div>
       <div class="slider" id="shapeBgBox">
-        <div class="slider-head"><b title="Text mode: off = black around the shape, a clean cut-out; on = a background generated from the prompt, the shape stays the subject">Background</b></div>
+        <div class="slider-head"><b title="Text / Image mode: off = black around the shape, a clean cut-out; on = a background around it: Text generates one from the prompt, Image keeps the picture; the shape stays the subject">Background</b></div>
         <div class="seg" id="shapeBg" style="grid-template-columns:1fr 1fr"><button data-v="0">off</button><button data-v="1">on</button></div>
       </div>
     </div>
@@ -832,7 +863,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
-  shape: null, shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
+  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
@@ -893,7 +924,8 @@ function imageCard() {
         <img src="/api/image/file?${qs({ path: im.path })}" alt="">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
       </button>
-      <div><div class="clip-name" title="${im.path}">${im.name}</div><div class="clip-meta">${im.width}×${im.height}</div></div>
+      <div style="flex:1"><div class="clip-name" title="${im.path}">${im.name}</div><div class="clip-meta">${im.width}×${im.height}</div></div>
+      <button class="clip-del" id="imgDel" title="Remove the image">✕</button>
     </div></div>`;
 }
 function renderT2V() {
@@ -910,6 +942,9 @@ function renderT2V() {
   $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
   ($('pick') || $('swap'))?.addEventListener('click', () => $('fileInput').click());
+  $('imgDel')?.addEventListener('click', () => {   // back to "Drop an image here"
+    state.image = null; renderClip(); renderControls(); if (!viewRun) clearStage(); save();
+  });
   $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
   applyCards(); paintT2V();
 }
@@ -986,26 +1021,110 @@ function styleRefJob() {                     // the job's style-ref fields (empt
 var SHAPE_SLIDERS = ['shapeRepaint', 'shapeBlur'];
 function renderShape() {
   const sh = state.shape, box = $('shapeSlot');
-  const thumb = sh && (sh.video ? `/api/video/thumbnail?${qs({ path: sh.path })}` : `/api/image/file?${qs({ path: sh.path })}`);
+  const thumb = (f = 0) => sh.video ? `/api/video/thumbnail?${qs({ path: sh.path, frame: f })}` : `/api/image/file?${qs({ path: sh.path })}`;
+  const n = sh?.frames || 1;
   box.innerHTML = sh
-    ? `<div class="ref"><img src="${thumb}" alt="" title="Replace the mask"${state.shapeInvert ? ' class="inv"' : ''}><span title="${sh.path}">${sh.name}</span><button class="inv${state.shapeInvert ? ' on' : ''}" title="Invert: now ${state.shapeInvert ? 'black' : 'white'} is the subject">◐</button><button class="del" title="No shape">✕</button></div>`
-    : `<div class="clip-empty" title="A mask: white where the subject goes. A video animates it: mask frame N steers render frame N, a short one holds its last frame. Click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload mask · image or video</div>`;
+    ? `<div class="clip"><div class="clip-top">
+         <button class="clip-thumb" title="Replace the mask"><img class="fx" src="${thumb()}" alt=""><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></button>
+         <div class="clip-name" title="${sh.path}">${sh.name}</div>
+         <button class="inv${state.shapeInvert ? ' on' : ''}" title="Invert: now ${state.shapeInvert ? 'black' : 'white'} is the subject">◐</button><button class="del" title="No shape">✕</button></div>
+       ${sh.video && n > 1 ? `<div class="range" id="shapeRange" title="In / out: the part of the mask video used — drag the handles (double-click: all of it)">
+         ${Array.from({ length: 8 }, (_, i) => `<img class="fx" src="${thumb(Math.floor((i + .5) / 8 * (n - 1)))}" alt="">`).join('')}
+         <div class="shade l" style="left:0"></div><div class="sel"><div class="h l"></div><div class="h r"></div></div><div class="shade r" style="right:0"></div></div>` : ''}</div>`
+    : `<div class="clip-empty" title="A mask: white where the subject goes (a colour video works too: its brightness is the mask). A video animates it: mask frame N steers render frame N. Click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload mask · image or video</div>`;
   $('shapeCtl').hidden = !sh;
-  $('shapeBgBox').hidden = !(state.t2v && !state.i2v);     // Video / Image: the background is the clip / picture
+  $('shapeBgBox').hidden = !state.t2v;                     // Video: the background is the clip
   [...$('shapeBg').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.shapeBg ? 1 : 0)));
   for (const k of SHAPE_SLIDERS) { $(k).value = state[k] ?? 0; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k] || 0}px` : (+state[k]).toFixed(2); }
+  if ($('shapeRange')) { bindShapeRange(); paintShapeRange(); }
+  paintLevels();
 }
+// ---- in / out on the mask video's filmstrip (a range of its frames, like the clip's trim)
+function shapeInOut() {
+  const n = state.shape?.frames || 1, [a, b] = state.shapeRange || [0, 1];
+  return [Math.round(a * (n - 1)), Math.round(b * (n - 1))];
+}
+function paintShapeRange() {
+  const r = $('shapeRange'); if (!r) return;
+  const [a, b] = state.shapeRange || [0, 1];
+  r.querySelector('.sel').style.cssText = `left:${a * 100}%;width:${(b - a) * 100}%`;
+  r.querySelector('.shade.l').style.width = a * 100 + '%';
+  r.querySelector('.shade.r').style.width = (1 - b) * 100 + '%';
+}
+function bindShapeRange() {
+  const r = $('shapeRange'); let drag = null, slide = null;
+  r.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const c = e.target.classList;
+    drag = c.contains('l') && c.contains('h') ? 0 : c.contains('r') && c.contains('h') ? 1 : c.contains('sel') ? 2 : null;
+    if (drag === null) return;
+    state.shapeRange = [...(state.shapeRange || [0, 1])];
+    if (drag === 2) slide = { x: e.clientX, a: state.shapeRange[0], b: state.shapeRange[1] };
+    r.setPointerCapture(e.pointerId);
+  });
+  r.addEventListener('pointermove', e => {
+    if (drag === null) return;
+    const box = r.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
+    const gap = 1 / Math.max(1, (state.shape.frames || 1) - 1), sr = state.shapeRange;
+    if (drag === 2) { const d = Math.min(1 - slide.b, Math.max(-slide.a, (e.clientX - slide.x) / box.width)); sr[0] = slide.a + d; sr[1] = slide.b + d; }
+    else if (drag === 0) sr[0] = Math.min(x, sr[1] - gap);
+    else sr[1] = Math.max(x, sr[0] + gap);
+    paintShapeRange();
+    // the Shape tab shows the frame under the handle being dragged
+    shapeFrame = shapeInOut()[drag === 1 ? 1 : 0];
+    if (!shapeMode()) { view = 'shape'; setControlTabs(); showShape(); } else { $('scrubRange').value = shapeFrame; paintFrame(); }
+  });
+  r.addEventListener('pointerup', () => { if (drag !== null) { drag = null; save(); paintSums(); } });
+  r.addEventListener('dblclick', () => { state.shapeRange = [0, 1]; paintShapeRange(); save(); paintSums(); });
+}
+// ---- 3-point levels: [black 0..255, mid 0..1 of the way from black to white, white 0..255]
+function paintLevels() {
+  const [b, m, w] = state.shapeLv || [0, 0.5, 255], el = $('shapeLv'); if (!el) return;
+  const pos = { b: b / 255, w: w / 255, m: (b + (w - b) * m) / 255 };
+  el.querySelectorAll('.pt').forEach(pt => { pt.style.left = pos[pt.dataset.p] * 100 + '%'; });
+  const g = Math.log(0.5) / Math.log(Math.min(Math.max(m, 0.01), 0.99));   // the engine's exponent
+  $('shapeLvV').textContent = b === 0 && w === 255 && m === 0.5 ? '' : `${Math.round(b)} · ${(1 / g).toFixed(2)} · ${Math.round(w)}`;
+  shapeFilters();
+}
+function shapeFilters() {                   // the preview filters follow levels + invert (blur: shapeLook)
+  const [b0, m, w0] = state.shapeLv || [0, 0.5, 255], b = b0 / 255, w = w0 / 255, k = 1 / Math.max(w - b, 1e-3);
+  const e = Math.log(0.5) / Math.log(Math.min(Math.max(m, 0.01), 0.99)), inv = !!state.shapeInvert;
+  document.querySelectorAll('.lvLin feFuncR, .lvLin feFuncG, .lvLin feFuncB').forEach(f => {
+    f.setAttribute('slope', k); f.setAttribute('intercept', -k * b);
+  });
+  document.querySelectorAll('.lvGam feFuncR, .lvGam feFuncG, .lvGam feFuncB').forEach(f => {
+    f.setAttribute('exponent', e); f.setAttribute('amplitude', inv ? -1 : 1); f.setAttribute('offset', inv ? 1 : 0);
+  });
+}
+(() => {
+  const el = $('shapeLv'); let which = null;
+  el.addEventListener('pointerdown', e => {
+    const pt = e.target.closest('.pt'); if (!pt) return;
+    e.preventDefault(); which = pt.dataset.p; pt.classList.add('drag'); el.setPointerCapture(e.pointerId);
+    state.shapeLv = [...(state.shapeLv || [0, 0.5, 255])];
+  });
+  el.addEventListener('pointermove', e => {
+    if (!which) return;
+    const r = el.getBoundingClientRect(), x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 255, lv = state.shapeLv;
+    if (which === 'b') lv[0] = Math.min(Math.round(x), lv[2] - 2);
+    else if (which === 'w') lv[2] = Math.max(Math.round(x), lv[0] + 2);
+    else lv[1] = Math.min(0.97, Math.max(0.03, (x - lv[0]) / Math.max(lv[2] - lv[0], 1)));
+    paintLevels(); shapeLook();
+  });
+  el.addEventListener('pointerup', () => { if (!which) return; el.querySelector('.drag')?.classList.remove('drag'); which = null; save(); paintSums(); });
+  el.addEventListener('dblclick', () => { state.shapeLv = [0, 0.5, 255]; paintLevels(); shapeLook(); save(); paintSums(); });
+})();
 $('shapeSlot').onclick = e => {
-  if (e.target.closest('button.inv')) { state.shapeInvert = !state.shapeInvert; renderShape(); save(); shapeLook(); return; }
-  if (e.target.closest('button')) { state.shape = null; renderShape(); save(); shapeChanged(); return; }
-  if (e.target.closest('img, .clip-empty')) $('shapeFile').click();
+  if (e.target.closest('button.inv')) { state.shapeInvert = !state.shapeInvert; renderShape(); save(); shapeLook(); return; }   // renderShape repaints the filters
+  if (e.target.closest('button.del')) { state.shape = null; renderShape(); save(); shapeChanged(); return; }
+  if (e.target.closest('.clip-thumb, .clip-empty')) $('shapeFile').click();
 };
 async function setShape(res, video) {
   const sh = { path: res.path, name: res.name, video, frames: 1, fps: 24 };
   if (video) {
     try { const pr = await api(`/api/video/probe?${qs({ path: res.path })}`); sh.frames = pr.source.frames || 1; sh.fps = pr.source.fps || 24; } catch {}
   }
-  state.shape = sh; shapeFrame = 0; renderShape(); save(); setStatus('shape set');
+  state.shape = sh; state.shapeRange = [0, 1]; shapeFrame = 0; renderShape(); save(); setStatus('shape set');
   shapeChanged();
 }
 // the Shape tab previews the panel's mask, run on show or not: its frames on the transport, invert + blur live
@@ -1025,7 +1144,9 @@ function shapeLook() {                     // invert + blur on the shown mask, b
   const im = $('imgOut'); if (!im) return;
   if (!shapeMode()) { im.style.filter = ''; return; }
   const k = im.naturalWidth ? im.offsetWidth / im.naturalWidth : 1, b = (state.shapeBlur || 0) / 2 * k;
-  im.style.filter = [state.shapeInvert && 'invert(1)', b > 0 && `blur(${b.toFixed(2)}px)`].filter(Boolean).join(' ');
+  // greyscale + levels + invert as the engine reads the mask (a colour video is a mask by its brightness)
+  shapeFilters(); $('shapeFxStd').setAttribute('stdDeviation', b.toFixed(2));
+  im.style.filter = 'url(#shapeFxBlur)';
 }
 function showShape() {
   const sh = state.shape;
@@ -1062,13 +1183,15 @@ $('shapeSlot').addEventListener('drop', e => {
 for (const k of SHAPE_SLIDERS) {
   $(k).oninput = e => { state[k] = +e.target.value; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k]}px` : state[k].toFixed(2); save(); if (k === 'shapeBlur') shapeLook(); };
 }
-function shapeBg() { return state.t2v && !state.i2v && state.shapeBg ? 1 : 0; }   // Text mode only
+function shapeBg() { return state.t2v && state.shapeBg ? 1 : 0; }   // Text / Image mode
 $('shapeBg').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.shapeBg = +v; renderShape(); paintSums(); save(); };
 function shapeJob(kind) {                        // the job's Shape fields (none = no mask)
   const sh = state.shape, d = modeCfg().controlnets?.depth;
   if (!sh) return {};
-  return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : 0, shape_invert: !!state.shapeInvert, shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
-           shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v && !state.i2v ? +(1 - shapeBg()).toFixed(2) : 0, shape_blur: state.shapeBlur || 0 };
+  const [inF, outF] = sh.video ? shapeInOut() : [0, -1], lv = state.shapeLv || [0, 0.5, 255];
+  return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : inF, shape_end: kind === 'frame' ? -1 : outF,
+           shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
+           shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0 };
 }
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
@@ -1145,8 +1268,9 @@ function renderClip() {
         <img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
       </button>
-      <div id="clipInfo" title="Show the source clip on the stage" style="cursor:pointer"><div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
+      <div id="clipInfo" title="Show the source clip on the stage" style="cursor:pointer;flex:1"><div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
       <div class="clip-meta">${s.width}×${s.height} · ${Math.round(s.fps)} fps · ${s.frames} frames · ${s.duration.toFixed(1)}s</div></div>
+      <button class="clip-del" id="clipDel" title="Remove the video">✕</button>
     </div>
     <div class="range" id="range">
       ${Array.from({ length: 8 }, (_, i) => `<img src="/api/video/thumbnail?${qs({ path: state.clip.path, frame: Math.floor((i + .5) / 8 * (s.frames - 1)) })}" alt="">`).join('')}
@@ -1164,6 +1288,9 @@ function renderClip() {
   bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
   $('clipInfo').onclick = showClip;
+  $('clipDel').onclick = () => {           // back to "Drop a video here"
+    stopPlay(); state.clip = null; renderClip(); renderControls(); paintKeys(); if (!viewRun) clearStage(); save();
+  };
   $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
   paintRange();
 }

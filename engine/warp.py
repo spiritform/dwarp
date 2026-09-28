@@ -125,7 +125,12 @@ class RenderJob:
     # clip. Mask frame N drives render frame N; a shorter mask holds its last frame.
     shape: str = ""
     shape_invert: bool = False           # black is the subject (a dark logo on white)
-    shape_start: int = 0                 # the mask frame (its own numbering) render frame 1 uses: Single Frame at a spot
+    shape_start: int = 0                 # the mask frame (its own numbering) render frame 1 uses: its In point, or
+                                         # Single Frame's spot
+    shape_end: int = -1                  # its Out point: later render frames hold it. -1 = the mask's last frame
+    shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
+    shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
+    shape_mid: float = 0.5
     shape_blur: int = 0                  # px of softening on the mask's edges (0 = hard, as drawn)
     shape_cn: str = ""                   # the mode's depth ControlNet, for Pull
     shape_cn_repo: str = ""              # where it downloads from on first use, when missing
@@ -1097,8 +1102,15 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         tf = time.time()
         smask = None
         if shapes:                              # this frame's Shape mask, 1x1xHxW 0..1 (white = the subject)
-            sm = Image.open(shapes[min(i + job.shape_start // max(1, job.nth), len(shapes) - 1)]).convert("L").resize((job.width, job.height), Image.LANCZOS)
+            nth = max(1, job.nth)
+            last = len(shapes) - 1 if job.shape_end < 0 else min(len(shapes) - 1, job.shape_end // nth)
+            sm = Image.open(shapes[min(i + job.shape_start // nth, last)]).convert("L").resize((job.width, job.height), Image.LANCZOS)
             smask = torch.from_numpy(np.asarray(sm, dtype=np.float32) / 255).to(device)[None, None]
+            b, wp = job.shape_black / 255, job.shape_white / 255      # levels: footage -> a crisp mask
+            if b > 0 or wp < 1 or job.shape_mid != 0.5:
+                smask = ((smask - b) / max(wp - b, 1e-3)).clamp(0, 1)
+                mid = min(max(job.shape_mid, 0.01), 0.99)
+                smask = smask.pow(math.log(0.5) / math.log(mid))      # the midtone point maps to 50% grey
             if job.shape_invert:
                 smask = 1 - smask
             smask = gaussian_blur(smask, int(job.shape_blur))
@@ -1191,9 +1203,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             keep = per / grow
             amount = keep if amount is None else amount * keep
         prev_smask = smask
-        if smask is not None and blank and job.shape_nudge > 0:
-            # frame 1 from pure noise with the mask in the latent: inside generates from the first step,
-            # outside stays held at black (full Nudge: all of it; less lets some of the outside generate too)
+        if smask is not None and job.shape_nudge > 0 and (blank or (t2v and i == 0 and job.init_image)):
+            # frame 1 with the mask in the latent: inside generates (Text: from noise; Image: the picture at
+            # Denoise), outside stays held at black (full Nudge: all of it; less lets some of it generate too)
             amount = torch.lerp(torch.ones_like(smask), smask, job.shape_nudge)
         if amount is not None and amount.min() >= 1:
             amount = None
