@@ -320,7 +320,7 @@
   .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
   /* the empty stage: just the name, big and quiet */
-  .wordmark { font-size: clamp(56px, 11vw, 160px); font-weight: 800; letter-spacing: .06em; color: #232228;
+  .wordmark { font-size: clamp(56px, 11vw, 160px); font-weight: 800; letter-spacing: -.04em; color: #232228;
               user-select: none; pointer-events: none; }
 
   .progress { height: 3px; background: var(--line); }
@@ -669,16 +669,16 @@
     <input type="file" id="shapeFile" accept="image/*,video/*" hidden>
     <div id="shapeCtl">
       <div class="slider" style="margin-top:10px">
-        <div class="slider-head"><b title="How literally the white area becomes a solid object with that outline: high = exactly the silhouette, low = a loose suggestion SD can spill past">Strength</b><span id="shapePullV"></span></div>
-        <input type="range" id="shapePull" min="0" max="1.5" step="0.05">
-      </div>
-      <div class="slider">
-        <div class="slider-head"><b title="What's painted travels and grows with the mask; where it spreads gets repainted, outside it holds">Motion</b><span id="shapeMotionV"></span></div>
-        <input type="range" id="shapeMotion" min="0" max="1" step="0.05">
+        <div class="slider-head"><b title="White repaints, black holds. Where the mask newly spreads (a wipe's edge, a growing shape) is drawn fresh. Works with any shape or animation">Repaint</b><span id="shapeRepaintV"></span></div>
+        <input type="range" id="shapeRepaint" min="0" max="1" step="0.05">
       </div>
       <div class="slider">
         <div class="slider-head"><b title="Softens the mask's edges: 0 = hard cut-out edges, higher = the subject fades into its surroundings">Blur</b><span id="shapeBlurV"></span></div>
         <input type="range" id="shapeBlur" min="0" max="48" step="1">
+      </div>
+      <div class="slider" id="shapeBgBox">
+        <div class="slider-head"><b title="Text mode: off = black around the shape, a clean cut-out; on = a background generated from the prompt, the shape stays the subject">Background</b></div>
+        <div class="seg" id="shapeBg" style="grid-template-columns:1fr 1fr"><button data-v="0">off</button><button data-v="1">on</button></div>
       </div>
     </div>
     </div></div>
@@ -829,7 +829,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
-  shape: null, shapePull: 1, shapeMotion: 1, shapeBlur: 0, shapeInvert: false,   // Shape: { path, name, video } mask, its strengths, black = subject
+  shape: null, shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
@@ -975,9 +975,10 @@ function styleRefJob() {                     // the job's style-ref fields (empt
            ip_adapter: sr.path, ip_adapter_repo: `${sr.repo}::${sr.repo_file}`,
            image_encoder: sr.encoder.path, image_encoder_repo: `${sr.encoder.repo}::${sr.encoder.repo_file}` };
 }
-// Shape: a mask picture / video (white = the subject). Strength = depth hint, Motion = follow + regrow. Text mode
+// Shape: a latent mask picture / video (white = the subject) with blur. Repaint = white changes / black holds
+// frame to frame. The engine also has a depth-hint pull and a follow-the-blob move, off here. Text mode
 // also starts every frame black outside the mask (the engine's Nudge at full), so the subject stays contained
-var SHAPE_SLIDERS = ['shapePull', 'shapeMotion', 'shapeBlur'];
+var SHAPE_SLIDERS = ['shapeRepaint', 'shapeBlur'];
 function renderShape() {
   const sh = state.shape, box = $('shapeSlot');
   const thumb = sh && (sh.video ? `/api/video/thumbnail?${qs({ path: sh.path })}` : `/api/image/file?${qs({ path: sh.path })}`);
@@ -985,6 +986,8 @@ function renderShape() {
     ? `<div class="ref"><img src="${thumb}" alt="" title="Replace the mask"${state.shapeInvert ? ' class="inv"' : ''}><span title="${sh.path}">${sh.name}</span><button class="inv${state.shapeInvert ? ' on' : ''}" title="Invert: now ${state.shapeInvert ? 'black' : 'white'} is the subject">◐</button><button class="del" title="No shape">✕</button></div>`
     : `<div class="clip-empty" title="A mask: white where the subject goes. A video animates it: mask frame N steers render frame N, a short one holds its last frame. Click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload mask · image or video</div>`;
   $('shapeCtl').hidden = !sh;
+  $('shapeBgBox').hidden = !(state.t2v && !state.i2v);     // Video / Image: the background is the clip / picture
+  [...$('shapeBg').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.shapeBg ? 1 : 0)));
   for (const k of SHAPE_SLIDERS) { $(k).value = state[k] ?? 0; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k] || 0}px` : (+state[k]).toFixed(2); }
 }
 $('shapeSlot').onclick = e => {
@@ -1054,11 +1057,13 @@ $('shapeSlot').addEventListener('drop', e => {
 for (const k of SHAPE_SLIDERS) {
   $(k).oninput = e => { state[k] = +e.target.value; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k]}px` : state[k].toFixed(2); save(); if (k === 'shapeBlur') shapeLook(); };
 }
+function shapeBg() { return state.t2v && !state.i2v && state.shapeBg ? 1 : 0; }   // Text mode only
+$('shapeBg').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.shapeBg = +v; renderShape(); paintSums(); save(); };
 function shapeJob(kind) {                        // the job's Shape fields (none = no mask)
   const sh = state.shape, d = modeCfg().controlnets?.depth;
   if (!sh) return {};
   return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : 0, shape_invert: !!state.shapeInvert, shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
-           shape_pull: state.shapePull, shape_motion: state.shapeMotion, shape_nudge: state.t2v && !state.i2v ? 1 : 0, shape_blur: state.shapeBlur || 0 };
+           shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v && !state.i2v ? +(1 - shapeBg()).toFixed(2) : 0, shape_blur: state.shapeBlur || 0 };
 }
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
@@ -1093,7 +1098,7 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}strength ${(+state.shapePull).toFixed(2)} · motion ${(+state.shapeMotion).toFixed(2)}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}` : '');
   set('render', (+state.style).toFixed(2) + (state.t2v ? '' : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank

@@ -130,8 +130,10 @@ class RenderJob:
     shape_cn: str = ""                   # the mode's depth ControlNet, for Pull
     shape_cn_repo: str = ""              # where it downloads from on first use, when missing
     shape_pull: float = 0.0              # the mask as a depth hint at this weight: something near where it's white
-    shape_motion: float = 0.0            # Grow: where the mask spreads this frame repaints almost fully, the
-                                         # outside holds at (1 - motion) of the strength
+    shape_repaint: float = 0.0           # white repaints at the frame's strength (where it newly spreads: almost
+                                         # fully), black holds at (1 - repaint) of it. Any shape, any animation
+    shape_follow: float = 0.0            # Text / Image: the picture moves and scales with the mask (centre + size),
+                                         # and the inside repaints enough to re-form there. One blob growing / moving
     shape_nudge: float = 0.0             # the outside of the mask darkened in each frame's start (Text -> Video frame 1 too)
 
     @staticmethod
@@ -991,7 +993,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 job.controlnets = [*job.controlnets, ControlSpec("shape", job.shape_cn, job.shape_pull, repo=job.shape_cn_repo)]
                 shape_hint = "own"
         log(f"shape {Path(job.shape).name}: {len(shapes)} frame{'s' * (len(shapes) > 1)}, pull {job.shape_pull}"
-            f"{' (joins the depth hint)' if shape_hint == 'merge' else ''}, motion {job.shape_motion}, nudge {job.shape_nudge}")
+            f"{' (joins the depth hint)' if shape_hint == 'merge' else ''}, repaint {job.shape_repaint}, follow {job.shape_follow}, nudge {job.shape_nudge}")
     t2v = job.t2v_frames > 0
     if t2v:                                     # no clip: the frames come from the prompt and the camera
         src_paths = [None] * job.t2v_frames
@@ -1095,7 +1097,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 if smask is not None and job.shape_nudge > 0:
                     # black outside: what the latent mask holds there. Neutral grey inside: a black start
                     # leaks into step 1 (SD 2.1 then paints the shape black too); grey is near zero in latent
-                    src = src * torch.lerp(torch.ones_like(smask), smask, job.shape_nudge)
+                    core = ((smask - 0.8) / 0.2).clamp(0, 1)     # the soft edge starts black too: no grey halo
+                    src = src * torch.lerp(torch.ones_like(smask), core, job.shape_nudge)
             elif job.cam_3d:                    # the previous frame's own depth carries it into space
                 prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
                 dmap = ann("depth", prev_np).convert("L")
@@ -1104,8 +1107,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 src = camera_move_3d(prev_out, gaussian_blur(disp, 2), job)   # soft steps, fewer tears
             else:
                 src = camera_move(prev_out, job)
-            if prev_out is not None and prev_smask is not None and job.shape_motion > 0:   # it travels with the shape
-                src = shape_follow(src, prev_smask, smask, job.shape_motion)
+            if prev_out is not None and prev_smask is not None and job.shape_follow > 0:   # it travels with the shape
+                src = shape_follow(src, prev_smask, smask, job.shape_follow)
             src_np = (src[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             Image.fromarray(src_np).save(out / "src" / f"{i:06d}.jpg", quality=90)   # the viewer's Source layer
         else:
@@ -1154,16 +1157,17 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             dm = diff_mask(base, job)
             to_image(dm.expand(-1, 3, -1, -1)).save(out / "control" / "diff" / f"{i:06d}.jpg", quality=90)
             amount = dm if amount is None else amount * dm
-        grow = None                             # Motion: per-pixel strength, the run's own set below
-        if smask is not None and job.shape_motion > 0 and not blank:   # a blank start has nothing to hold
-            # the ring the mask newly covers gets near-full repaint (new growth has to be drawn), the inside
-            # enough to re-form at its new size, the outside holds
+        grow = None                             # Repaint / Follow: per-pixel strength, the run's own set below
+        if smask is not None and (job.shape_repaint > 0 or job.shape_follow > 0) and not blank:   # a blank start has nothing to hold
+            # Repaint: white at the frame's strength, black holds; where the mask newly spreads (a wipe's edge,
+            # a shape growing) gets near-full repaint so what's revealed is drawn fresh.
+            # Follow: the inside also gets enough to re-form at the shape's new size
             ring = (smask - prev_smask).clamp(0, 1) if prev_smask is not None else torch.zeros_like(smask)
             ring = gaussian_blur((ring * 4).clamp(0, 1), 6)
             base_s = job.style if t2v or i == 0 or job.fresh else style_next
-            top = max(base_s, 0.5 + 0.45 * job.shape_motion)
-            inside = base_s + (max(base_s, 0.8) - base_s) * job.shape_motion    # room to re-form bigger
-            per = torch.lerp(torch.full_like(smask, base_s * (1 - job.shape_motion)), torch.full_like(smask, inside), smask)
+            top = max(base_s, 0.5 + 0.45 * max(job.shape_repaint, job.shape_follow))
+            inside = base_s + (max(base_s, 0.8) - base_s) * job.shape_follow
+            per = torch.lerp(torch.full_like(smask, base_s * (1 - job.shape_repaint)), torch.full_like(smask, inside), smask)
             per = torch.maximum(per, ring * top)
             grow = float(per.max())
             keep = per / grow
