@@ -2565,7 +2565,7 @@ const HELP = {
        through everything and free disk space.</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
-       seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
+       seed per run, shown in the box, so locking then keeps the one you just saw. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
        or click it to type one.</p>
     <h4>Enhance</h4>
     <p><b>Refine</b> renders a finished run again with diffusion — at 1× as a second pass at the same size, or 1.5× / 2× bigger: <b>Denoise</b> sets how much new
@@ -2873,6 +2873,8 @@ async function startJob(kind) {
     const label = kind === 'refine' ? `refine of run ${built.source}` : `${currentPreset().name.toLowerCase()} · ${name}`;
     job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
                                    body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
+    // unlocked: the box shows the seed this run rolled, so locking keeps the picture just made
+    if (!state.seedLock && Number.isFinite(built.job?.seed)) { state.seed = built.job.seed; renderSeed(); save(); }
   } catch (e) {
     setStatus(`${name} failed to start`, 'bad'); showError(e.message); setButtons(false); return;
   }
