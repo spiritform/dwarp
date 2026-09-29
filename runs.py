@@ -98,7 +98,7 @@ def init_frames(run_id: str) -> dict[int, Path]:
 
 # ControlNet hints the engine saved per frame: control/<kind>/NNNNNN.jpg -> layer "control_<kind>"
 CONTROL_LABELS = {"depth": "Depth", "softedge": "Edge", "hed": "Edge", "canny": "Canny", "lineart": "Lineart",
-                  "diff": "Diff", "shape": "Shape", "qr": "Illusion"}      # diff = the DepthDiff per-pixel strength mask
+                  "diff": "Diff", "shape": "Shape", "qr": "QR Code Monster"}      # diff = the DepthDiff per-pixel strength mask
 
 
 def control_frames(run_id: str, kind: str) -> dict[int, Path]:

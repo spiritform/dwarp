@@ -44,11 +44,9 @@
     overflow-x: hidden;                    /* nothing may push the panel sideways (a stray keyframe once did) */
   }
   /* the wordmark's face: Alien Block (Google Fonts, OFL), bundled in vendor/fonts so it works offline */
-  @font-face { font-family: 'Alien Block'; font-weight: 400; font-display: swap;
-               src: url(/fonts/AlienBlock-Regular.woff2) format('woff2'); }
-  .brand { display: flex; align-items: baseline; gap: 8px; }
-  .brand b { font-family: 'Alien Block', sans-serif; font-weight: 400; font-size: 17px; letter-spacing: .5px; }
-  .brand span { color: var(--faint); font-size: 11px; }
+  .brand { display: flex; align-items: center; margin-right: 6px; }
+  .barbtns { display: flex; gap: 3px; }                  /* log · ? · ⚙ close together */   /* the logo, heading the tab row */
+  .brand .logo { height: 16px; fill: #ecebef; display: block; }
 
   .label, .sublabel, .slider-head b { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
   .label { margin-bottom: 8px;
@@ -79,9 +77,9 @@
   .hint:empty { display: none; }
   /* fields sit a shade lighter than the card they're in, or they'd vanish into it */
   .card-body textarea, .card-body select.model, .card-body .seed input, .card-body .seed button, .card-body .seed-tag,
-  .card-body .seg button { background: #25242b; }
-  .card-body .seed button:hover, .card-body .seg button:hover { background: #2d2c33; }
-  .card-body .seg button.on { background: #34333b; }
+  .card-body .seg button { background: #2b2a31; }         /* a step brighter than the hovered card (#222227), so they stay visible */
+  .card-body .seed button:hover, .card-body .seg button:hover { background: #33323a; }
+  .card-body .seg button.on { background: #3b3a42; }
   .randlink { color: var(--accent-2); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
   .randlink:hover { color: var(--text); }
 
@@ -308,8 +306,8 @@
   .estimate { grid-column: 1 / 3; color: var(--faint); font-size: 11px; display: flex; justify-content: space-between; }
 
   /* ---------- right: stage ---------- */
-  main { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-  .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; }
+  main { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: #0a0a0c; }   /* the viewport: a touch darker than the page */
+  .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: #111114; }   /* the tab row: the runs band's colour */
   .toggle { display: flex; background: var(--panel); border-radius: 8px; padding: 2px; }
   .toggle button { background: none; border: 0; color: var(--dim); padding: 5px 12px; border-radius: 6px; cursor: pointer; }
   .toggle button.on { background: var(--line); color: var(--text); }
@@ -323,19 +321,12 @@
 
   .stage-wrap { flex: 1; position: relative; min-height: 0; display: flex; flex-direction: column; }
   .stage { flex: 1; display: grid; place-items: center; min-height: 0; padding: 20px; }
-  /* working, nothing new to show yet (loading models, the first frame): a dim veil with a loop over the stage */
-  .busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12,12,15,.55);
-          backdrop-filter: blur(2px); z-index: 4; pointer-events: none; animation: busyIn .25s ease; }
-  .busy[hidden] { display: none; }
-  .busy-in { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-  /* the whole wordmark, a brightness wave running through it: each letter 20% -> 100% -> 20%, one after another */
-  .busy-word { display: flex; font-family: 'Alien Block', sans-serif; font-size: 56px; line-height: 1; gap: 2px;   /* a little air between the letters, still centred */ }
-  .busy-word i { font-style: normal; color: #fff; opacity: .2; animation: busyLetter 1.6s ease-in-out infinite; }
-  .busy-word i:nth-child(2) { animation-delay: .16s; }
-  .busy-word i:nth-child(3) { animation-delay: .32s; }
-  .busy-word i:nth-child(4) { animation-delay: .48s; }
-  .busy-word i:nth-child(5) { animation-delay: .64s; }
-  .busy-text { color: #c9c7cf; font-size: 12px; min-height: 16px; }
+  /* working, nothing new to show yet (starting, loading models, the first frame): the tab-row logo's letters cascade */
+  .brand.busy path { animation: busyLetter 1.6s ease-in-out infinite; }
+  .brand.busy path:nth-child(2) { animation-delay: .16s; }
+  .brand.busy path:nth-child(3) { animation-delay: .32s; }
+  .brand.busy path:nth-child(4) { animation-delay: .48s; }
+  .brand.busy path:nth-child(5) { animation-delay: .64s; }
   @keyframes busyLetter { 0%, 60%, 100% { opacity: .2; } 25% { opacity: 1; } }
   @keyframes busyIn { from { opacity: 0; } }
   .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
@@ -361,18 +352,32 @@
   .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
   /* the empty stage: just the name, big and quiet */
-  .wordmark { font-family: 'Alien Block', sans-serif; font-size: clamp(56px, 11vw, 160px); font-weight: 400; letter-spacing: -.02em; color: #232228;
-              user-select: none; pointer-events: none; }
+  .wordmark { user-select: none; pointer-events: none; display: flex; }
+  .wordmark .logo { height: calc(clamp(56px, 11vw, 160px) * .73); fill: #232228; display: block; }
 
   .progress { height: 3px; background: var(--line); }
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
-  .scrub { display: flex; align-items: center; gap: 10px; padding: 0 18px 4px; }
-  .scrub button { background: var(--panel-2); border: 0; color: var(--text); width: 30px; height: 26px; border-radius: 6px; cursor: pointer; }
+  /* the transport: a contained dark strip with a flat, squared track and a playhead line — a timeline, not a setting */
+  .scrub { display: flex; align-items: center; gap: 10px; margin: 0 18px 6px; padding: 6px 10px 6px 6px;
+           background: #070709; border-radius: 6px; }
+  .scrub button { background: #1f1e24; border: 0; color: var(--text); width: 28px; height: 24px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+  .scrub button:hover { background: #2a2930; }
+  #scrubRange { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; cursor: pointer; }
+  #scrubRange::-webkit-slider-runnable-track { height: 8px; border-radius: 2px;
+           background: linear-gradient(90deg, var(--accent) 0 var(--prog, 0%), #25242b var(--prog, 0%) 100%); }
+  #scrubRange::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 20px; margin-top: -6px;
+           background: #fff; border-radius: 1px; box-shadow: 0 0 0 2px #070709; }
+  #scrubRange::-moz-range-track { height: 8px; border-radius: 2px;
+           background: linear-gradient(90deg, var(--accent) 0 var(--prog, 0%), #25242b var(--prog, 0%) 100%); }
+  #scrubRange::-moz-range-thumb { width: 4px; height: 20px; border: 0; background: #fff; border-radius: 1px; }
+  #scrubRange:hover::-webkit-slider-runnable-track {
+           background: linear-gradient(90deg, var(--accent) 0 var(--prog, 0%), #2d2c33 var(--prog, 0%) 100%); }
+  .scrub[hidden] { display: none; }                       /* nothing to scrub: no empty strip */
   .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right;
-                white-space: nowrap; flex: none; min-width: 128px; }   /* one line, fixed room: the bar never jumps */
+                white-space: nowrap; flex: none; min-width: 84px; }    /* one line, room for "12.3s 123 / 456": the track runs up to it */
   .scrub span b { color: var(--dim); font-weight: 600; margin-right: 8px; }   /* the clip time, as on the keyframe lane */
   .stage-foot { display: flex; gap: 8px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
-                background: var(--panel); }
+                background: #111114; }                   /* one band with the runs under it */
   .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 0;
                  border-radius: 7px; padding: 6px 12px; white-space: nowrap; }
   .stage-foot a:hover { background: #34333b; color: #fff; }
@@ -463,7 +468,7 @@
   details.err pre { color: var(--dim); max-height: 160px; overflow: auto; white-space: pre-wrap; font-size: 11px; }
 
   /* ---------- runs strip ---------- */
-  footer { grid-column: 2; background: var(--panel); padding: 10px 18px; min-width: 0; }
+  footer { grid-column: 2; background: #111114;   /* a shade darker than the button row above */ padding: 10px 18px; min-width: 0; }
   footer .label { margin-bottom: 6px; }
   /* the selection ring sits outside each thumbnail: room on every side so the scroller doesn't clip it */
   .runs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 3px; margin: -4px -4px 0; min-height: 104px; }
@@ -509,7 +514,6 @@
 <body>
 
 <aside>
-  <div class="brand"><b>DWARP</b><span>diffusion warp</span></div>
 
   <section>
     <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Video → Video: restyle a video">Video</button><button data-s="i2v" title="Image → Video: your picture is frame 1, a camera move carries it on">Image</button><button data-s="t2v" title="Text → Video: the prompt paints frame 1, a camera move carries it on">Text</button></div>
@@ -744,7 +748,7 @@
         <input type="range" id="shapeOpacity" min="0" max="1" step="0.05">
       </div>
       <div class="slider" id="shapeIlluBox">
-        <div class="slider-head"><b title="Illusion (QR Code Monster ControlNet): the whole scene's light and dark bend into your mask, so the shape hides in the picture — squint to see it. 0 = off; about 0.8–1.3 reads clearly, lower is subtler. Works best with Background on">Illusion</b><span id="shapeIlluV"></span></div>
+        <div class="slider-head"><b title="QR Code Monster ControlNet: the whole scene's light and dark bend into your mask, so the shape hides in the picture — squint to see it. 0 = off; about 1.4–1.7 reads, lower is subtler, higher turns literal. Works best with Background on and a bold shape">QR Code Monster</b><span id="shapeIlluV"></span></div>
         <input type="range" id="shapeIllu" min="0" max="2" step="0.05">
       </div>
       <div class="slider" id="shapeBgBox">
@@ -761,22 +765,19 @@
 
 <main>
   <div class="stage-bar">
+    <div class="brand" id="brand" title="DWARP — diffusion warp"><svg class="logo" viewBox="0 -730 3670 730" role="img" aria-label="DWARP"><path d="M375 0H15V-720H375Q450 -720 515 -692Q580 -664 630 -614Q679 -565 707 -500Q735 -435 735 -360Q735 -285 707 -220Q679 -155 630 -106Q580 -56 515 -28Q450 0 375 0Z"/><path d="M975 0H745V-720H1465V0H1235Q1199 0 1170 -18Q1140 -35 1122 -64Q1105 -94 1105 -130Q1105 -94 1088 -64Q1070 -35 1040 -18Q1011 0 975 0Z"/><path d="M2195 0H1475V-370Q1475 -445 1503 -510Q1531 -575 1580 -624Q1630 -674 1695 -702Q1760 -730 1835 -730Q1910 -730 1975 -702Q2040 -674 2090 -624Q2139 -575 2167 -510Q2195 -445 2195 -370Z"/><path d="M2925 0H2205V-720H2665Q2737 -720 2796 -685Q2855 -650 2890 -591Q2925 -532 2925 -460Q2925 -390 2892 -332Q2859 -275 2804 -240Q2859 -200 2892 -137Q2925 -74 2925 0Z"/><path d="M3535 0H2935V-720H3395Q3467 -720 3526 -685Q3585 -650 3620 -591Q3655 -532 3655 -460Q3655 -391 3622 -334Q3589 -276 3535 -241Z"/></svg></div>
     <div class="toggle" id="view">
       <button data-v="src">Source</button>
       <button data-v="out" class="on">Output</button>
       <button data-v="split">Split</button>
     </div>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
-    <button class="logbtn" id="logBtn" title="Show the renderer log">log</button>
-    <button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button>
-    <button class="logbtn" id="setBtn" title="Settings">⚙</button>
+    <span class="barbtns"><button class="logbtn" id="logBtn" title="Show the renderer log">log</button><button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button><button class="logbtn" id="setBtn" title="Settings">⚙</button></span>
   </div>
-  <div class="progress"><i id="bar"></i></div>
   <div class="stage-wrap">
     <div class="stage" id="stage">
-      <div class="wordmark">DWARP</div>
+      <div class="wordmark"><svg class="logo" viewBox="0 -730 3670 730" role="img" aria-label="DWARP"><path d="M375 0H15V-720H375Q450 -720 515 -692Q580 -664 630 -614Q679 -565 707 -500Q735 -435 735 -360Q735 -285 707 -220Q679 -155 630 -106Q580 -56 515 -28Q450 0 375 0ZM975 0H745V-720H1465V0H1235Q1199 0 1170 -18Q1140 -35 1122 -64Q1105 -94 1105 -130Q1105 -94 1088 -64Q1070 -35 1040 -18Q1011 0 975 0ZM2195 0H1475V-370Q1475 -445 1503 -510Q1531 -575 1580 -624Q1630 -674 1695 -702Q1760 -730 1835 -730Q1910 -730 1975 -702Q2040 -674 2090 -624Q2139 -575 2167 -510Q2195 -445 2195 -370ZM2925 0H2205V-720H2665Q2737 -720 2796 -685Q2855 -650 2890 -591Q2925 -532 2925 -460Q2925 -390 2892 -332Q2859 -275 2804 -240Q2859 -200 2892 -137Q2925 -74 2925 0ZM3535 0H2935V-720H3395Q3467 -720 3526 -685Q3585 -650 3620 -591Q3655 -532 3655 -460Q3655 -391 3622 -334Q3589 -276 3535 -241Z"/></svg></div>
     </div>
-    <div class="busy" id="busy" hidden><div class="busy-in"><div class="busy-word"><i>D</i><i>W</i><i>A</i><i>R</i><i>P</i></div></div></div>
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
     <div class="helppanel" id="setPanel" hidden></div>
@@ -1267,7 +1268,7 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · illusion ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
@@ -2533,7 +2534,7 @@ async function startJob(kind) {
   } catch (e) {
     setStatus(`${name} failed to start`, 'bad'); showError(e.message); setButtons(false); return;
   }
-  let labelled = false;
+  let labelled = false, jumped = false;
   const times = [];
   if (kind === 'render' || kind === 'test') {
     const pt = { prompt_keys: built.job.prompt_keys.length ? built.job.prompt_keys : [[0, built.job.prompt]],
@@ -2555,12 +2556,13 @@ async function startJob(kind) {
       setBusy(true, lastUseful() || snap.message || snap.stage || 'working…');
     if (snap.frame !== prevFrame && snap.frame > 0) {
       setBusy(false);
+      if (!jumped && snap.run_id) { jumped = true; viewRun = snap.run_id; }   // it has started: show it (once)
       times.push(Date.now());
       // the stage follows the render only while it's the run on show: picking another run browses freely
       if (snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
     }
     const total = snap.total_frames || built.total;
-    $('bar').style.width = (snap.progress || 0) + '%';
+    setProgress(['completed', 'failed', 'cancelled'].includes(snap.state) ? 0 : snap.progress || 0);
     let text = `${name} · ${lastUseful() || snap.message || snap.stage || snap.state}`;
     if (snap.frame && total) {
       text = `${name} · frame ${snap.frame}/${total}`;
@@ -2593,9 +2595,15 @@ async function startJob(kind) {
   };
   es.onerror = () => { /* EventSource retries on its own; state arrives on reconnect */ };
 }
+// A job's progress fills the transport's track orange (0 / done = no fill); while it runs the strip shows
+function setProgress(pct) {
+  const on = pct > 0 && pct < 100;
+  $('scrubRange').style.setProperty('--prog', (on ? pct : 0) + '%');
+  if (on) $('scrub').hidden = false;
+}
 function setButtons(busy) { $('frameBtn').disabled = $('testBtn').disabled = $('goBtn').disabled = busy; if (!busy) setBusy(false); }
 // The stage veil: on while a job works with nothing new to show (starting, loading, the first frame); frames lift it
-function setBusy(on) { $('busy').hidden = !on; }   // what it's doing stays in the status line
+function setBusy(on) { $('brand').classList.toggle('busy', on); }   // the logo breathes; the stage stays browsable
 $('frameBtn').onclick = () => startJob('frame');
 $('testBtn').onclick = () => startJob('test');
 $('goBtn').onclick = () => startJob('render');
@@ -3056,6 +3064,8 @@ addEventListener('load', e => {
   const el = e.target;
   if (el.tagName === 'IMG' && el.closest('#stage')) { el.style.visibility = ''; delete el.dataset.tries; }
 }, true);
+// the logo's outlines (Alien Block, OFL), inline: it shows at once, no web font to load
+var WORDMARK = '<div class="wordmark"><svg class="logo" viewBox="0 -730 3670 730" role="img" aria-label="DWARP"><path d="M375 0H15V-720H375Q450 -720 515 -692Q580 -664 630 -614Q679 -565 707 -500Q735 -435 735 -360Q735 -285 707 -220Q679 -155 630 -106Q580 -56 515 -28Q450 0 375 0ZM975 0H745V-720H1465V0H1235Q1199 0 1170 -18Q1140 -35 1122 -64Q1105 -94 1105 -130Q1105 -94 1088 -64Q1070 -35 1040 -18Q1011 0 975 0ZM2195 0H1475V-370Q1475 -445 1503 -510Q1531 -575 1580 -624Q1630 -674 1695 -702Q1760 -730 1835 -730Q1910 -730 1975 -702Q2040 -674 2090 -624Q2139 -575 2167 -510Q2195 -445 2195 -370ZM2925 0H2205V-720H2665Q2737 -720 2796 -685Q2855 -650 2890 -591Q2925 -532 2925 -460Q2925 -390 2892 -332Q2859 -275 2804 -240Q2859 -200 2892 -137Q2925 -74 2925 0ZM3535 0H2935V-720H3395Q3467 -720 3526 -685Q3585 -650 3620 -591Q3655 -532 3655 -460Q3655 -391 3622 -334Q3589 -276 3535 -241Z"/></svg></div>';
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
@@ -3069,7 +3079,7 @@ function clearStage() {
     return;
   }
   if (state.shape && view === 'shape') { setControlTabs(); if (shapeMode()) return showShape(); }
-  $('stage').innerHTML = '<div class="wordmark">DWARP</div>';   // nothing on show: the name
+  $('stage').innerHTML = WORDMARK;          // nothing on show: the name
   $('scrub').hidden = true; setFoot('');
   ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
@@ -3218,7 +3228,7 @@ function followPost(runId) {
   $('cancelLink').onclick = () => postJob && api(`/api/post/${postJob.id}/cancel`, { method: 'POST' }).catch(() => {});
   const tick = async () => {
     try { postJob = await api(`/api/post/${postJob.id}`); } catch { setTimeout(tick, 2000); return; }
-    $('bar').style.width = postJob.progress + '%';
+    setProgress(postJob.progress);
     if (postJob.state === 'running' || postJob.state === 'queued') {
       setStatus(`enhance · ${postJob.message}`, 'live'); setTimeout(tick, 1000); return;
     }
@@ -3288,7 +3298,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     es.onmessage = ev => {
       const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; syncLive(snap); setLog(snap.logs || []);
       setBusy(!snap.frame && !['completed', 'cancelled', 'failed'].includes(snap.state), lastUseful() || snap.message || 'working…');
-      $('bar').style.width = (snap.progress || 0) + '%';
+      setProgress(['completed', 'failed', 'cancelled'].includes(snap.state) ? 0 : snap.progress || 0);
       if (snap.frame !== prev && snap.frame > 0 && snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
       if (['completed', 'cancelled', 'failed'].includes(snap.state)) {
         if (live?.id === snap.id) { live = null; state.live = false; save(); paintLive(); }
