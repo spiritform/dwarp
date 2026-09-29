@@ -739,7 +739,7 @@
     <div id="cnPane">
       <div class="preset-model" id="cnFetch" hidden></div>
       <div class="preset-model" id="cnNone" hidden>No ControlNets for this mode — the warp and DepthDiff keep the structure.</div>
-      <div class="seg cnsel" id="cnSel"><button data-c="depth" title="Depth: holds the 3-D layout (click to switch on / off)">depth</button><button data-c="edge" title="Edges: holds the outlines — logos, line art, faces (click to switch on / off)">edge</button></div>
+      <div class="seg cnsel" id="cnSel"><button data-c="off" title="No ControlNet: nothing holds the layout or outlines">off</button><button data-c="depth" title="Depth: holds the 3-D layout (click to switch on / off)">depth</button><button data-c="edge" title="Edges: holds the outlines — logos, line art, faces (click to switch on / off)">edge</button></div>
       <div class="slider" id="holdBox">
         <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
         <input type="range" id="hold" min="0" max="100" step="1">
@@ -1911,10 +1911,10 @@ function renderControls() {
   $('cnFetch').hidden = !toFetch.length || (state.cn[state.mode] || 'both') === 'off';
   $('cnFetch').textContent = `${toFetch.length === 1 ? 'This ControlNet downloads' : 'These ControlNets download'} on the first render that uses ${toFetch.length === 1 ? 'it' : 'them'} (~${(toFetch.length * 0.73).toFixed(1)} GB, once).`;
   const cn = state.cn[state.mode] || 'both';
-  // two toggles: depth and edge each on / off (both off = no ControlNet); one-net modes have depth only
-  $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 1 : 2}, 1fr)`;
+  // off, then two toggles: depth and edge each on / off (both off = off lit); one-net modes have depth only
+  $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 2 : 3}, 1fr)`;   // off · depth (· edge), like DepthDiff's row
   $('cnSel').querySelector('[data-c="edge"]').hidden = nets < 2;
-  [...$('cnSel').children].forEach(b => b.classList.toggle('on', cn === 'both' || cn === b.dataset.c));
+  [...$('cnSel').children].forEach(b => b.classList.toggle('on', b.dataset.c === 'off' ? cn === 'off' : cn === 'both' || cn === b.dataset.c));
   $('holdBox').classList.toggle('off', cn === 'off');
   const dd = state.dd;
   [...$('gTabs').children].forEach(a => {
@@ -2010,6 +2010,7 @@ $('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; st
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => {
   const c = e.target.dataset.c; if (!c) return;
+  if (c === 'off') { state.cn[state.mode] = 'off'; renderControls(); save(); return; }   // off: both nets off
   const cur = state.cn[state.mode] || 'both';
   const on = { depth: cur === 'both' || cur === 'depth', edge: cur === 'both' || cur === 'edge' };
   on[c] = !on[c];                          // flip the one clicked
