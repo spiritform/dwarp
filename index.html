@@ -3218,7 +3218,11 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
+                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint']) if (k in ui) state[k] = ui[k];
+  if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
+  let gone = '';
+  if (state.shape?.path && !(await api(`/api/fs/exists?${qs({ path: state.shape.path })}`).catch(() => ({})))?.exists) { state.shape = null; gone = ' (its shape file is gone)'; }
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
@@ -3228,8 +3232,8 @@ $('loadRun').onclick = async () => {
     try { await setClipPath(ui.clip.path, ui.clip.name); state.range = ui.range || [0, 1]; }
     catch { setStatus('that run\'s clip is gone — using its settings without it', 'bad'); }
   }
-  save(); renderClip(); renderControls();
-  setStatus(`using the settings of run ${viewRun}`, 'done');
+  save(); renderClip(); renderControls(); renderShape(); shapeChanged();
+  setStatus(`using the settings of run ${viewRun}${gone}`, gone ? 'bad' : 'done');
 };
 
 // ---------------------------------------------------------------- runs strip
