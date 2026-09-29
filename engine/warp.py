@@ -1253,6 +1253,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                     max(grow, 1.001 / job.steps) if grow is not None else
                     # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
                     max(job.style if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, 1.001 / job.steps))
+        strength = min(strength, 1.0)       # float32 maths (a mask's peak) can land at 1.0000001: diffusers refuses > 1
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
         share = style_next / job.style if trust else 1.0

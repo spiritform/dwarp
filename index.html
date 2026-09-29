@@ -1835,18 +1835,31 @@ function renderMode() {
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
 }
-// Distilled models (Lightning/Turbo/Hyper/LCM/Flash) want few steps and low CFG; others the usual.
-function applyModelDefaults() {
-  const fast = isFast(checkpointPath());
-  state.steps = fast ? 8 : 20; state.cfg = fast ? 2 : 5;
+// Distilled models (Lightning / Turbo / Hyper / LCM / Flash) want few steps, low CFG and a trailing schedule;
+// at a normal CFG they overcook (hard edges, blotchy colour). Picking a model sets what suits it; the sliders
+// stay free to change afterwards.
+function fastProfile(path) {
+  const n = path.split('/').pop().toLowerCase();
+  if (/lcm/.test(n)) return { steps: 6, cfg: 1.5, sampler: 'lcm', schedule: 'trailing' };
+  if (/flash/.test(n)) return { steps: 8, cfg: 3, sampler: 'euler', schedule: 'trailing' };       // SDXL Flash: a bit more CFG
+  if (/lightning|turbo|hyper/.test(n)) return { steps: 8, cfg: 1.5, sampler: 'euler', schedule: 'trailing' };
+  return null;
+}
+function applyModelDefaults(announce = false) {
+  const f = fastProfile(checkpointPath()), was = isFast(state.lastCkpt || '');
+  if (f) Object.assign(state, f);
+  else { state.steps = 20; state.cfg = 5; if (was) { state.sampler = 'dpmpp_2m'; state.schedule = 'karras'; } }   // back from a fast one
+  state.lastCkpt = checkpointPath();
+  if (announce && (f || was)) setStatus(f ? `⚡ fast model: ${f.steps} steps, CFG ${f.cfg}, ${SAMPLERS[f.sampler][0]} ${SCHEDULES[f.schedule]}`
+                                          : 'regular model: 20 steps, CFG 5, DPM++ 2M Karras', 'done');
 }
 $('mode').onclick = e => {
   const m = e.target.dataset.m; if (!m || m === state.mode) return;
   state.mode = m;
   if (!modeCfg().sizes.includes(state.size)) state.size = modeCfg().default_size;
-  applyModelDefaults(); renderControls(); save();
+  applyModelDefaults(true); renderControls(); save();
 };
-$('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModelDefaults(); renderControls(); save(); };
+$('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModelDefaults(true); renderControls(); save(); };
 
 const embedBase = n => n.replace(/-\d+$/, '');
 const embedStep = n => (n.match(/-(\d+)$/) || [])[1] || '';
