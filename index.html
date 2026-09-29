@@ -353,7 +353,7 @@
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
   /* the empty stage: just the name, big and quiet */
   .wordmark { user-select: none; pointer-events: none; display: flex; }
-  .wordmark .logo { height: calc(clamp(56px, 11vw, 160px) * .73); fill: #232228; display: block; }
+  .wordmark .logo { height: calc(clamp(56px, 11vw, 160px) * .73); fill: #fff; opacity: .1; display: block; }
 
   .progress { height: 3px; background: var(--line); }
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
@@ -503,6 +503,15 @@
   .run.armed .xq { display: block; }
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .run span { color: var(--faint); font-size: 10px; }
+  /* first load: grey placeholder cells with a slow shimmer until the list arrives */
+  .runs.loading { overflow: hidden; pointer-events: none; }
+  .run.ghost .thumb, .run.ghost b, .run.ghost span { background: linear-gradient(90deg, #1b1b20 0%, #26262c 50%, #1b1b20 100%) 0 0 / 300% 100%;
+            animation: ghost 1.4s ease-in-out infinite; }
+  .run.ghost b { height: 9px; width: 78%; border-radius: 3px; margin-top: 7px; }
+  .run.ghost span { display: block; height: 7px; width: 52%; border-radius: 3px; margin-top: 5px; }
+  /* page intro: everything waits hidden until intro() builds it in (anime.js); a timer reveals it regardless */
+  body.intro aside, body.intro main, body.intro footer { visibility: hidden; }
+  @keyframes ghost { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
   .seg.idle { opacity: .45; pointer-events: none; }
   body.runDrag #clipBox, body.runDrag #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }   /* a run dragged off the stage: where it can land */
@@ -511,7 +520,7 @@
      background: rgba(255,106,61,.12); border: 3px dashed var(--accent); color: var(--accent-2); font-size: 22px; z-index: 10; }
 </style>
 </head>
-<body>
+<body class="intro">
 
 <aside>
 
@@ -848,11 +857,50 @@
 </main>
 
 <footer>
-  <div class="label"><span>Runs <em id="runsHint">· ctrl/shift-click to select</em><span class="sel-bar" id="selBar"></span></span></div>
-  <div class="runs" id="runs"><span class="empty">No runs yet</span></div>
+  <div class="label"><span>Runs <em id="runsHint">· loading runs…</em><span class="sel-bar" id="selBar"></span></span></div>
+  <div class="runs loading" id="runs"><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div></div>
 </footer>
 
+<script src="/vendor/anime.min.js"></script>
 <script>
+// ---------------------------------------------------------------- page intro
+// Basic reveals, once per load, in the logo's render rhythm: its letters light up one after another, buttons
+// cascade left to right with a brief flash, the panel's cards build top to bottom, the runs strip left to right.
+// Without anime.js the page just appears.
+var introDone = false;
+function intro() {
+  if (introDone) return; introDone = true;
+  const body = document.body, anime = window.anime;
+  if (!anime) { body.classList.remove('intro'); return; }
+  const q = sel => [...document.querySelectorAll(sel)].filter(el => el.getClientRects().length);
+  const fade = { duration: 320, easing: 'easeOutQuad' };    // a short fade; the stagger makes the cascade
+  // the panel, row by row: each card (its background + header), then each row of its body, top to bottom
+  const rows = [];
+  [...new Set(q('aside .card, aside #clipBox > *'))].filter(el => !el.closest('#clipBox > * *')).forEach(card => {
+    rows.push(card);
+    card.classList.contains('card') && rows.push(...q('.card-body > *').filter(r => card.contains(r) && r.closest('.card') === card));
+  });
+  const groups = [
+    // [targets, extra properties, start delay (ms), stagger (ms)]
+    [q('#brand path'), {}, 0, 110],
+    // the tab pill as one piece (its tabs come and go as runs load), wiped in left to right
+    [q('#view'), { clipPath: ['inset(0 100% 0 0)', 'inset(0 0% 0 0)'], duration: 520, easing: 'easeOutCubic' }, 600, 0],
+    [q('#status, .barbtns > *'), fade, 870, 90],
+    [q('#srcMode > button'), fade, 80, 90],                                 // Video · Image · Text
+    [rows, { translateY: [10, 0], duration: 520, easing: 'easeOutCubic' }, 200, 40],   // panel rows rise in, top to bottom, with the film strip's motion
+    [q('.stage-wrap'), {}, 150, 0],
+    [q('.stage-foot .actions > *'), fade, 360, 90],                        // Single Frame · Preview · Render · Live
+    [q('footer .label'), {}, 440, 0],
+    [q('footer .run'), { translateX: [-10, 0] }, 480, 40],
+    [q('.stage .wordmark'), { duration: 1100, easing: 'easeInOutSine' }, 1400, 0],   // the big wordmark, last
+  ];
+  groups.forEach(([els]) => els.forEach(el => el.style.opacity = 0));
+  body.classList.remove('intro');
+  const tidy = a => a.animatables.forEach(({ target: t }) => { t.style.transform = t.style.opacity = t.style.filter = t.style.clipPath = ''; });   // no leftover transforms (they'd trap fixed popups)
+  groups.forEach(([els, move, start, step]) => els.length && anime({ targets: els, opacity: [0, 1],
+    duration: 560, easing: 'easeOutCubic', ...move, delay: anime.stagger(step, { start }), complete: tidy }));
+}
+setTimeout(intro, 2500);      // a slow or failed start still shows the page
 const $ = id => document.getElementById(id);
 const qs = o => new URLSearchParams(o).toString();
 const LS_KEY = 'dwarp.state.v1', OLD_LS_KEY = 'warpbox.state.v1';
@@ -2957,10 +3005,13 @@ $('loadRun').onclick = async () => {
 // ---------------------------------------------------------------- runs strip
 async function refreshRuns() {
   let res;
-  try { res = await api(`/api/runs?${runQ()}`); } catch { return; }
+  const box = $('runs'), first = box.classList.contains('loading');
+  try { res = await api(`/api/runs?${runQ()}`); }
+  catch { if (first) { box.classList.remove('loading'); box.innerHTML = '<span class="empty">Couldn’t load runs — is the server up?</span>'; $('runsHint').textContent = ''; } return; }
   runsCache = res.runs;
-  if (!runsCache.length) { $('runs').innerHTML = '<span class="empty">No runs yet — hit Single Frame or Preview</span>'; return; }
-  $('runs').innerHTML = runsCache.map(r => {
+  if (first) { box.classList.remove('loading'); $('runsHint').textContent = '· ctrl/shift-click to select'; }
+  if (!runsCache.length) { box.innerHTML = '<span class="empty">No runs yet — hit Single Frame or Preview</span>'; return; }
+  box.innerHTML = runsCache.map(r => {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
@@ -2969,6 +3020,10 @@ async function refreshRuns() {
       <b>${r.label || 'run ' + r.id}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
+  // first load: the real cards rise in one after another where the grey cells were
+  if (first && window.anime) anime({ targets: box.querySelectorAll('.run'), opacity: [0, 1], translateX: [-10, 0],
+    duration: 520, easing: 'easeOutCubic', delay: anime.stagger(40, { start: 40 }),
+    complete: a => a.animatables.forEach(({ target }) => { target.style.transform = ''; target.style.opacity = ''; }) });
 }
 // ---- selection + delete
 const selected = new Set();
@@ -3283,6 +3338,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     catch { state.clip = null; save(); }
   }
   renderClip();
+  intro();
   await refreshRuns();
   if (runsCache.length) showRun(runsCache[0].id); else if (state.clip && !state.t2v) showClip(); else clearStage();
   // re-attach to a render that is still running (e.g. after a page reload)

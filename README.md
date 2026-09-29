@@ -127,6 +127,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - **[Comfy-DepthDiff](https://github.com/spiritform/Comfy-DepthDiff)** (spiritform) — the luma / depth mask behind DepthDiff, ported from the ComfyUI node
 - [Differential Diffusion](https://differential-diffusion.github.io/) (Levin & Fried)
 - The wordmark is set in [Alien Block](https://github.com/koci-design/AlienBlock) (OFL, see `vendor/fonts`)
+- Page animation: [anime.js](https://animejs.com) by Julian Garnier (MIT, `vendor/anime.min.js`)
 
 ## License
 

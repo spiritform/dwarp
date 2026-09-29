@@ -125,6 +125,14 @@ def build_app() -> FastAPI:
             raise HTTPException(404, detail="No such font")
         return FileResponse(f, media_type="font/woff2", headers={"Cache-Control": "max-age=86400"})
 
+    @app.get("/vendor/{name}")
+    def vendor_js(name: str):
+        """Bundled page scripts (anime.js, MIT), so the page works offline."""
+        f = HERE / "vendor" / Path(name).name
+        if f.suffix != ".js" or not f.is_file():
+            raise HTTPException(404, detail="No such script")
+        return FileResponse(f, media_type="text/javascript", headers={"Cache-Control": "max-age=86400"})
+
     @app.get("/presets.json")
     def presets():
         return JSONResponse(settings(), headers={"Cache-Control": "no-store"})
