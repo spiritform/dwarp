@@ -120,7 +120,11 @@ def layer_path(run_id: str, layer: str, frame: int) -> Path | None:
 
 
 def thumbnail(run_id: str, layer: str, frame: int) -> Path | None:
-    src = layer_path(run_id, layer, frame)
+    if layer == "output" and not is_legacy(run_id):   # the usual case: the file by name, no listing of every frame
+        src = run_dir(run_id) / "frames" / f"{frame:06d}.png"
+        src = src if src.is_file() else None
+    else:
+        src = layer_path(run_id, layer, frame)
     if not src:
         return None
     cache = run_dir(run_id) / ".thumbs"
@@ -285,14 +289,25 @@ def dir_size(path: Path) -> int:
     return total
 
 
-# Sizes are counted in a background thread (a thousand folders of frames take a while on a hard disk) and
-# kept for the server's life; a run is re-counted when its folder or frames change.
+# Sizes are counted in a background thread (a thousand folders of frames take a while on a hard disk), kept
+# in renders/.sizes.json so the next start shows them at once; a run is re-counted when its frames change.
 _SIZES: dict[str, tuple[float, int]] = {}
 _SIZER: threading.Thread | None = None
+_SIZES_FILE = ".sizes.json"
+
+
+def _load_sizes() -> None:
+    try:
+        saved = json.loads((RENDERS / _SIZES_FILE).read_text(encoding="utf-8"))
+        _SIZES.update({k: (float(v[0]), int(v[1])) for k, v in saved.items()})
+    except (OSError, ValueError, TypeError, IndexError):
+        pass
 
 
 def _count_sizes() -> None:
+    live = set()
     for r in catalog():
+        live.add(r["id"])
         known = _SIZES.get(r["id"])
         if known and known[0] == r["modified"]:
             continue
@@ -300,16 +315,24 @@ def _count_sizes() -> None:
             _SIZES[r["id"]] = (r["modified"], dir_size(run_dir(r["id"])))
         except RunNotFound:
             pass
+    for gone in set(_SIZES) - live:              # deleted outside DWARP
+        _SIZES.pop(gone, None)
+    try:
+        (RENDERS / _SIZES_FILE).write_text(json.dumps(_SIZES), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def sizes(recount: bool = False) -> dict:
-    """Bytes per run as far as counted; done once the counting thread has finished. recount (the Runs
-    section opening) starts a pass over new or changed runs; plain calls only report."""
+    """Bytes per run as far as counted; done once no count is running. recount (asked by the Runs section a
+    moment after it opens) starts a pass over new or changed runs; plain calls only report."""
     global _SIZER
-    if (recount or _SIZER is None) and (_SIZER is None or not _SIZER.is_alive()):
+    if not _SIZES and _SIZER is None:
+        _load_sizes()
+    if recount and (_SIZER is None or not _SIZER.is_alive()):
         _SIZER = threading.Thread(target=_count_sizes, daemon=True)
         _SIZER.start()
-    return {"sizes": {rid: b for rid, (_, b) in list(_SIZES.items())}, "done": not _SIZER.is_alive()}
+    return {"sizes": {rid: b for rid, (_, b) in list(_SIZES.items())}, "done": _SIZER is None or not _SIZER.is_alive()}
 
 
 def purge(run_id: str) -> int:

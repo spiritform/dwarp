@@ -86,7 +86,9 @@ the same differential diffusion underneath:
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
 - **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd); **Render** does the trimmed clip. All three render at the chosen Size, so a locked seed starts each on the same picture. Every run fills the stage at the same size
-- Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
+- Source playback, live split view (source / output), a scrubber with clip timecode, live log
+- **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **use settings** puts a run's settings back in the panel
+- **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first)
 - A built-in guide: the **?** button explains every control
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
 - **Refine**: a diffusion upscale — render a finished run again (1× for a second pass, or 1.5× / 2× bigger) with a low Denoise and your prompt, held to its frames by a tile ControlNet and carried along by the warp. Big frames are painted in overlapping tiles, so detail comes out at the scale the model was trained at and VRAM stays flat

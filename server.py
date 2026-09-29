@@ -478,7 +478,7 @@ def build_app() -> FastAPI:
         path = runs.thumbnail(run_id, layer, frame)
         if not path:
             raise HTTPException(404, detail="No image for that layer/frame")
-        return FileResponse(path)
+        return FileResponse(path, headers={"Cache-Control": "max-age=3600"})   # the URL changes when the run does
 
     @app.get("/api/runs/{run_id}/video")
     def run_video(run_id: str):

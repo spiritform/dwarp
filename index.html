@@ -441,8 +441,9 @@
                font-size: 12.5px; line-height: 1.55; color: #c9c7cf; }
   .helppanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
   .helppanel h4 { margin: 20px 0 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
-  .helppanel p { margin: 6px 0; max-width: 70ch; }
-  .helppanel table { border-collapse: collapse; margin: 6px 0; }
+  .helppanel p { margin: 6px 0; max-width: 150ch; }   /* as wide as the tables: one text column */
+  .helppanel table { border-collapse: collapse; margin: 6px 0; width: 100%; max-width: 150ch; }
+  .helppanel td:first-child { width: 1%; white-space: nowrap; }   /* the label column hugs its labels; the text takes the rest */
   .helppanel th, .helppanel td { text-align: left; vertical-align: top; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line); }
   .helppanel th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
   .helppanel b { color: var(--text); font-weight: 600; }
@@ -452,7 +453,7 @@
                padding: 4px 11px; cursor: pointer; font: inherit; font-size: 11.5px; }
   .helppanel .htabs button:hover { color: var(--text); }
   .helppanel .htabs button.on { color: var(--text); background: rgba(255,106,61,.2); }
-  .helppanel ol, .helppanel ul { margin: 6px 0; padding-left: 20px; max-width: 70ch; }
+  .helppanel ol, .helppanel ul { margin: 6px 0; padding-left: 20px; max-width: 150ch; }
   .helppanel li { margin: 3px 0; }
   /* settings: rows of a label, a note and a control */
   .setrow { margin: 16px 0; max-width: 640px; }
@@ -559,6 +560,7 @@
   .rs-empty { color: var(--dim); font-size: 12px; }
   .rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 12px; }
   .rs-card { cursor: pointer; min-width: 0; }
+  .rs-more { grid-column: 1 / -1; height: 1px; }   /* near the view: the next rows get built */
   #runsPanel { user-select: none; -webkit-user-select: none; }   /* shift-click picks runs, never page text */
   .rs-card img { -webkit-user-drag: none; }
   .rs-card .thumb { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #000; position: relative; }
@@ -2519,11 +2521,32 @@ const HELP = {
 
   finish: ['Finishing', () => `
     <h3>Runs, seeds and Enhance</h3>
-    <h4>Runs</h4>
-    <p>Every Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
-       <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed and clip back in the panel — tweak from there.
-       Ctrl / Shift-click selects several. <b>✕ / remove</b> only takes runs off the list — their frames and mp4 stay
-       in the <b>renders</b> folder (delete a hidden run's <b>.hidden</b> file to bring it back).</p>
+    <h4>The strip</h4>
+    <p>Every Frame, Preview and Render is a run in the strip at the bottom, newest on the left. Click one to view it;
+       <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.</p>
+    <table>
+      <tr><td><b>← →</b></td><td>After clicking a run: the previous / next run (the strip keeps it in view). Click the
+          stage or the timeline and they step frames again.</td></tr>
+      <tr><td><b>Delete</b></td><td>Asks to remove the run on the stage — press <b>Delete</b> again (or Enter) to confirm, Esc
+          to keep it. The next run takes its place, so <b>→ · Delete · Delete</b> culls a strip quickly.</td></tr>
+      <tr><td><b>Ctrl / Shift-click</b></td><td>Selects several; Delete (twice) or <b>remove</b> in the header takes them all.</td></tr>
+      <tr><td><b>✕</b> on a card</td><td>The same for one run: ✕, then ✓.</td></tr>
+    </table>
+    <p>Removing from the strip only <b>hides</b> a run: its frames and mp4 stay in the <b>renders</b> folder. The run
+       that is rendering can't be removed; the others can, any time.</p>
+    <h4>All runs</h4>
+    <p>The grid button next to the folder (bottom right) opens every run on disk, hidden ones too (tagged <b>hidden</b>),
+       newest first, with each one's size and the total. The run on the stage is outlined.</p>
+    <table>
+      <tr><td><b>All runs ▾</b></td><td>Only Frames, Previews or Renders.</td></tr>
+      <tr><td><b>Click · Shift-click · Ctrl-A</b></td><td>Select one, a range, or everything shown (<b>Select all</b> does the same).</td></tr>
+      <tr><td><b>Hide / Show</b></td><td>Take runs out of the strip, or put hidden ones back. The files stay.</td></tr>
+      <tr><td><b>Delete</b></td><td>Deletes the selected runs <b>from disk, for good</b> — it asks first (the button, or
+          Delete twice / Enter). The space comes back at once.</td></tr>
+      <tr><td><b>Double-click</b></td><td>Opens a run on the stage, hidden ones too (it stays out of the strip).</td></tr>
+    </table>
+    <p>So: the strip is your working set, and hiding is how you tidy it; <b>All runs</b> is where you look back
+       through everything and free disk space.</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
        seed per run. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
@@ -2648,7 +2671,7 @@ async function loadRunsPanel() {
   catch { $('runsPanel').innerHTML = '<div class="rs-head"><h3>Runs</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="rsClose">\u2715</button></div>';
           $('rsClose').onclick = () => toggleRunsPanel(false); return; }
   const have = new Set(RS.list.map(r => r.id)); [...RS.sel].forEach(id => have.has(id) || RS.sel.delete(id));
-  paintRunsPanel(true); pollSizes(true);
+  paintRunsPanel(true); pollSizes(false); setTimeout(() => pollSizes(true), 1500);
   document.querySelector('#rsGrid .rs-card.on')?.scrollIntoView({ block: 'center' });   // back where you left off
 }
 async function pollSizes(recount) {
@@ -2706,18 +2729,43 @@ function paintRsAct() {
   if ($('rsShow')) { $('rsShow').onclick = () => rsVisibility(false); $('rsShow').title = 'Put back in the strip'; }
   $('rsDel').title = 'Delete from disk';
 }
+// The grid builds a few rows at a time (more as you scroll near the end), and a thumbnail is only fetched
+// when its card comes near the view: opening it costs about one screen of images, not a thousand.
+const RS_CHUNK = 48;
+var rsImgs = null, rsMore = null;
+function rsCard(r) {
+  const when = new Date(r.modified * 1000), b = RS.sizes[r.id];
+  return `<div class="rs-card ${r.id === viewRun ? 'on' : ''} ${r.hidden ? 'hid' : ''} ${RS.sel.has(r.id) ? 'sel' : ''} ${RS.ask && RS.sel.has(r.id) ? 'doomed' : ''}" data-id="${r.id}"
+    title="Double-click to open it on the stage${r.hidden ? ' (it stays out of the strip)' : ''}">
+    <div class="thumb">${r.frames ? `<img data-src="${img(r.id, 'output', r.last_frame, true)}" alt="">` : ''}${r.hidden ? '<span class="tag">hidden</span>' : ''}</div>
+    <b>${runLabel(r.label, r.id)}</b>
+    <span>#${r.id} \u00b7 ${r.frames}f \u00b7 ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+    <span class="sz">${b != null ? fmtBytes(b) : '\u2026'}</span></div>`;
+}
+function rsAppend(list, upto) {                  // add cards up to index `upto`, then watch their images
+  const grid = $('rsGrid'), from = grid.querySelectorAll('.rs-card').length;
+  if (from >= Math.min(upto, list.length)) return [];
+  $('rsGrid').querySelector('.rs-more')?.remove();
+  grid.insertAdjacentHTML('beforeend', list.slice(from, upto).map(rsCard).join('') + (upto < list.length ? '<div class="rs-more"></div>' : ''));
+  const added = [...grid.querySelectorAll('.rs-card')].slice(from);
+  added.forEach(c => { const im = c.querySelector('img[data-src]'); if (im) rsImgs.observe(im); });
+  const more = grid.querySelector('.rs-more'); if (more) rsMore.observe(more);
+  return added;
+}
 function paintRsGrid(intro) {
-  const list = rsShown();
-  $('rsGrid').innerHTML = list.length ? list.map(r => {
-    const when = new Date(r.modified * 1000), b = RS.sizes[r.id];
-    return `<div class="rs-card ${r.id === viewRun ? 'on' : ''} ${r.hidden ? 'hid' : ''} ${RS.sel.has(r.id) ? 'sel' : ''} ${RS.ask && RS.sel.has(r.id) ? 'doomed' : ''}" data-id="${r.id}"
-      title="Double-click to open it on the stage${r.hidden ? ' (it stays out of the strip)' : ''}">
-      <div class="thumb">${r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}" alt="" loading="lazy">` : ''}${r.hidden ? '<span class="tag">hidden</span>' : ''}</div>
-      <b>${runLabel(r.label, r.id)}</b>
-      <span>#${r.id} \u00b7 ${r.frames}f \u00b7 ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-      <span class="sz">${b != null ? fmtBytes(b) : '\u2026'}</span></div>`;
-  }).join('') : '<p class="rs-empty">Nothing here.</p>';
-  if (intro && window.anime) anime({ targets: [...$('rsGrid').children].slice(0, 48), opacity: [0, 1], translateY: [10, 0],
+  const list = rsShown(), grid = $('rsGrid');
+  rsImgs?.disconnect(); rsMore?.disconnect();
+  const root = $('runsPanel');
+  rsImgs = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const im = e.target; im.src = im.dataset.src; im.removeAttribute('data-src'); rsImgs.unobserve(im);
+  }), { root, rootMargin: '200px 0px' });
+  rsMore = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) rsAppend(rsShown(), grid.querySelectorAll('.rs-card').length + RS_CHUNK); },
+    { root, rootMargin: '600px 0px' });
+  grid.innerHTML = list.length ? '' : '<p class="rs-empty">Nothing here.</p>';
+  const at = list.findIndex(r => r.id === viewRun);             // the run on the stage is always built, to scroll to
+  const added = rsAppend(list, Math.max(RS_CHUNK, at + RS_CHUNK / 2));
+  if (intro && window.anime) anime({ targets: added.slice(0, 48), opacity: [0, 1], translateY: [10, 0],
     duration: 520, easing: 'easeOutCubic', delay: anime.stagger(20),
     complete: a => a.animatables.forEach(({ target: t }) => { t.style.transform = t.style.opacity = ''; }) });
 }
