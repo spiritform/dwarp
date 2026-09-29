@@ -2978,8 +2978,11 @@ async function showRun(runId, { follow = false } = {}) {
   setFoot(`${runLabel(r?.label || RS.list.find(x => x.id === runId)?.label, runId)} · ${frames.length} frames`);   // a hidden run: its label from the Runs section
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
-  $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
-  $('mp4Link').download = mp4Name(runId);
+  const still = frames.length === 1;        // a Frame: its picture, not a one-frame video
+  $('mp4Link').textContent = still ? 'download image' : 'download mp4';
+  $('mp4Link').title = still ? "Download the run's picture (PNG)" : "Download the run's mp4";
+  $('mp4Link').href = still ? img(runId, 'output', frames[0]) : `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
+  $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
   $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
   if (switched || !follow) renderOutputs(runId);
@@ -3246,6 +3249,9 @@ $('mp4Link').onclick = async e => {
   e.preventDefault();                       // decided below, after a fresh look at the run
   if (!viewRun) return;
   const id = viewRun;
+  if (frames.length === 1) {                // a Frame: save the picture as it is
+    const a = document.createElement('a'); a.href = $('mp4Link').href; a.download = $('mp4Link').download; a.click(); return;
+  }
   try { await ensureMp4(id); saveMp4(id); } catch (err) { setStatus('mp4 failed: ' + err.message, 'bad'); }
 };
 // A run dragged off the stage onto the panel becomes the input: one frame (or the Image tab) -> that
