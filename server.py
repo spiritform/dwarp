@@ -188,7 +188,7 @@ def build_app() -> FastAPI:
     def open_models(which: str = "own"):
         """Opens a Settings folder in Explorer: own (DWARP's models), root, embeddings or loras."""
         folder = {"root": settings()["models_root"], "embeddings": embedding_dirs()[0],
-                  "loras": str(lora_dirs()[0])}.get(which, str(HERE / "models"))
+                  "loras": str(lora_dirs()[0]), "renders": str(runs.RENDERS)}.get(which, str(HERE / "models"))
         if which == "own":
             (HERE / "models").mkdir(exist_ok=True)
         if not os.path.isdir(folder):
@@ -410,6 +410,46 @@ def build_app() -> FastAPI:
     @app.get("/api/runs")
     def list_runs():
         return {"runs": runs.list_runs(), "root": str(runs.RENDERS)}
+
+    # the Runs section: every run (hidden too), sizes, hide / show / delete from disk
+    @app.get("/api/runs/catalog")
+    def runs_catalog():
+        return {"runs": runs.catalog(), "root": str(runs.RENDERS)}
+
+    @app.get("/api/runs/sizes")
+    def runs_sizes(recount: bool = False):
+        return runs.sizes(recount)
+
+    def _busy_runs() -> set[str]:
+        return {j["run_id"] for j in jobs.list() if j["state"] not in TERMINAL}
+
+    @app.post("/api/runs/visibility")
+    async def runs_visibility(request: Request):
+        body = await request.json()
+        done = []
+        for rid in body.get("ids", []):
+            try:
+                runs.hide(rid) if body.get("hidden") else runs.unhide(rid)
+                done.append(rid)
+            except runs.RunNotFound:
+                pass
+        return {"changed": done}
+
+    @app.post("/api/runs/purge")
+    async def runs_purge(request: Request):
+        """Delete runs from disk for good (the Runs section asks first)."""
+        ids, busy = (await request.json()).get("ids", []), _busy_runs()
+        deleted, failed, freed = [], [], 0
+        for rid in ids:
+            if rid in busy:
+                failed.append({"id": rid, "error": "still rendering"}); continue
+            try:
+                freed += runs.purge(rid); deleted.append(rid)
+            except runs.RunNotFound:
+                failed.append({"id": rid, "error": "not found"})
+            except (PermissionError, OSError) as e:
+                failed.append({"id": rid, "error": str(e)})
+        return {"deleted": deleted, "failed": failed, "freed": freed}
 
     @app.get("/api/runs/{run_id}")
     def describe_run(run_id: str):

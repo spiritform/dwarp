@@ -7,7 +7,11 @@ Legacy runs:   renders/warpbox/<n>/  (made by VibeWarp) — listed read-only as 
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import stat
+import threading
 import time
 from pathlib import Path
 
@@ -216,3 +220,109 @@ def hide(run_id: str) -> None:
 
 def is_hidden(run_id: str) -> bool:
     return (run_dir(run_id) / HIDDEN).exists()
+
+
+def unhide(run_id: str) -> None:
+    """Put a hidden run back on the list."""
+    (run_dir(run_id) / HIDDEN).unlink(missing_ok=True)
+
+
+# ------------------------------------------------------------------ the Runs section: every run, sizes, delete
+def _kind(meta: dict) -> str:
+    kind = (meta.get("ui") or {}).get("kind") or ""
+    if not kind and str(meta.get("label", "")).startswith("refine"):
+        kind = "refine"
+    return kind
+
+
+class _nothing:
+    def __enter__(self): return iter(())
+    def __exit__(self, *a): return False
+
+
+def catalog() -> list[dict]:
+    """Every run, hidden ones too, kept light (no per-frame stat) so a thousand runs list quickly."""
+    out = []
+    ids = [p.name for p in RENDERS.iterdir() if p.is_dir() and p.name.isdigit()] if RENDERS.is_dir() else []
+    ids += ["v" + p.name for p in LEGACY.iterdir() if p.is_dir() and p.name.isdigit()] if LEGACY.is_dir() else []
+    for rid in ids:
+        try:
+            path = run_dir(rid)
+            meta = read_meta(rid)
+            fdir = path / "frames"
+            if is_legacy(rid):
+                frames = sorted(output_frames(rid))
+            else:                                  # a plain listing: far quicker than glob over a thousand runs
+                with os.scandir(fdir) if fdir.is_dir() else _nothing() as it:
+                    frames = sorted(int(e.name[:-4]) for e in it if e.name.endswith(".png") and e.name[:-4].isdigit())
+            # when its frames were written (the run folder's own time moves with thumbnails and hiding)
+            stamp = next((f for f in (fdir, path / "meta.json") if f.exists()), path)
+            modified = stamp.stat().st_mtime
+            out.append({"id": rid, "label": meta.get("label", ""), "kind": _kind(meta), "frames": len(frames),
+                        "last_frame": frames[-1] if frames else None, "modified": modified,
+                        "hidden": is_hidden(rid), "legacy": is_legacy(rid)})
+        except (RunNotFound, OSError, ValueError):
+            pass
+    # latest first by run number (new runs count up); old VibeWarp runs after
+    return sorted(out, key=lambda r: (not r["legacy"], int(r["id"].lstrip("v"))), reverse=True)
+
+
+def dir_size(path: Path) -> int:
+    total, stack = 0, [path]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        else:
+                            total += e.stat(follow_symlinks=False).st_size   # from the directory listing on Windows
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return total
+
+
+# Sizes are counted in a background thread (a thousand folders of frames take a while on a hard disk) and
+# kept for the server's life; a run is re-counted when its folder or frames change.
+_SIZES: dict[str, tuple[float, int]] = {}
+_SIZER: threading.Thread | None = None
+
+
+def _count_sizes() -> None:
+    for r in catalog():
+        known = _SIZES.get(r["id"])
+        if known and known[0] == r["modified"]:
+            continue
+        try:
+            _SIZES[r["id"]] = (r["modified"], dir_size(run_dir(r["id"])))
+        except RunNotFound:
+            pass
+
+
+def sizes(recount: bool = False) -> dict:
+    """Bytes per run as far as counted; done once the counting thread has finished. recount (the Runs
+    section opening) starts a pass over new or changed runs; plain calls only report."""
+    global _SIZER
+    if (recount or _SIZER is None) and (_SIZER is None or not _SIZER.is_alive()):
+        _SIZER = threading.Thread(target=_count_sizes, daemon=True)
+        _SIZER.start()
+    return {"sizes": {rid: b for rid, (_, b) in list(_SIZES.items())}, "done": not _SIZER.is_alive()}
+
+
+def purge(run_id: str) -> int:
+    """Delete a run's folder from disk for good. Returns the bytes freed. Old VibeWarp runs are read-only."""
+    if is_legacy(run_id):
+        raise PermissionError("old VibeWarp runs are read-only")
+    path = run_dir(run_id)
+    freed = _SIZES.pop(run_id, (0, None))[1]
+    if freed is None:
+        freed = dir_size(path)
+
+    def force(func, p, _exc):                  # read-only files (Windows) would stop rmtree
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    shutil.rmtree(path, onexc=force)
+    return freed

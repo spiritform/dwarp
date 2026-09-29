@@ -372,7 +372,11 @@
   #scrubRange::-moz-range-thumb { width: 4px; height: 20px; border: 0; background: #fff; border-radius: 1px; }
   #scrubRange:hover::-webkit-slider-runnable-track {
            background: linear-gradient(90deg, var(--accent) 0 var(--prog, 0%), #2d2c33 var(--prog, 0%) 100%); }
-  .scrub[hidden] { display: none; }                       /* nothing to scrub: no empty strip */
+  /* nothing to scrub: the bar stays, empty and inert (no playhead, no time) */
+  .scrub[hidden] { display: flex; pointer-events: none; opacity: .4; }   /* stays in place: no layout shift */
+  .scrub[hidden] #scrubText { visibility: hidden; }
+  .scrub[hidden] #scrubRange::-webkit-slider-thumb { opacity: 0; }
+  .scrub[hidden] #scrubRange::-moz-range-thumb { opacity: 0; }
   .scrub span { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right;
                 white-space: nowrap; flex: none; min-width: 84px; }    /* one line, room for "12.3s 123 / 456": the track runs up to it */
   .scrub span b { color: var(--dim); font-weight: 600; margin-right: 8px; }   /* the clip time, as on the keyframe lane */
@@ -509,8 +513,64 @@
             animation: ghost 1.4s ease-in-out infinite; }
   .run.ghost b { height: 9px; width: 78%; border-radius: 3px; margin-top: 7px; }
   .run.ghost span { display: block; height: 7px; width: 52%; border-radius: 3px; margin-top: 5px; }
+  /* dropdowns: our own chevron with room to its right; where Chrome allows (customizable select), the open list
+     is ours too: dark, rounded, orange instead of the system blue */
+  select { -webkit-appearance: none; appearance: none; cursor: pointer;
+           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b8993' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+           background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 10px 6px !important;
+           padding-right: 34px !important; }
+  select:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23e8e6e3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important; }
+  @supports (appearance: base-select) {
+    select, ::picker(select) { appearance: base-select; }
+    select::picker-icon { display: none; }                 /* the chevron above stands in */
+    ::picker(select) { background: #1d1d22; color: var(--text); border: 0; border-radius: 8px; padding: 4px;
+                       margin-top: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.55); }
+    option { padding: 6px 12px; border-radius: 5px; }
+    option::checkmark { display: none; }
+    option:hover, option:focus-visible { background: rgba(255,106,61,.22); outline: 0; }
+    option:checked { color: var(--accent); }
+    optgroup { color: var(--faint); font-size: 11px; font-weight: 700; }
+    optgroup option { color: var(--text); font-size: 13px; font-weight: 400; }
+  }
+  /* the Runs section: every run on disk, over the stage like Help and Settings */
+  .stage-foot #manageRuns.on { background: #34333b; color: #fff; }
+  /* one header line: title · summary (or the selection's actions) · three dropdowns · close; stays put while scrolling */
+  .rs-head { position: sticky; top: -22px; z-index: 2; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+             margin: -22px -26px 16px; padding: 18px 26px 14px; background: rgba(14,14,16,.97); }
+  .rs-head h3 { margin: 0; }
+  .rs-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; font-size: 12px; color: var(--dim); min-height: 30px; }
+  .rs-info b { color: var(--text); font-weight: 600; }
+  .rs-btns { display: flex; gap: 8px; margin-left: auto; }   /* the buttons sit at the right, by the dropdown */
+  .rs-info .ok { color: var(--accent-2); }
+  .rs-info .setbtn { padding: 6px 12px; background: #2a2930; color: #d4d2da; }   /* the same grey as the buttons under the stage */
+  .rs-info .setbtn:hover { background: #34333b; color: #fff; }
+  .rs-info .setbtn.danger { background: rgba(255,90,90,.16); color: #ff8a8a; }
+  .rs-info .setbtn.danger:hover, .rs-info .setbtn.danger.go { background: var(--bad); color: #fff; }
+  .rs-head .close { float: none; position: static; width: 30px; height: 30px; padding: 0; display: grid; place-items: center;
+                    border-radius: 7px; background: #2a2930; color: #d4d2da; }   /* a square, as tall as the dropdown */
+  .rs-head .close:hover { background: #34333b; color: #fff; }
+  .rs-head select, .rs-info .setbtn { height: 30px; box-sizing: border-box; }   /* one height across the header */
+  .rs-head select { background-color: #2a2930; color: var(--text); border: 0; border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 12px; }
+  .rs-empty { color: var(--dim); font-size: 12px; }
+  .rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 12px; }
+  .rs-card { cursor: pointer; min-width: 0; }
+  #runsPanel { user-select: none; -webkit-user-select: none; }   /* shift-click picks runs, never page text */
+  .rs-card img { -webkit-user-drag: none; }
+  .rs-card .thumb { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #000; position: relative; }
+  .rs-card .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .rs-card .tag { position: absolute; bottom: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.75); color: var(--dim); padding: 1px 5px; border-radius: 3px; }
+  .rs-card.on .thumb { box-shadow: 0 0 0 2px var(--accent); }   /* the run on the stage, as in the strip */
+  .rs-card.sel .thumb { box-shadow: 0 0 0 2px var(--accent-2); }
+  .rs-card.sel .thumb::after { content: "\2713"; position: absolute; inset: 0; display: grid; place-items: center;
+            background: rgba(255,179,107,.25); color: #fff; font-size: 22px; font-weight: 700; }
+  .rs-card.doomed .thumb { box-shadow: 0 0 0 2px var(--bad); }
+  .rs-card.doomed .thumb::after { background: rgba(255,90,90,.25); }
+  .rs-card b { display: block; font-size: 11px; font-weight: 600; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .rs-card span { display: block; color: var(--faint); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* page intro: everything waits hidden until intro() builds it in (anime.js); a timer reveals it regardless */
   body.intro aside, body.intro main, body.intro footer { visibility: hidden; }
+  .run.ghost.idle .thumb { animation: none; background: #17171b; }   /* no runs: still cells, no shimmer */
+  .runs:has(.ghost.idle) { pointer-events: none; }
   @keyframes ghost { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
   .seg.idle { opacity: .45; pointer-events: none; }
@@ -790,6 +850,7 @@
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
     <div class="helppanel" id="setPanel" hidden></div>
+    <div class="helppanel" id="runsPanel" hidden></div>
     <div class="helppanel enh" id="enh" hidden>
       <button class="logbtn close" id="enhClose">✕</button>
       <h3>Enhance <span id="enhRun" style="color:var(--dim);font-weight:400"></span></h3>
@@ -852,7 +913,8 @@
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
-    <a id="openFolder" class="hide icon" title="Open the run's folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></a>
+    <a id="openFolder" class="icon" title="Open the renders folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></a>
+    <a id="manageRuns" class="icon" title="All runs: every run on disk, hidden ones too — sort through them, put them back, or delete them from disk"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></a>
   </div>
 </main>
 
@@ -1987,7 +2049,7 @@ function showClip() {
   ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
   setFoot(`${state.clip.name} · source`);
-  ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
   updateEst();                             // Single Frame's tooltip names the frame it will render
@@ -2500,7 +2562,7 @@ function paintHelp() {
 }
 function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
-  if (open) { toggleSettings(false); $('enh').hidden = true; paintHelp(); }
+  if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; paintHelp(); }
 }
 
 // ---------------------------------------------------------------- settings
@@ -2550,9 +2612,166 @@ async function paintSettings() {
 }
 function toggleSettings(open = $('setPanel').hidden) {
   $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
-  if (open) { toggleHelp(false); $('enh').hidden = true; paintSettings(); }
+  if (open) { toggleHelp(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; paintSettings(); }
 }
 $('setBtn').onclick = () => toggleSettings();
+
+// ---------------------------------------------------------------- the Runs section
+// Every run on disk, newest first, hidden ones too (tagged). Select (click, shift for a range, ctrl-A), then hide from
+// the strip, put back, or delete from disk for good (asked inline first). Sizes are counted by the server in the
+// background and fill in as they come.
+var RS = { list: [], sizes: {}, done: false, kind: 'all', sel: new Set(), last: null, ask: false, timer: 0, note: '' };
+const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+const rsBytes = ids => ids.reduce((t, id) => t + (RS.sizes[id] || 0), 0);
+// every run, newest first (hidden ones tagged), or one kind: Single Frames, Previews, Renders (refines count as renders)
+const rsKind = r => r.kind === 'refine' ? 'render' : r.kind;
+const rsShown = () => RS.kind === 'all' ? RS.list : RS.list.filter(r => rsKind(r) === RS.kind);
+function toggleRunsPanel(open = $('runsPanel').hidden) {
+  $('runsPanel').hidden = !open; $('manageRuns').classList.toggle('on', open);
+  if (open) { toggleHelp(false); toggleSettings(false); $('enh').hidden = true; loadRunsPanel(); }
+  else { clearTimeout(RS.timer); RS.ask = false; }
+}
+$('manageRuns').onclick = () => toggleRunsPanel();
+async function loadRunsPanel() {
+  try { RS.list = (await api('/api/runs/catalog')).runs; }
+  catch { $('runsPanel').innerHTML = '<div class="rs-head"><h3>Runs</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="rsClose">\u2715</button></div>';
+          $('rsClose').onclick = () => toggleRunsPanel(false); return; }
+  const have = new Set(RS.list.map(r => r.id)); [...RS.sel].forEach(id => have.has(id) || RS.sel.delete(id));
+  paintRunsPanel(true); pollSizes(true);
+  document.querySelector('#rsGrid .rs-card.on')?.scrollIntoView({ block: 'center' });   // back where you left off
+}
+async function pollSizes(recount) {
+  clearTimeout(RS.timer);
+  if ($('runsPanel').hidden) return;
+  const r = await api('/api/runs/sizes' + (recount ? '?recount=true' : '')).catch(() => null);
+  if (r) {
+    RS.sizes = r.sizes; RS.done = r.done;
+    document.querySelectorAll('#rsGrid .rs-card').forEach(c => { const b = RS.sizes[c.dataset.id]; if (b != null) c.querySelector('.sz').textContent = fmtBytes(b); });
+    paintRsSum(); paintRsAct();
+  }
+  if (!r?.done) RS.timer = setTimeout(pollSizes, 1000);
+}
+function paintRunsPanel(intro) {
+  $('runsPanel').innerHTML = `<div class="rs-head">
+      <h3>Runs</h3><div class="rs-info" id="rsInfo"></div>
+      <select id="rsKind">${Object.entries({ all: 'All runs', frame: 'Single Frames', test: 'Previews', render: 'Renders' }).map(([k, label]) =>
+        `<option value="${k}" ${RS.kind === k ? 'selected' : ''}>${label}</option>`).join('')}</select>
+      <button class="logbtn close" id="rsClose" title="Close (Esc)">\u2715</button>
+    </div>
+    <div class="rs-grid" id="rsGrid" title="Click to select \u00b7 shift-click for a range \u00b7 ctrl-A for all shown \u00b7 double-click opens a run"></div>`;
+  $('rsClose').onclick = () => toggleRunsPanel(false);
+  $('rsKind').onchange = e => { RS.kind = e.target.value; RS.ask = false; paintRsGrid(true); paintRsAct(); };
+  paintRsAct(); paintRsGrid(intro);
+}
+const paintRsSum = () => paintRsAct();
+// The header's middle: the totals, or, with runs selected, what can be done with them (and the delete question).
+function paintRsAct() {
+  if (!$('rsInfo')) return;
+  const ids = [...RS.sel], shown = rsShown(), size = fmtBytes(rsBytes(ids)) + (RS.done ? '' : '+');
+  if (RS.ask) {
+    $('rsInfo').innerHTML = `<b>Delete ${ids.length} run${ids.length === 1 ? '' : 's'} (${size}) from disk? This can\u2019t be undone.</b>
+      <span class="rs-btns"><button class="setbtn" id="rsNo">Cancel</button><button class="setbtn danger go" id="rsYes">Delete</button></span>`;
+    $('rsYes').onclick = rsDelete; $('rsNo').onclick = () => { RS.ask = false; paintRsSel(); };
+    return;
+  }
+  if (!ids.length) {
+    const all = rsBytes(RS.list.map(r => r.id)), hid = RS.list.filter(r => r.hidden).length;
+    $('rsInfo').innerHTML = `<span>${shown.length === RS.list.length ? RS.list.length : `${shown.length} of ${RS.list.length}`} runs \u00b7 ${
+      RS.done ? fmtBytes(all) : `${fmtBytes(all)}\u2026`}</span>${RS.note ? `<span class="ok">${RS.note}</span>` : ''}<span class="rs-btns"><button class="setbtn" id="rsAll">Select all</button></span>`;
+    $('rsAll').onclick = () => { shown.forEach(r => RS.sel.add(r.id)); paintRsSel(); };
+    $('rsInfo').title = `${RS.list.length - hid} in the strip, ${hid} hidden${RS.done ? '' : ' \u2014 still counting sizes'}`;
+    return;
+  }
+  const anyHidden = ids.some(id => RS.list.find(r => r.id === id)?.hidden), anyShown = ids.some(id => !RS.list.find(r => r.id === id)?.hidden);
+  $('rsInfo').innerHTML = `<b>${ids.length} selected \u00b7 ${size}</b><span class="rs-btns">
+    <button class="setbtn" id="rsAll">Select all</button><button class="setbtn" id="rsClear">Clear</button>
+    ${anyShown ? '<button class="setbtn" id="rsHide">Hide</button>' : ''}
+    ${anyHidden ? '<button class="setbtn" id="rsShow">Show</button>' : ''}
+    <button class="setbtn danger" id="rsDel">Delete</button></span>`;
+  $('rsAll').onclick = () => { shown.forEach(r => RS.sel.add(r.id)); paintRsSel(); };
+  $('rsClear').onclick = () => { RS.sel.clear(); paintRsSel(); };
+  $('rsDel').onclick = () => { RS.ask = true; paintRsSel(); };
+  if ($('rsHide')) { $('rsHide').onclick = () => rsVisibility(true); $('rsHide').title = 'Hide from the strip \u2014 the files stay on disk'; }
+  if ($('rsShow')) { $('rsShow').onclick = () => rsVisibility(false); $('rsShow').title = 'Put back in the strip'; }
+  $('rsDel').title = 'Delete from disk';
+}
+function paintRsGrid(intro) {
+  const list = rsShown();
+  $('rsGrid').innerHTML = list.length ? list.map(r => {
+    const when = new Date(r.modified * 1000), b = RS.sizes[r.id];
+    return `<div class="rs-card ${r.id === viewRun ? 'on' : ''} ${r.hidden ? 'hid' : ''} ${RS.sel.has(r.id) ? 'sel' : ''} ${RS.ask && RS.sel.has(r.id) ? 'doomed' : ''}" data-id="${r.id}"
+      title="Double-click to open it on the stage${r.hidden ? ' (it stays out of the strip)' : ''}">
+      <div class="thumb">${r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}" alt="" loading="lazy">` : ''}${r.hidden ? '<span class="tag">hidden</span>' : ''}</div>
+      <b>${r.label || 'run ' + r.id}</b>
+      <span>#${r.id} \u00b7 ${r.frames}f \u00b7 ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+      <span class="sz">${b != null ? fmtBytes(b) : '\u2026'}</span></div>`;
+  }).join('') : '<p class="rs-empty">Nothing here.</p>';
+  if (intro && window.anime) anime({ targets: [...$('rsGrid').children].slice(0, 48), opacity: [0, 1], translateY: [10, 0],
+    duration: 520, easing: 'easeOutCubic', delay: anime.stagger(20),
+    complete: a => a.animatables.forEach(({ target: t }) => { t.style.transform = t.style.opacity = ''; }) });
+}
+function paintRsSel() {
+  document.querySelectorAll('#rsGrid .rs-card').forEach(c => {
+    const on = RS.sel.has(c.dataset.id); c.classList.toggle('sel', on); c.classList.toggle('doomed', on && RS.ask);
+  });
+  paintRsAct();
+}
+$('runsPanel').addEventListener('click', e => {
+  const card = e.target.closest('.rs-card'); if (!card) return;
+  const id = card.dataset.id; RS.ask = false;
+  if (e.shiftKey && RS.last) {
+    const ids = rsShown().map(r => r.id), a = ids.indexOf(RS.last), b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => RS.sel.add(x));
+  } else RS.sel.has(id) ? RS.sel.delete(id) : RS.sel.add(id);
+  RS.last = id; paintRsSel();
+});
+$('runsPanel').addEventListener('mousedown', e => { if (e.target.closest('.rs-card')) e.preventDefault(); });   // no text selection, no image drag
+$('runsPanel').addEventListener('dblclick', e => {
+  const card = e.target.closest('.rs-card'); if (!card) return;
+  const r = RS.list.find(x => x.id === card.dataset.id);
+  RS.sel.delete(card.dataset.id);
+  if (r) { toggleRunsPanel(false); showRun(r.id); }        // hidden runs too: viewing one doesn't put it back in the strip
+});
+addEventListener('keydown', e => {
+  if ($('runsPanel').hidden) return;
+  if (e.key === 'Escape') {
+    if (RS.ask) { RS.ask = false; paintRsSel(); } else if (RS.sel.size) { RS.sel.clear(); paintRsSel(); } else toggleRunsPanel(false);
+    e.stopPropagation();
+  }
+  // Delete (or Backspace) asks about the selection; a second Delete or Enter confirms, Esc backs out
+  const del = e.key === 'Delete' || e.key === 'Backspace';
+  if ((del || e.key === 'Enter') && RS.ask) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) rsDelete(); return; }
+  if (del && RS.sel.size && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
+    e.preventDefault(); e.stopPropagation(); if (!e.repeat) { RS.ask = true; paintRsSel(); } return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !/INPUT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); rsShown().forEach(r => RS.sel.add(r.id)); paintRsSel(); }
+}, true);
+async function rsVisibility(hidden) {
+  const ids = [...RS.sel].filter(id => RS.list.find(r => r.id === id)?.hidden !== hidden);
+  const res = await api('/api/runs/visibility', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, hidden }) }).catch(() => null);
+  if (!res) return;
+  res.changed.forEach(id => { const r = RS.list.find(x => x.id === id); if (r) r.hidden = hidden; });
+  RS.note = `${res.changed.length} ${hidden ? 'hidden' : 'put back'}`; RS.sel.clear();
+  paintRsSum(); paintRsGrid(); paintRsAct(); await rsAfter();
+}
+async function rsDelete() {
+  const ids = [...RS.sel]; RS.ask = false;     // a second Enter can't start it twice
+  $('rsInfo').innerHTML = `<b>Deleting ${ids.length} run${ids.length === 1 ? '' : 's'}\u2026</b>`;
+  const res = await api('/api/runs/purge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) })
+    .catch(e => ({ deleted: [], failed: [{ error: e.message }], freed: 0 }));
+  const gone = new Set(res.deleted);
+  RS.list = RS.list.filter(r => !gone.has(r.id)); gone.forEach(id => { delete RS.sizes[id]; selected.delete(id); });
+  RS.sel = new Set(res.failed.map(f => f.id).filter(Boolean)); RS.ask = false;
+  RS.note = `deleted ${res.deleted.length}, freed ${fmtBytes(res.freed)}` + (res.failed.length ? ` \u00b7 ${res.failed.length} not deleted (${res.failed[0].error})` : '');
+  paintRsSum(); paintRsGrid(); paintRsAct();
+  if (gone.has(viewRun)) viewRun = null;
+  await rsAfter();
+}
+async function rsAfter() {                      // the strip below follows; a run that left it leaves the stage too
+  await refreshRuns(); paintSel();
+  if (viewRun && !runsCache.some(r => r.id === viewRun)) viewRun = null;
+  if (!viewRun) { if (runsCache.length) showRun(runsCache[0].id); else clearStage(); }
+}
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('setPanel').hidden) toggleSettings(false); });
 $('helpBtn').onclick = () => toggleHelp();
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('helpPanel').hidden) toggleHelp(false); });
@@ -2697,12 +2916,12 @@ async function showRun(runId, { follow = false } = {}) {
   setupTransport();
   if (!(follow && playing)) paintFrame();
   const r = runsCache.find(r => r.id === runId);
-  setFoot(`${r?.label || 'run ' + runId} · ${frames.length} frames`);
+  setFoot(`${r?.label || RS.list.find(x => x.id === runId)?.label || 'run ' + runId} · ${frames.length} frames`);   // a hidden run: its label from the Runs section
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
   $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
   $('mp4Link').download = mp4Name(runId);
-  $('openFolder').classList.remove('hide'); $('loadRun').classList.remove('hide');
+  $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
   if (switched || !follow) renderOutputs(runId);
   if (switched && !$('enh').hidden) openEnhance();
@@ -2940,7 +3159,8 @@ addEventListener('keydown', e => {
   }
 });
 
-$('openFolder').onclick = () => viewRun && api(`/api/runs/${viewRun}/open`, { method: 'POST' });
+$('openFolder').onclick = () => api(viewRun ? `/api/runs/${viewRun}/open` : '/api/open-models?which=renders', { method: 'POST' }).catch(() => {});
+$('openFolder').onmouseenter = () => { $('openFolder').title = viewRun ? `Open run ${viewRun}'s folder` : 'Open the renders folder'; };
 function mp4Name(id) {                     // dwarp_12_seed123456.mp4 (runs from before the seed was listed: no seed)
   const seed = runsCache.find(r => r.id === id)?.seed;
   return `dwarp_${id}${seed != null ? '_seed' + seed : ''}.mp4`;
@@ -3010,7 +3230,11 @@ async function refreshRuns() {
   catch { if (first) { box.classList.remove('loading'); box.innerHTML = '<span class="empty">Couldn’t load runs — is the server up?</span>'; $('runsHint').textContent = ''; } return; }
   runsCache = res.runs;
   if (first) { box.classList.remove('loading'); $('runsHint').textContent = '· ctrl/shift-click to select'; }
-  if (!runsCache.length) { box.innerHTML = '<span class="empty">No runs yet — hit Single Frame or Preview</span>'; return; }
+  if (!runsCache.length) {                  // nothing yet: the strip keeps its shape, empty cells
+    box.innerHTML = '<div class="run ghost idle"><div class="thumb"></div></div>'.repeat(8);
+    $('runsHint').textContent = '· none yet — hit Single Frame or Preview'; return;
+  }
+  $('runsHint').textContent = '· ctrl/shift-click to select';
   box.innerHTML = runsCache.map(r => {
     const when = new Date(r.modified * 1000);
     const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
@@ -3129,14 +3353,14 @@ function clearStage() {
     if (view !== 'mask' && view !== 'shape') view = 'src';
     setControlTabs(); $('scrub').hidden = true;
     if (shapeMode()) return showShape(); setFoot(`${state.image.name} · source`); paintFrame();
-    ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+    ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
     $('outputs').innerHTML = ''; $('enh').hidden = true;
     return;
   }
   if (state.shape && view === 'shape') { setControlTabs(); if (shapeMode()) return showShape(); }
   $('stage').innerHTML = WORDMARK;          // nothing on show: the name
   $('scrub').hidden = true; setFoot('');
-  ['mp4Link', 'loadRun', 'openFolder', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }
 $('runs').onclick = e => {
