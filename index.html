@@ -360,7 +360,7 @@
   .progress { height: 3px; background: var(--line); }
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
   /* the transport: a contained dark strip with a flat, squared track and a playhead line — a timeline, not a setting */
-  .scrub { display: flex; align-items: center; gap: 10px; margin: 0 18px 6px; padding: 6px 10px 6px 6px;
+  .scrub { display: flex; align-items: center; gap: 10px; margin: 0 18px 6px 12px; padding: 6px 10px 6px 6px;   /* ▶ lines up with Frame below (12 + 6 = the bar's 18) */
            background: #070709; border-radius: 6px; }
   .scrub button { background: #1f1e24; border: 0; color: var(--text); width: 28px; height: 24px; border-radius: 3px; cursor: pointer; font-size: 11px; }
   .scrub button:hover { background: #2a2930; }
@@ -487,7 +487,7 @@
   .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
   .run .thumb .num { position: absolute; top: 4px; left: 4px; height: 16px; line-height: 16px; font-size: 11px; font-weight: 600;
-                     color: #16161a; background: var(--accent); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover */
+                     color: #fff; background: rgba(0,0,0,.75); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover: dark like the ✕ */
   .run:hover .thumb .num { display: block; }
   .run.on .thumb { border-color: var(--accent); }
   .run .x { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; border: 0;   /* the number's height */
@@ -2140,7 +2140,7 @@ function spf(size) {
 }
 function updateEst() {
   if (state.t2v) {                         // Text -> Video: frame 1, a short start, the whole length
-    const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = Math.min(state.size, modeCfg().test_size);
+    const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = state.size;   // Preview at the Render size: a set seed gives the same frame 1 as Frame / Render
     const tn = Math.min(n, 12);
     $('frameBtn').title = `frame 1 from ${state.i2v ? 'your image' : 'the prompt'} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
     $('testBtn').title = `the first ${tn} frames · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
@@ -2152,7 +2152,7 @@ function updateEst() {
   const [fa, fb] = rangeFrames();
   const on = state.onN || 1, testStep = Math.max(TEST.nth, on);
   const testN = Math.min(TEST.frames, Math.floor((fb - fa) / testStep) + 1);
-  const testSize = Math.min(state.size, modeCfg().test_size);
+  const testSize = state.size;
   $('testBtn').title = `${testN} frames · every ${testStep === 2 ? '2nd' : '3rd'} · ${testSize}px · ≈ ${fmtDur(testN * spf(testSize))}`;
   const n = Math.floor((fb - fa) / on) + 1;
   $('goBtn').title = `${n} frames${on > 1 ? ` (on ${on}s)` : ''} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
@@ -2182,7 +2182,7 @@ async function buildConfig(kind) {
   const on = state.onN || 1;
   const nth = kind === 'frame' ? 1 : kind === 'test' ? Math.max(TEST.nth, on) : on;
   const hold = kind !== 'frame' && on > 1 ? nth : 1;
-  const size = kind === 'test' ? Math.min(state.size, m.test_size) : state.size;
+  const size = state.size;                 // all three at one size: the same seed paints the same frame 1 (noise depends on size)
   const t2v = !!state.t2v;
   let W, H, start = 0, end = -1, t2vN = 0;
   if (t2v) {                                // no clip: a length on T2V_FPS, drawings every nth frame
@@ -2344,9 +2344,10 @@ const HELP = {
       <li>Pick a <b>mode</b>, a <b>look</b> (Oil paint, Anime, … — it adds style words and picks an SD 1.5 model;
           <b>Raw</b> adds nothing) and write a <b>prompt</b> for what's in the shot.</li>
       <li><b>Frame</b> renders the frame under the playhead — the fast way to dial in Denoise and guidance.</li>
-      <li><b>Preview</b> renders 5 frames (every 2nd) at a small size to check it holds together over time. It's shown
-          as big as a full render, so it looks softer — that's the smaller size, not the settings.</li>
-      <li><b>Render</b> does the trimmed range at full size. Finished runs land in the strip at the bottom.</li>
+      <li><b>Preview</b> renders 5 frames (every 2nd) to check it holds together over time.</li>
+      <li><b>Render</b> does the whole trimmed range. Finished runs land in the strip at the bottom.</li>
+      <li>All three render at the <b>Size</b> you set, so with the seed locked they start on the same picture: the frame
+          you liked in Frame is frame 1 of the Preview and the Render.</li>
     </ol>
     <h4>The tabs over the image</h4>
     <table>
@@ -2938,7 +2939,7 @@ async function showRun(runId, { follow = false } = {}) {
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));
   updateEst();
 }
-// Every image fills the stage (aspect kept), whatever size it was rendered at: a 384 px Preview shows as big
+// Every image fills the stage (aspect kept), whatever size it was rendered at: a 384 px run shows as big
 // as a 768 px Render, and the frame box hugs the image, so overlays and the split line up.
 // The bar under the stage: what's shown, plus a run frame's actual size once it has loaded
 var footBase = '';                         // var: set before this line runs
@@ -3298,8 +3299,11 @@ function confirmInline(ids, question) {
       document.querySelectorAll('.run.doomed').forEach(el => el.classList.remove('doomed'));
       renderSelBar(); resolve(yes);
     };
-    const key = e => {
-      if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(e.key === 'Enter'); }
+    const key = e => {                     // Enter or a second Delete confirms (as in the Runs section), Esc keeps
+      const yes = e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace';
+      if ((yes || e.key === 'Escape') && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
+        e.preventDefault(); e.stopPropagation(); if (!e.repeat) done(yes);
+      }
     };
     pendingAsk = done; addEventListener('keydown', key, true);
     $('askYes').onclick = () => done(true); $('askNo').onclick = () => done(false);
@@ -3399,8 +3403,8 @@ $('runs').onclick = e => {
   stopPlay(); showRun(id);
 };
 addEventListener('keydown', e => {
-  if (e.target.tagName === 'TEXTAREA') return;
-  if (e.code === 'Delete' && selected.size) deleteRuns([...selected]);
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;   // Delete in a text box edits the text
+  if (e.code === 'Delete' && selected.size && !e.repeat) deleteRuns([...selected]);
   if (e.code === 'Escape' && selected.size) { selected.clear(); paintSel(); }
 });
 // clicking anywhere off the runs (and off their select / remove bar) drops a selection

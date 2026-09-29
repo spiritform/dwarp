@@ -85,7 +85,7 @@ the same differential diffusion underneath:
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
-- **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
+- **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd); **Render** does the trimmed clip. All three render at the chosen Size, so a locked seed starts each on the same picture. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
 - A built-in guide: the **?** button explains every control
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
