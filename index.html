@@ -194,6 +194,10 @@
   /* sliders */
   .slider { margin-bottom: 14px; }
   .cnsel { margin-bottom: 14px; }
+  /* depth / edge are toggles: off reads as a button you can press, on clearly lit */
+  .card-body #cnSel button { background: #2c2b32; color: #b3b1bb; }
+  .card-body #cnSel button:hover { background: #34333b; color: var(--text); }
+  .card-body #cnSel button.on { background: #4a4953; color: #fff; }
   #holdBox.off, #ddBox.off, #ddInvert.off { display: none; }   /* off: its sliders go away */
   /* ControlNet / DepthDiff: two tabs over one slot (both can be on at once) — a lighter
      cousin of .seg: no fill, thin line, small caps */
@@ -319,6 +323,21 @@
 
   .stage-wrap { flex: 1; position: relative; min-height: 0; display: flex; flex-direction: column; }
   .stage { flex: 1; display: grid; place-items: center; min-height: 0; padding: 20px; }
+  /* working, nothing new to show yet (loading models, the first frame): a dim veil with a loop over the stage */
+  .busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12,12,15,.55);
+          backdrop-filter: blur(2px); z-index: 4; pointer-events: none; animation: busyIn .25s ease; }
+  .busy[hidden] { display: none; }
+  .busy-in { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  /* the whole wordmark, a brightness wave running through it: each letter 20% -> 100% -> 20%, one after another */
+  .busy-word { display: flex; font-family: 'Alien Block', sans-serif; font-size: 56px; line-height: 1; gap: 2px;   /* a little air between the letters, still centred */ }
+  .busy-word i { font-style: normal; color: #fff; opacity: .2; animation: busyLetter 1.6s ease-in-out infinite; }
+  .busy-word i:nth-child(2) { animation-delay: .16s; }
+  .busy-word i:nth-child(3) { animation-delay: .32s; }
+  .busy-word i:nth-child(4) { animation-delay: .48s; }
+  .busy-word i:nth-child(5) { animation-delay: .64s; }
+  .busy-text { color: #c9c7cf; font-size: 12px; min-height: 16px; }
+  @keyframes busyLetter { 0%, 60%, 100% { opacity: .2; } 25% { opacity: 1; } }
+  @keyframes busyIn { from { opacity: 0; } }
   .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   .frame img { display: block; -webkit-user-drag: none; }
@@ -453,19 +472,20 @@
   .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
   .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
-  .run .thumb .num { position: absolute; top: 4px; left: 4px; font-size: 10px; color: #ddd; background: rgba(0,0,0,.7);
-                     padding: 1px 5px; border-radius: 3px; display: none; }   /* the run number, on hover */
+  .run .thumb .num { position: absolute; top: 4px; left: 4px; height: 16px; line-height: 16px; font-size: 11px; font-weight: 600;
+                     color: #16161a; background: var(--accent); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover */
   .run:hover .thumb .num { display: block; }
   .run.on .thumb { border-color: var(--accent); }
-  .run .x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: 0;
-            background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 12px; line-height: 20px; padding: 0; }
+  .run .x { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; border: 0;   /* the number's height */
+            background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 9px; line-height: 16px; padding: 0; }
   .run .x:hover { background: var(--bad); color: #fff; }
   .run:hover .x { display: block; }
   .run.sel .thumb { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }
   .run.sel .thumb::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
             background: rgba(255,179,107,.25); color: #fff; font-size: 22px; font-weight: 700; }
   .run.sel .x { display: none; }
-  .sel-bar { display: flex; gap: 12px; text-transform: none; letter-spacing: 0; }
+  .sel-bar { display: inline-flex; gap: 12px; margin-left: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; }   /* right after the header */
+  .sel-bar:empty { display: none; }
   .sel-bar a { color: var(--accent-2); cursor: pointer; }
   .sel-bar a.del { color: var(--bad); }
   .sel-bar .ask { color: var(--text); }
@@ -473,7 +493,7 @@
   .run.doomed .x { display: none; }
   /* one-card remove: ✕ arms, ✓ (with "remove?") confirms; Esc / clicking elsewhere disarms */
   .run.armed .x { display: block; background: var(--bad); color: #fff; }
-  .run .xq { position: absolute; top: 6px; right: 28px; font-size: 10px; background: rgba(0,0,0,.8); color: #fff;
+  .run .xq { position: absolute; top: 5px; right: 24px; font-size: 10px; background: rgba(0,0,0,.8); color: #fff;
              padding: 1px 6px; border-radius: 3px; display: none; }
   .run.armed .xq { display: block; }
   .run b { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -639,7 +659,7 @@
     <div id="cnPane">
       <div class="preset-model" id="cnFetch" hidden></div>
       <div class="preset-model" id="cnNone" hidden>No ControlNets for this mode — the warp and DepthDiff keep the structure.</div>
-      <div class="seg cnsel" id="cnSel"><button data-c="off">off</button><button data-c="depth">depth</button><button data-c="both">depth + edge</button></div>
+      <div class="seg cnsel" id="cnSel"><button data-c="depth" title="Depth: holds the 3-D layout (click to switch on / off)">depth</button><button data-c="edge" title="Edges: holds the outlines — logos, line art, faces (click to switch on / off)">edge</button></div>
       <div class="slider" id="holdBox">
         <div class="slider-head"><b>Hold</b><span id="holdV"></span></div>
         <input type="range" id="hold" min="0" max="100" step="1">
@@ -723,6 +743,10 @@
         <div class="slider-head"><b title="Fades the whole Shape effect: 1 = full, lower = subtler (black areas are only partly held), 0 = as if there were no mask">Opacity</b><span id="shapeOpacityV"></span></div>
         <input type="range" id="shapeOpacity" min="0" max="1" step="0.05">
       </div>
+      <div class="slider" id="shapeIlluBox">
+        <div class="slider-head"><b title="Illusion (QR Code Monster ControlNet): the whole scene's light and dark bend into your mask, so the shape hides in the picture — squint to see it. 0 = off; about 0.8–1.3 reads clearly, lower is subtler. Works best with Background on">Illusion</b><span id="shapeIlluV"></span></div>
+        <input type="range" id="shapeIllu" min="0" max="2" step="0.05">
+      </div>
       <div class="slider" id="shapeBgBox">
         <div class="slider-head"><b title="Text / Image mode: off = black around the shape, a clean cut-out; on = a background around it: Text generates one from the prompt, Image keeps the picture; the shape stays the subject">Background</b></div>
         <div class="seg" id="shapeBg" style="grid-template-columns:1fr 1fr"><button data-v="0">off</button><button data-v="1">on</button></div>
@@ -752,6 +776,7 @@
     <div class="stage" id="stage">
       <div class="wordmark">DWARP</div>
     </div>
+    <div class="busy" id="busy" hidden><div class="busy-in"><div class="busy-word"><i>D</i><i>W</i><i>A</i><i>R</i><i>P</i></div></div></div>
     <pre class="logpanel" id="logPanel" hidden></pre>
     <div class="helppanel" id="helpPanel" hidden></div>
     <div class="helppanel" id="setPanel" hidden></div>
@@ -822,7 +847,7 @@
 </main>
 
 <footer>
-  <div class="label"><span>Runs <em id="runsHint">· ctrl/shift-click to select</em></span><span class="sel-bar" id="selBar"></span></div>
+  <div class="label"><span>Runs <em id="runsHint">· ctrl/shift-click to select</em><span class="sel-bar" id="selBar"></span></span></div>
   <div class="runs" id="runs"><span class="empty">No runs yet</span></div>
 </footer>
 
@@ -876,7 +901,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
-  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
+  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
@@ -1031,7 +1056,7 @@ function styleRefJob() {                     // the job's style-ref fields (empt
 // Shape: a latent mask picture / video (white = the subject) with blur. Repaint = white changes / black holds
 // frame to frame. The engine also has a depth-hint pull and a follow-the-blob move, off here. Text mode
 // also starts every frame black outside the mask (the engine's Nudge at full), so the subject stays contained
-var SHAPE_SLIDERS = ['shapeRepaint', 'shapeBlur', 'shapeOpacity'];
+var SHAPE_SLIDERS = ['shapeRepaint', 'shapeBlur', 'shapeOpacity', 'shapeIllu'];
 function renderShape() {
   const sh = state.shape, box = $('shapeSlot');
   const thumb = (f = 0) => sh.video ? `/api/video/thumbnail?${qs({ path: sh.path, frame: f })}` : `/api/image/file?${qs({ path: sh.path })}`;
@@ -1047,8 +1072,10 @@ function renderShape() {
     : `<div class="clip-empty" title="A mask: white where the subject goes (a colour video works too: its brightness is the mask). A video animates it: mask frame N steers render frame N. Click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload mask · image or video</div>`;
   $('shapeCtl').hidden = !sh;
   $('shapeBgBox').hidden = !state.t2v;                     // Video: the background is the clip
+  const il = modeCfg().illusion;                             // QR Code Monster: SD 1.5 / SDXL, when its file is there
+  $('shapeIlluBox').hidden = !il?.have;
   [...$('shapeBg').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.shapeBg ? 1 : 0)));
-  for (const k of SHAPE_SLIDERS) { $(k).value = state[k] ?? (k === 'shapeOpacity' ? 1 : 0); $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k] || 0}px` : (+(state[k] ?? 1)).toFixed(2); }
+  for (const k of SHAPE_SLIDERS) { $(k).value = state[k] ?? (k === 'shapeOpacity' ? 1 : 0); $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k] || 0}px` : k === 'shapeIllu' && !state[k] ? 'off' : (+(state[k] ?? 1)).toFixed(2); }
   if ($('shapeRange')) { bindShapeRange(); paintShapeRange(); }
   paintLevels();
 }
@@ -1194,7 +1221,7 @@ $('shapeSlot').addEventListener('drop', e => {
   uploadShape(e.dataTransfer?.files?.[0]);
 });
 for (const k of SHAPE_SLIDERS) {
-  $(k).oninput = e => { state[k] = +e.target.value; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k]}px` : state[k].toFixed(2); save(); if (k === 'shapeBlur' || k === 'shapeOpacity') shapeLook(); };
+  $(k).oninput = e => { state[k] = +e.target.value; $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k]}px` : k === 'shapeIllu' && !state[k] ? 'off' : state[k].toFixed(2); save(); if (k === 'shapeOpacity') shapeFilters(); if (k === 'shapeBlur' || k === 'shapeOpacity') shapeLook(); };   // opacity: thumbnails too
 }
 function shapeBg() { return state.t2v && state.shapeBg ? 1 : 0; }   // Text / Image mode
 $('shapeBg').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.shapeBg = +v; renderShape(); paintSums(); save(); };
@@ -1204,7 +1231,8 @@ function shapeJob(kind) {                        // the job's Shape fields (none
   const [inF, outF] = sh.video ? shapeInOut() : [0, -1], lv = state.shapeLv || [0, 0.5, 255];
   return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : inF, shape_end: kind === 'frame' ? -1 : outF,
            shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
-           shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0, shape_opacity: +(state.shapeOpacity ?? 1) };
+           shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0, shape_opacity: +(state.shapeOpacity ?? 1),
+           ...(modeCfg().illusion?.have && state.shapeIllu > 0 ? { shape_illusion: +state.shapeIllu, shape_qr_cn: modeCfg().illusion.path } : {}) };
 }
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
@@ -1239,12 +1267,12 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · illusion ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
-  set('guidance', [nets && cn !== 'off' && `ControlNet ${cn === 'both' ? 'depth + edge' : 'depth'}`,
+  set('guidance', [nets && cn !== 'off' && `ControlNet ${cn === 'both' ? 'depth + edge' : cn}`,
                    state.dd.src !== 'off' && (!state.t2v || state.i2v) && `DepthDiff ${state.dd.src}`].filter(Boolean).join(' · '));
 }
 ['input', 'change', 'click'].forEach(ev => document.querySelector('aside').addEventListener(ev, () => requestAnimationFrame(paintSums)));
@@ -1742,7 +1770,7 @@ function renderControls() {
   $('cfg').value = state.cfg; $('cfgV').textContent = (+state.cfg).toFixed(1);
   // A mode with a single ControlNet has no "depth + edge".
   const nets = Object.keys(modeCfg().controlnets || {}).length;
-  if (nets < 2 && state.cn[state.mode] === 'both') state.cn[state.mode] = 'depth';
+  if (nets < 2 && ['both', 'edge'].includes(state.cn[state.mode])) state.cn[state.mode] = 'depth';
   if (!nets) state.cn[state.mode] = 'off';
   $('cnNone').hidden = nets > 0; $('cnSel').hidden = !nets;
   // nets that download on first use (DWARP installs without them): say so while they're missing
@@ -1750,9 +1778,10 @@ function renderControls() {
   $('cnFetch').hidden = !toFetch.length || (state.cn[state.mode] || 'both') === 'off';
   $('cnFetch').textContent = `${toFetch.length === 1 ? 'This ControlNet downloads' : 'These ControlNets download'} on the first render that uses ${toFetch.length === 1 ? 'it' : 'them'} (~${(toFetch.length * 0.73).toFixed(1)} GB, once).`;
   const cn = state.cn[state.mode] || 'both';
-  $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 2 : 3}, 1fr)`;
-  $('cnSel').querySelector('[data-c="both"]').hidden = nets < 2;
-  [...$('cnSel').children].forEach(b => b.classList.toggle('on', b.dataset.c === cn));
+  // two toggles: depth and edge each on / off (both off = no ControlNet); one-net modes have depth only
+  $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 1 : 2}, 1fr)`;
+  $('cnSel').querySelector('[data-c="edge"]').hidden = nets < 2;
+  [...$('cnSel').children].forEach(b => b.classList.toggle('on', cn === 'both' || cn === b.dataset.c));
   $('holdBox').classList.toggle('off', cn === 'off');
   const dd = state.dd;
   [...$('gTabs').children].forEach(a => {
@@ -1846,7 +1875,14 @@ $('srcMode').onclick = e => {
 $('edgePad').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.edgePad = +v; renderControls(); save(); };
 $('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; state.fresh = f === 'fresh'; renderControls(); save(); };
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
-$('cnSel').onclick = e => { const c = e.target.dataset.c; if (!c) return; state.cn[state.mode] = c; renderControls(); save(); };
+$('cnSel').onclick = e => {
+  const c = e.target.dataset.c; if (!c) return;
+  const cur = state.cn[state.mode] || 'both';
+  const on = { depth: cur === 'both' || cur === 'depth', edge: cur === 'both' || cur === 'edge' };
+  on[c] = !on[c];                          // flip the one clicked
+  state.cn[state.mode] = on.depth && on.edge ? 'both' : on.depth ? 'depth' : on.edge ? 'edge' : 'off';
+  renderControls(); save();
+};
 $('hold').oninput = e => { state.hold = +e.target.value; $('holdV').textContent = state.hold; save(); };
 $('gTabs').onclick = e => { const t = e.target.dataset.t; if (!t) return; state.gtab = t; renderControls(); setControlTabs(); save(); };
 $('ddSel').onclick = e => { const d = e.target.dataset.d; if (!d) return; state.dd.src = d; renderControls(); save(); };
@@ -2057,7 +2093,7 @@ async function buildConfig(kind) {
   // ControlNet choice: off = none, depth = the depth net only, both = every net of the mode.
   const cnSel = state.cn[state.mode] || 'both';
   const controlnets = Object.values(m.controlnets || {}).filter(c =>
-    cnSel === 'both' || (cnSel === 'depth' && c.kind === 'depth')).map(c => ({
+    cnSel === 'both' || (cnSel === 'depth' && c.kind === 'depth') || (cnSel === 'edge' && c.kind !== 'depth')).map(c => ({
     kind: c.kind, path: c.path, start: c.start, end: c.end, repo: c.repo || '',
     weight: +(c.hold[0] + (c.hold[1] - c.hold[0]) * h).toFixed(3),
   }));
@@ -2484,7 +2520,7 @@ async function startJob(kind) {
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
-  setStatus(`${name} · starting…`, 'live');
+  setStatus(`${name} · starting…`, 'live'); setBusy(true, 'starting…');
   let built;
   try {
     built = kind === 'refine' ? refineConfig() : await buildConfig(kind);
@@ -2515,7 +2551,10 @@ async function startJob(kind) {
       labelled = true;
       viewRun = snap.run_id; refreshRuns();
     }
+    if (!snap.frame && !['completed', 'cancelled', 'failed'].includes(snap.state))
+      setBusy(true, lastUseful() || snap.message || snap.stage || 'working…');
     if (snap.frame !== prevFrame && snap.frame > 0) {
+      setBusy(false);
       times.push(Date.now());
       // the stage follows the render only while it's the run on show: picking another run browses freely
       if (snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
@@ -2554,7 +2593,9 @@ async function startJob(kind) {
   };
   es.onerror = () => { /* EventSource retries on its own; state arrives on reconnect */ };
 }
-function setButtons(busy) { $('frameBtn').disabled = $('testBtn').disabled = $('goBtn').disabled = busy; }
+function setButtons(busy) { $('frameBtn').disabled = $('testBtn').disabled = $('goBtn').disabled = busy; if (!busy) setBusy(false); }
+// The stage veil: on while a job works with nothing new to show (starting, loading, the first frame); frames lift it
+function setBusy(on) { $('busy').hidden = !on; }   // what it's doing stays in the status line
 $('frameBtn').onclick = () => startJob('frame');
 $('testBtn').onclick = () => startJob('test');
 $('goBtn').onclick = () => startJob('render');
@@ -2709,7 +2750,7 @@ function setControlTabs(layers = runLayers) {
   const noRun = !viewRun, dd = state.gtab === 'dd' && (!state.t2v || state.i2v);   // Text -> Video: a 3D run's depth; Image -> Video: the live Diff
   const hasSrc = state.t2v ? state.i2v && !!state.image : !!state.clip;
   const entries = dd ? (hasSrc && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
-                     : (noRun ? [] : layers.filter(l => (l.id !== 'control_diff' || state.t2v) && l.id !== 'control_shape').map(l => [l.id, l.label]));   // no live Diff without a clip
+                     : (noRun ? [] : layers.filter(l => (l.id !== 'control_diff' || state.t2v) && l.id !== 'control_shape' && l.id !== 'control_qr').map(l => [l.id, l.label]));   // no live Diff without a clip
   if (state.shape) entries.push(['shape', 'Shape']);
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
@@ -3246,6 +3287,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
     const es = new EventSource(`/api/jobs/${running.id}/events`);
     es.onmessage = ev => {
       const snap = JSON.parse(ev.data), prev = job?.frame; job = snap; syncLive(snap); setLog(snap.logs || []);
+      setBusy(!snap.frame && !['completed', 'cancelled', 'failed'].includes(snap.state), lastUseful() || snap.message || 'working…');
       $('bar').style.width = (snap.progress || 0) + '%';
       if (snap.frame !== prev && snap.frame > 0 && snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
       if (['completed', 'cancelled', 'failed'].includes(snap.state)) {

@@ -53,7 +53,8 @@ def settings() -> dict:
             c["path"] = next((q for q in paths if os.path.isfile(q)), str(HERE / "models" / c["dir"] / c.get("save_as", c["file"][0])))
             c["have"] = os.path.isfile(c["path"])
         refine_cn = [mode["refine"]["controlnet"]] if mode.get("refine", {}).get("controlnet") else []
-        for c in list(mode.get("controlnets", {}).values()) + refine_cn:
+        illusion = [mode["illusion"]] if mode.get("illusion") else []   # QR Code Monster, for the Shape card
+        for c in list(mode.get("controlnets", {}).values()) + refine_cn + illusion:
             names = c["file"] if isinstance(c["file"], list) else [c["file"]]
             # DWARP's own models/controlnet first (e.g. the SD 2.1 nets), then the models folder's
             paths = [str(HERE / "models" / "controlnet" / n) for n in names] + [f"{root}/controlnet/{n}" for n in names]

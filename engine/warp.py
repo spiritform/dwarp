@@ -136,6 +136,8 @@ class RenderJob:
     shape_mid: float = 0.5
     shape_blur: int = 0                  # px of softening on the mask's edges (0 = hard, as drawn)
     shape_opacity: float = 1.0           # fades the whole effect: black areas become grey (partly held); 0 = no mask
+    shape_illusion: float = 0.0          # QR Code Monster at this weight: the scene's light and dark bend into the
+    shape_qr_cn: str = ""                # mask (the "hidden shape" / illusion look); its file. 0 = off
     shape_cn: str = ""                   # the mode's depth ControlNet, for Pull
     shape_cn_repo: str = ""              # where it downloads from on first use, when missing
     shape_pull: float = 0.0              # the mask as a depth hint at this weight: something near where it's white
@@ -647,6 +649,18 @@ def _scaled(layers, k: float):
     return layers * k
 
 
+def cn_config(job: RenderJob, c: ControlSpec) -> dict:
+    """The diffusers layout a single-file ControlNet needs, when it can't be guessed from the file.
+    SD 2.1 nets: diffusers would guess SD 1.5; thibaud's diffusers repo carries the 2.1 layout (same for all
+    his nets). QR Code Monster: its header sends diffusers to a config that doesn't exist; it's a standard
+    SD 1.5 / SDXL ControlNet, so a standard layout of that family."""
+    if job.family == "sd2":
+        return {"config": "thibaud/controlnet-sd21-depth-diffusers"}
+    if c.kind == "qr":
+        return {"config": "diffusers/controlnet-canny-sdxl-1.0" if job.family == "sdxl" else "lllyasviel/control_v11p_sd15_canny"}
+    return {}
+
+
 def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     from diffusers import ControlNetModel, DPMSolverMultistepScheduler
 
@@ -656,9 +670,7 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     # access violation (seen with 7 GB SDXL files on a busy HDD); a plain read into RAM doesn't.
     nets = [load_union(paths[0], dtype)] if union else \
         [ControlNetModel.from_single_file(c.path, torch_dtype=dtype, disable_mmap=True,
-                                          # SD 2.1 nets: diffusers would guess an SD 1.5 layout; thibaud's
-                                          # diffusers repo carries the 2.1 one (same for all his nets)
-                                          **({"config": "thibaud/controlnet-sd21-depth-diffusers"} if job.family == "sd2" else {}))
+                                          **cn_config(job, c))
          for c in job.controlnets]
     import diffusers
     # No ControlNets = plain img2img: lighter and faster, structure comes from the flow warp alone.
@@ -1015,6 +1027,14 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             elif job.shape_cn:
                 job.controlnets = [*job.controlnets, ControlSpec("shape", job.shape_cn, job.shape_pull * job.shape_opacity, repo=job.shape_cn_repo)]
                 shape_hint = "own"
+        if job.shape_illusion > 0 and job.shape_qr_cn:
+            if job.family == "sdxl" and any(is_union(c.path) for c in job.controlnets):
+                # the Union net can't share a pipeline with a plain one: illusion takes the ControlNet slot
+                job.controlnets = [c for c in job.controlnets if not is_union(c.path)]
+                shape_hint = None if shape_hint in ("own", "merge") else shape_hint
+                log("SDXL: illusion replaces the Union ControlNets (depth / edge / pull) for this render")
+            job.controlnets = [*job.controlnets, ControlSpec("qr", job.shape_qr_cn, job.shape_illusion, end=0.85)]   # released for the last steps: details blend it in
+            (out / "control" / "qr").mkdir(parents=True, exist_ok=True)
         log(f"shape {Path(job.shape).name}: {len(shapes)} frame{'s' * (len(shapes) > 1)}, pull {job.shape_pull}"
             f"{' (joins the depth hint)' if shape_hint == 'merge' else ''}, repaint {job.shape_repaint}, follow {job.shape_follow}, nudge {job.shape_nudge}")
     t2v = job.t2v_frames > 0
@@ -1176,8 +1196,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if job.shape_nudge > 0:             # a bright subject on dark: the start already has the layout
                 init = init * (1 - job.shape_nudge * (1 - smask))
         blank = t2v and i == 0 and not job.init_image     # t2v frame 1: from the prompt alone (grey start)
-        hints = [Image.fromarray((shint[0, 0].cpu().numpy() * 255).astype(np.uint8)).convert("RGB") if c.kind == "shape"
-                 else ann(c.kind, src_np) for c in job.controlnets]
+        def shape_img(k):                       # the depth pull reads the mask as is; illusion as 20-80% greys:
+            m = shint if k == "shape" else 0.2 + 0.6 * shint   # pure white / black turn into flat areas, greys let
+            return Image.fromarray((m[0, 0].cpu().numpy() * 255).astype(np.uint8)).convert("RGB")   # the scene form
+        hints = [shape_img(c.kind) if c.kind in ("shape", "qr") else ann(c.kind, src_np) for c in job.controlnets]
         if shape_hint == "merge":
             hints = [Image.fromarray(np.maximum(np.asarray(h), (shint[0, 0].cpu().numpy() * 255 * job.shape_pull * job.shape_opacity).astype(np.uint8)[..., None]))
                      if c.kind == "depth" else h for c, h in zip(job.controlnets, hints)]

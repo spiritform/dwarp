@@ -64,6 +64,15 @@
           "repo_file": "models/image_encoder/model.safetensors",
           "save_as": "image_encoder_vit-h.safetensors"
         }
+      },
+      "illusion": {
+        "kind": "qr",
+        "start": 0.0,
+        "end": 1.0,
+        "file": [
+          "control_v1p_sd15_qrcode_monster_v2.safetensors",
+          "control_v1p_sd15_qrcode_monster.safetensors"
+        ]
       }
     },
     "sd2": {
@@ -180,6 +189,14 @@
           "repo_file": "models/image_encoder/model.safetensors",
           "save_as": "image_encoder_vit-h.safetensors"
         }
+      },
+      "illusion": {
+        "kind": "qr",
+        "start": 0.0,
+        "end": 1.0,
+        "file": [
+          "control_v1p_sdxl_qrcode_monster.safetensors"
+        ]
       }
     }
   },

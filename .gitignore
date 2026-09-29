@@ -8,3 +8,4 @@ models/*
 server_engine.log
 config.json
 tools/
+logo/
