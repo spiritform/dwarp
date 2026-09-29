@@ -89,8 +89,10 @@
                 border-radius: var(--radius); }
   .clip-empty:hover { background: #24232a; color: var(--text); }
   .clip-empty small { display: block; color: var(--faint); margin-top: 4px; }
-  /* Image mode's empty slot: the loaded card's height (10 + 56 + 10), so dropping a picture doesn't shift the panel */
-  .clip-empty.pic-empty { height: 76px; padding: 0 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
+  /* the Video and Image drop slots: one size and type, whichever mode */
+  #clipBox > .clip-empty { height: 90px; padding: 0 12px; box-sizing: border-box; display: flex; flex-direction: column;
+                           justify-content: center; font-size: 13px; }
+  #clipBox > .clip-empty small { font-size: 11px; }
   .clip-top { display: flex; gap: 10px; padding: 10px; align-items: center; }
   .clip-thumb { position: relative; flex: none; width: 56px; height: 56px; border: 0; padding: 0; border-radius: 6px;
                 overflow: hidden; background: #000; cursor: pointer; }
@@ -295,7 +297,7 @@
 
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 0; }
-  /* Single Frame / Preview / Render live in the bar under the transport, so they never scroll out of view */
+  /* Frame / Preview / Render live in the bar under the transport, so they never scroll out of view */
   .stage-foot .actions { display: flex; gap: 8px; margin-right: 8px; padding-right: 14px; }
   .stage-foot .btn { padding: 6px 14px; font-size: 12px; border-radius: 7px; line-height: normal; }
   .btn.test { background: var(--panel-2); color: var(--text); }
@@ -431,6 +433,9 @@
               background: rgba(14,14,16,.95); font: 11px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
               color: #b9b7bf; white-space: pre-wrap; word-break: break-all; }
   .logpanel .dim { color: var(--faint); }
+  /* the log's own header, like Help / Settings / Runs: a title and a close, pinned while it scrolls */
+  .logpanel .loghead { position: sticky; top: -16px; margin: -16px -18px 10px; padding: 12px 18px; display: flex; align-items: center;
+                       justify-content: space-between; background: rgba(14,14,16,.98); font: 600 15px/1 ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: var(--text); }
   /* help: a guide over the stage, like the log */
   .helppanel { position: absolute; inset: 0; z-index: 5; padding: 22px 26px; overflow: auto; background: rgba(14,14,16,.97);
                font-size: 12.5px; line-height: 1.55; color: #c9c7cf; }
@@ -901,7 +906,7 @@
   <details class="err" id="err" hidden><summary id="errSummary"></summary><pre id="errLog"></pre></details>
   <div class="stage-foot">
     <div class="actions">
-      <button class="btn test" id="frameBtn">Single Frame</button>
+      <button class="btn test" id="frameBtn">Frame</button>
       <button class="btn test" id="testBtn">Preview</button>
       <button class="btn go" id="goBtn">Render</button>
       <a id="liveBtn" title="Live: starts a Render (or joins the running one); type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
@@ -951,7 +956,7 @@ function intro() {
     [q('#srcMode > button'), fade, 80, 90],                                 // Video · Image · Text
     [rows, { translateY: [10, 0], duration: 520, easing: 'easeOutCubic' }, 200, 40],   // panel rows rise in, top to bottom, with the film strip's motion
     [q('.stage-wrap'), {}, 150, 0],
-    [q('.stage-foot .actions > *'), fade, 360, 90],                        // Single Frame · Preview · Render · Live
+    [q('.stage-foot .actions > *'), fade, 360, 90],                        // Frame · Preview · Render · Live
     [q('footer .label'), {}, 440, 0],
     [q('footer .run'), { translateX: [-10, 0] }, 480, 40],
     [q('.stage .wordmark'), { duration: 1100, easing: 'easeInOutSine' }, 1400, 0],   // the big wordmark, last
@@ -1281,7 +1286,7 @@ async function setShape(res, video) {
 // the Shape tab previews the panel's mask, run on show or not: its frames on the transport, invert + blur live
 var shapeFrame = 0, shapePrevFoot = '';
 function shapeMode() { return !!state.shape && view === 'shape'; }
-// the run on show is a Single Frame at a spot in the panel's mask video: that mask frame, else null
+// the run on show is a Frame at a spot in the panel's mask video: that mask frame, else null
 function singleShape() {
   const t = runTiming;
   return viewRun && frames.length === 1 && t?.shape === state.shape?.path && state.shape?.video ? t.shape_start || 0 : null;
@@ -2015,7 +2020,7 @@ function picFrameUrl(kind) {
   return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind })}`;
 }
 function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
-function toSource() {                      // e.g. scrubbing away from a Single Frame result
+function toSource() {                      // e.g. scrubbing away from a Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
 function setupTransport() {
@@ -2024,7 +2029,7 @@ function setupTransport() {
     $('scrubRange').max = (state.shape.frames || 1) - 1; $('scrubRange').value = shapeFrame;
     return;
   }
-  if (singleShape() != null) {             // a Single Frame of the mask: the transport stays on the mask's frames
+  if (singleShape() != null) {             // a Frame of the mask: the transport stays on the mask's frames
     $('scrub').hidden = false;
     $('scrubRange').max = (state.shape.frames || 1) - 1; $('scrubRange').value = shapeFrame;
     return;
@@ -2052,7 +2057,7 @@ function showClip() {
   ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
-  updateEst();                             // Single Frame's tooltip names the frame it will render
+  updateEst();                             // Frame's tooltip names the frame it will render
 }
 function drawMask() {
   if (maskQueued) return;
@@ -2173,7 +2178,7 @@ function withLook(text) {
 }
 async function buildConfig(kind) {
   const p = currentPreset(), m = modeCfg();
-  // kinds: frame (Single Frame) | test (Preview) | render. Frames 2s / 3s draw every 2nd / 3rd frame and hold it
+  // kinds: frame (Frame) | test (Preview) | render. Frames 2s / 3s draw every 2nd / 3rd frame and hold it
   const on = state.onN || 1;
   const nth = kind === 'frame' ? 1 : kind === 'test' ? Math.max(TEST.nth, on) : on;
   const hold = kind !== 'frame' && on > 1 ? nth : 1;
@@ -2187,7 +2192,7 @@ async function buildConfig(kind) {
   } else {
     const probe = await api(`/api/video/probe?${qs({ path: state.clip.path, max_size: size, extract_nth_frame: nth })}`);
     const [fa, fb] = rangeFrames();
-    // Single Frame renders the frame under the playhead (with the prompt keyframe in effect there): the
+    // Frame renders the frame under the playhead (with the prompt keyframe in effect there): the
     // clip's in Source / Diff, the run frame's source frame in Output / Split; else the range's first frame
     const here = kind === 'frame' ? playheadFrame() : null;
     start = here ?? Math.floor(fa / nth);
@@ -2237,7 +2242,7 @@ async function buildConfig(kind) {
     ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? state.image.path : '', ...camJob() } : {}),
     ...shapeJob(kind),
   };
-  // Single Frame with a keyframe selected: that keyframe's prompt, whatever the frame
+  // Frame with a keyframe selected: that keyframe's prompt, whatever the frame
   const sel = kind === 'frame' && state.keySel >= 0 ? state.keys[state.keySel] : null;
   if (sel) { job.prompt = withLook(sel.prompt); job.prompt_keys = []; }
   const fps = (t2v ? T2V_FPS : (state.clip.source.fps || 24)) / nth;
@@ -2259,12 +2264,12 @@ function setLog(lines) {
 function paintLog() {
   const el = $('logPanel'), atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  el.innerHTML = logLines.length ? logLines.slice(-400).map(l => {
+  el.innerHTML = `<div class="loghead">Log<button class="logbtn close" id="logClose" title="Close (L)">\u2715</button></div>` + (logLines.length ? logLines.slice(-400).map(l => {
     const cls = /error|traceback|failed|exception/i.test(l) ? 'bad'
       : /loaded|reusing|extracted|assembled|live prompts|(style|denoise) [\d.]+ on frame/i.test(l) ? 'hot'
       : /^\s*(SD gradient|Warped frame|CN hint)/.test(l) ? 'dim' : '';
     return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
-  }).join('\n') : '<span class="dim">no log yet — start a Single Frame, Preview or Render</span>';
+  }).join('\n') : '<span class="dim">no log yet — start a Frame, Preview or Render</span>');
   if (atBottom || !el.dataset.seen) { el.scrollTop = el.scrollHeight; el.dataset.seen = 1; }
 }
 // The latest line worth showing in the status bar while nothing has rendered yet.
@@ -2281,6 +2286,7 @@ function toggleLog(open = $('logPanel').hidden) {
   if (open) { delete $('logPanel').dataset.seen; paintLog(); }
 }
 $('logBtn').onclick = () => toggleLog();
+$('logPanel').addEventListener('click', e => { if (e.target.id === 'logClose') toggleLog(false); });
 
 // ---------------------------------------------------------------- help
 // A short guide, one topic at a time.
@@ -2337,24 +2343,28 @@ const HELP = {
       <li><b>Trim</b> with the handles on the filmstrip — see <i>Timeline</i>.</li>
       <li>Pick a <b>mode</b>, a <b>look</b> (Oil paint, Anime, … — it adds style words and picks an SD 1.5 model;
           <b>Raw</b> adds nothing) and write a <b>prompt</b> for what's in the shot.</li>
-      <li><b>Single Frame</b> renders the frame under the playhead — the fast way to dial in Denoise and guidance.</li>
+      <li><b>Frame</b> renders the frame under the playhead — the fast way to dial in Denoise and guidance.</li>
       <li><b>Preview</b> renders 5 frames (every 2nd) at a small size to check it holds together over time. It's shown
           as big as a full render, so it looks softer — that's the smaller size, not the settings.</li>
       <li><b>Render</b> does the trimmed range at full size. Finished runs land in the strip at the bottom.</li>
     </ol>
     <h4>The tabs over the image</h4>
     <table>
-      <tr><td><b>Source</b></td><td>The clip itself — scrub or play it anywhere, with or without a run. Single Frame
+      <tr><td><b>Source</b></td><td>The clip itself — scrub or play it anywhere, with or without a run. Frame
           renders the frame shown here.</td></tr>
       <tr><td><b>Diff</b></td><td>With DepthDiff on: the repaint map, live from the sliders (white repaints, black keeps
           the source), on the clip frame under the playhead.</td></tr>
       <tr><td><b>Shape</b></td><td>With a Shape mask loaded: the mask as the engine reads it (levels, invert, blur,
-          opacity), scrubbable. Single Frame renders at the mask frame shown, and its result stays on that frame.</td></tr>
-      <tr><td><b>Depth · Edge</b></td><td>With ControlNet on and a run selected: what each ControlNet saw on every frame.</td></tr>
+          opacity), scrubbable. Frame renders at the mask frame shown, and its result stays on that frame. With
+          <b>QR Code Monster</b> turned up, the same mask also steers the picture itself: its shapes show up in the image
+          (about 1.4–1.7 is the sweet spot).</td></tr>
+      <tr><td><b>Depth</b></td><td>With ControlNet depth on and a run selected: the depth map it followed on every frame
+          (near is bright).</td></tr>
+      <tr><td><b>Edge</b></td><td>With ControlNet edge on and a run selected: the soft outlines it followed on every frame.</td></tr>
       <tr><td><b>Output</b></td><td>The selected run's frames. Shown when a run finishes.</td></tr>
       <tr><td><b>Split</b></td><td>Source and output in one frame — drag the divider to compare.</td></tr>
     </table>
-    <p>Which of Diff or Depth · Edge shows follows the ControlNet / DepthDiff tab in the panel. Output and Split need a
+    <p>Which of Diff or Depth / Edge shows follows the ControlNet / DepthDiff tab in the panel. Output and Split need a
        run: click one in the strip at the bottom. <b>Space</b> plays, <b>← →</b> step a frame, and the ↓ button on
        the image saves whatever tab is shown. <b>log</b> shows the renderer's output.</p>`],
 
@@ -2471,7 +2481,7 @@ const HELP = {
     </table>
     <h4>Seeing it</h4>
     <p>The <b>Shape</b> tab above the image previews the mask with all of the above applied; scrub or play it. Park it
-       on a frame and <b>Single Frame</b> renders there — the result stays on that frame, so you can flip between Shape
+       on a frame and <b>Frame</b> renders there — the result stays on that frame, so you can flip between Shape
        and Output.</p>`],
   timeline: ['Timeline', () => `
     <h3>Trimming and prompt keyframes</h3>
@@ -2479,7 +2489,7 @@ const HELP = {
     <p>Drag the handles on the filmstrip to set the range to render; the numbers under it show the start, length and
        end. While you drag, the stage shows the frame under the handle (Source view), so you see where the render starts
        and ends. Drag <b>inside</b> the selection to slide it along the clip, keeping its length. <b>Double-click</b> the strip to
-       go back to the full clip. Preview and Render use this range; Single Frame
+       go back to the full clip. Preview and Render use this range; Frame
        uses the frame under the playhead.</p>
     <h4>FPS: on ones, twos, threes</h4>
     <p>Hand-drawn animation is often shot <b>on twos</b>: a new drawing every 2nd frame, each held for two. The
@@ -2494,7 +2504,7 @@ const HELP = {
       <li>From each keyframe the video <b>morphs into its prompt over Blend frames</b> — 0 is a hard cut, 12–30 a
           smooth change. The look's style words are added to every keyframe.</li>
       <li><b>delete</b> (next to the keyframe's blend, under the box) removes the selected keyframe.</li>
-      <li>With a keyframe selected, <b>Single Frame</b> renders with its prompt — a quick check of each one. Its time
+      <li>With a keyframe selected, <b>Frame</b> renders with its prompt — a quick check of each one. Its time
           shows next to its name (hover for the frame).</li>
       <li>If the timeline gets shorter (a shorter duration or clip), keyframes past the end wait at the end, dimmed,
           until there's room again.</li>
@@ -2509,7 +2519,7 @@ const HELP = {
   finish: ['Finishing', () => `
     <h3>Runs, seeds and Enhance</h3>
     <h4>Runs</h4>
-    <p>Every Single Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
+    <p>Every Frame, Preview and Render is a run in the strip at the bottom. Click one to view it;
        <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed and clip back in the panel — tweak from there.
        Ctrl / Shift-click selects several. <b>✕ / remove</b> only takes runs off the list — their frames and mp4 stay
        in the <b>renders</b> folder (delete a hidden run's <b>.hidden</b> file to bring it back).</p>
@@ -2623,7 +2633,7 @@ $('setBtn').onclick = () => toggleSettings();
 var RS = { list: [], sizes: {}, done: false, kind: 'all', sel: new Set(), last: null, ask: false, timer: 0, note: '' };
 const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
 const rsBytes = ids => ids.reduce((t, id) => t + (RS.sizes[id] || 0), 0);
-// every run, newest first (hidden ones tagged), or one kind: Single Frames, Previews, Renders (refines count as renders)
+// every run, newest first (hidden ones tagged), or one kind: Frames, Previews, Renders (refines count as renders)
 const rsKind = r => r.kind === 'refine' ? 'render' : r.kind;
 const rsShown = () => RS.kind === 'all' ? RS.list : RS.list.filter(r => rsKind(r) === RS.kind);
 function toggleRunsPanel(open = $('runsPanel').hidden) {
@@ -2654,7 +2664,7 @@ async function pollSizes(recount) {
 function paintRunsPanel(intro) {
   $('runsPanel').innerHTML = `<div class="rs-head">
       <h3>Runs</h3><div class="rs-info" id="rsInfo"></div>
-      <select id="rsKind">${Object.entries({ all: 'All runs', frame: 'Single Frames', test: 'Previews', render: 'Renders' }).map(([k, label]) =>
+      <select id="rsKind">${Object.entries({ all: 'All runs', frame: 'Frames', test: 'Previews', render: 'Renders' }).map(([k, label]) =>
         `<option value="${k}" ${RS.kind === k ? 'selected' : ''}>${label}</option>`).join('')}</select>
       <button class="logbtn close" id="rsClose" title="Close (Esc)">\u2715</button>
     </div>
@@ -2702,7 +2712,7 @@ function paintRsGrid(intro) {
     return `<div class="rs-card ${r.id === viewRun ? 'on' : ''} ${r.hidden ? 'hid' : ''} ${RS.sel.has(r.id) ? 'sel' : ''} ${RS.ask && RS.sel.has(r.id) ? 'doomed' : ''}" data-id="${r.id}"
       title="Double-click to open it on the stage${r.hidden ? ' (it stays out of the strip)' : ''}">
       <div class="thumb">${r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}" alt="" loading="lazy">` : ''}${r.hidden ? '<span class="tag">hidden</span>' : ''}</div>
-      <b>${r.label || 'run ' + r.id}</b>
+      <b>${runLabel(r.label, r.id)}</b>
       <span>#${r.id} \u00b7 ${r.frames}f \u00b7 ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
       <span class="sz">${b != null ? fmtBytes(b) : '\u2026'}</span></div>`;
   }).join('') : '<p class="rs-empty">Nothing here.</p>';
@@ -2730,7 +2740,7 @@ $('runsPanel').addEventListener('dblclick', e => {
   const card = e.target.closest('.rs-card'); if (!card) return;
   const r = RS.list.find(x => x.id === card.dataset.id);
   RS.sel.delete(card.dataset.id);
-  if (r) { toggleRunsPanel(false); showRun(r.id); }        // hidden runs too: viewing one doesn't put it back in the strip
+  if (r) { toggleRunsPanel(false); toggleLog(false); showRun(r.id); }   // the run itself, not the log over it        // hidden runs too: viewing one doesn't put it back in the strip
 });
 addEventListener('keydown', e => {
   if ($('runsPanel').hidden) return;
@@ -2777,12 +2787,12 @@ $('helpBtn').onclick = () => toggleHelp();
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('helpPanel').hidden) toggleHelp(false); });
 addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-  if (e.key === 'l' || e.key === 'L') toggleLog();
+  if ((e.key === 'l' || e.key === 'L') && $('runsPanel').hidden) toggleLog();
 });
 
 // ---------------------------------------------------------------- jobs
 async function startJob(kind) {
-  const name = { frame: 'single frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
+  const name = { frame: 'frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
   if (kind !== 'refine' && !state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
   if (kind !== 'refine' && state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
@@ -2916,7 +2926,7 @@ async function showRun(runId, { follow = false } = {}) {
   setupTransport();
   if (!(follow && playing)) paintFrame();
   const r = runsCache.find(r => r.id === runId);
-  setFoot(`${r?.label || RS.list.find(x => x.id === runId)?.label || 'run ' + runId} · ${frames.length} frames`);   // a hidden run: its label from the Runs section
+  setFoot(`${runLabel(r?.label || RS.list.find(x => x.id === runId)?.label, runId)} · ${frames.length} frames`);   // a hidden run: its label from the Runs section
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
   $('mp4Link').href = `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
@@ -3032,7 +3042,7 @@ function setControlTabs(layers = runLayers) {
   for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
     $('view').querySelector('[data-v="src"]').insertAdjacentHTML('afterend', `<button data-v="${id}" data-ctl title="${id === 'mask'
       ? 'The DepthDiff mask from the current sliders, live: white repaints, black keeps the source' : id === 'shape'
-      ? 'The Shape mask with invert and blur, live. Scrub it; Single Frame renders at the frame shown' : state.t2v ? 'The depth the 3D camera moved through' : 'What the ControlNet saw'}">${label}</button>`);
+      ? 'The Shape mask with invert and blur, live. Scrub it; Frame renders at the frame shown' : state.t2v ? 'The depth the 3D camera moved through' : 'What the ControlNet saw'}">${label}</button>`);
   $('view').querySelector('[data-v="out"]').hidden = noRun;
   $('view').querySelector('[data-v="split"]').hidden = noRun;
   if (((view.startsWith('control_') || view === 'mask' || view === 'shape') && !controlTabs[view]) || (noRun && (view === 'out' || view === 'split')))
@@ -3086,10 +3096,10 @@ function paintFrame() {
 }
 $('scrubRange').oninput = e => {
   if (shapeMode()) { stopPlay(); shapeFrame = +e.target.value; paintFrame(); return; }
-  if (singleShape() != null) {             // scrubbing away from a Single Frame result: back to the mask
+  if (singleShape() != null) {             // scrubbing away from a Frame result: back to the mask
     shapeFrame = +e.target.value; view = 'shape'; setControlTabs(); return showShape();
   }
-  if (oneFrameRun()) toSource();           // scrubbing away from a Single Frame result: back to Source
+  if (oneFrameRun()) toSource();           // scrubbing away from a Frame result: back to Source
   if (clipMode()) { if (playing) stopPlay(); clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
@@ -3223,6 +3233,8 @@ $('loadRun').onclick = async () => {
 };
 
 // ---------------------------------------------------------------- runs strip
+// A run's name as shown. Older runs were labelled "single frame": shown as "frame", like new ones.
+var runLabel = (label, id) => (label || 'run ' + id).replace(/ · single frame$/, ' · frame');
 async function refreshRuns() {
   let res;
   const box = $('runs'), first = box.classList.contains('loading');
@@ -3232,7 +3244,7 @@ async function refreshRuns() {
   if (first) { box.classList.remove('loading'); $('runsHint').textContent = '· ctrl/shift-click to select'; }
   if (!runsCache.length) {                  // nothing yet: the strip keeps its shape, empty cells
     box.innerHTML = '<div class="run ghost idle"><div class="thumb"></div></div>'.repeat(8);
-    $('runsHint').textContent = '· none yet — hit Single Frame or Preview'; return;
+    $('runsHint').textContent = '· none yet — hit Frame or Preview'; return;
   }
   $('runsHint').textContent = '· ctrl/shift-click to select';
   box.innerHTML = runsCache.map(r => {
@@ -3241,7 +3253,7 @@ async function refreshRuns() {
     const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
     return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''} ${removingIds.includes(r.id) ? 'removing' : ''}" data-id="${r.id}">
       <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="num">#${r.id}</span><span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
-      <b>${r.label || 'run ' + r.id}</b>
+      <b>${runLabel(r.label, r.id)}</b>
       <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
   }).join('');
   // first load: the real cards rise in one after another where the grey cells were
@@ -3305,7 +3317,7 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
   const isLive = id => job && job.run_id === id && !['completed', 'cancelled', 'failed'].includes(job.state);
   ids = ids.filter(id => !isLive(id));
   if (!ids.length) { setStatus('can\'t delete a run that is still rendering', 'bad'); return; }
-  const names = ids.map(id => runsCache.find(r => r.id === id)?.label || 'run ' + id);
+  const names = ids.map(id => runLabel(runsCache.find(r => r.id === id)?.label, id));
   const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} runs`;
   if (!confirmed && !await confirmInline(ids, `Remove ${what} from the list?`)) return;
   const failed = [];
@@ -3570,7 +3582,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   const running = jobs.find(j => !['completed', 'cancelled', 'failed'].includes(j.state));
   if (running) {
     job = running; setButtons(true); $('cancelLink').classList.remove('hide');
-    // live prompts keep working after a reload (a Single Frame has one frame: nothing to steer)
+    // live prompts keep working after a reload (a Frame has one frame: nothing to steer)
     if (running.kind === 'render' && running.total_frames !== 1 && (state.clip || state.t2v))
       live = { id: running.id, video: curVideo(), sent: '' };
     paintLive();

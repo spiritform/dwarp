@@ -11,7 +11,7 @@ travel with the things they belong to, so the result moves like the footage inst
 denoise *per pixel*, deciding **where** the style goes — keep a face photographic and dissolve the room into
 paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repaints).
 
-One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Single Frame** or **Preview**.
+One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Frame** or **Preview**.
 
 ## How it works
 
@@ -66,7 +66,7 @@ the same differential diffusion underneath:
 - **Background** (Text / Image mode): *off* keeps a clean cut-out on black; *on* fills the frame around the shape —
   a generated background in Text mode, your picture in Image mode.
 - A filmstrip with **in / out** handles picks the part of a mask video to use, and the **Shape** tab above the image
-  previews it (scrub it, and Single Frame renders at the mask frame shown).
+  previews it (scrub it, and Frame renders at the mask frame shown).
 
 ## Features
 
@@ -85,7 +85,7 @@ the same differential diffusion underneath:
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
-- **Single Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
+- **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd) in seconds; **Render** does the trimmed clip. Every run fills the stage at the same size
 - Source playback, live split view (source / output), a scrubber with clip timecode, live log, run history with **use settings** and remove (off the list; the files stay on disk)
 - A built-in guide: the **?** button explains every control
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
