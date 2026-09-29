@@ -3337,9 +3337,13 @@ async function deleteRuns(ids, { confirmed = false } = {}) {
     catch (e) { failed.push(`${id}: ${e.message}`); }
   }
   removingIds = [];
+  const at = runsCache.findIndex(r => r.id === viewRun);     // where the viewed run sat: its neighbour takes over
   if (ids.includes(viewRun)) clearStage();
   await refreshRuns(); renderSelBar();
-  if (!viewRun && runsCache.length) showRun(runsCache[0].id);
+  if (!viewRun && runsCache.length) {
+    const next = runsCache[Math.min(Math.max(at, 0), runsCache.length - 1)];
+    showRun(next.id); if (stripNav) document.querySelector(`#runs .run[data-id="${next.id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
   if (failed.length) showError(`couldn't remove ${failed.join('; ')}`);   // not the status line: a render overwrites it
   else if (!job || ['completed', 'cancelled', 'failed'].includes(job.state)) setStatus(`removed ${what} — the files stay in renders/`, 'done');
 }
@@ -3400,11 +3404,26 @@ $('runs').onclick = e => {
     selected.has(id) ? selected.delete(id) : selected.add(id);
     paintSel(); return;
   }
-  stopPlay(); showRun(id);
+  stopPlay(); showRun(id); stripNav = true;
 };
+// After a click on a run, ← → browse the strip (the next / previous run, kept in view) instead of stepping
+// frames; a click anywhere else hands the arrows back to the transport.
+var stripNav = false;
+addEventListener('pointerdown', e => { if (!e.target.closest('#runs')) stripNav = false; }, true);
+addEventListener('keydown', e => {
+  if (!stripNav || !(e.code === 'ArrowRight' || e.code === 'ArrowLeft') || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (!$('runsPanel').hidden || !runsCache.length) return;
+  e.preventDefault(); e.stopPropagation();
+  const i = runsCache.findIndex(r => r.id === viewRun);
+  const next = runsCache[Math.max(0, Math.min(runsCache.length - 1, i + (e.code === 'ArrowRight' ? 1 : -1)))];
+  if (!next || next.id === viewRun) return;
+  stopPlay(); showRun(next.id); lastClicked = next.id;
+  document.querySelector(`#runs .run[data-id="${next.id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+}, true);
 addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;   // Delete in a text box edits the text
-  if (e.code === 'Delete' && selected.size && !e.repeat) deleteRuns([...selected]);
+  // Delete: the selected runs, or with none selected the run on the stage (asked first either way)
+  if (e.code === 'Delete' && !e.repeat && $('runsPanel').hidden && (selected.size || viewRun)) deleteRuns(selected.size ? [...selected] : [viewRun]);
   if (e.code === 'Escape' && selected.size) { selected.clear(); paintSel(); }
 });
 // clicking anywhere off the runs (and off their select / remove bar) drops a selection
