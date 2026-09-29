@@ -521,7 +521,7 @@
   .run.ghost span { display: block; height: 7px; width: 52%; border-radius: 3px; margin-top: 5px; }
   /* dropdowns: our own chevron with room to its right; where Chrome allows (customizable select), the open list
      is ours too: dark, rounded, orange instead of the system blue */
-  select { -webkit-appearance: none; appearance: none; cursor: pointer;
+  select { -webkit-appearance: none; appearance: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b8993' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
            background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 10px 6px !important;
            padding-right: 34px !important; }
@@ -1826,9 +1826,11 @@ function renderMode() {
     `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}">${m.label}</button>`).join('');
   const list = CHECKPOINTS.filter(c => c.family === state.mode);
   const def = defaultCheckpoint();
-  const first = `${shortName(def)}${isFast(def) ? ' ⚡' : ''} (${state.mode === 'sd15' ? 'look default' : 'default'})`;
-  $('model').innerHTML = `<option value="">${first}</option>` + list.filter(c => c.path !== def).map(c =>
-    `<option value="${c.path}">${c.name.replace(/\.(safetensors|ckpt)$/, '')}${c.verified ? '' : ' (unverified .ckpt)'}${isFast(c.path) ? ' ⚡' : ''}</option>`).join('');
+  // the file name only (the folder is the family already picked), ⚡ first so a long name can't push it off the line
+  const bolt = path => isFast(path) ? '⚡ ' : '';
+  const first = `${bolt(def)}${shortName(def)} (${state.mode === 'sd15' ? 'look default' : 'default'})`;
+  $('model').innerHTML = `<option value="" title="${def}">${first}</option>` + list.filter(c => c.path !== def).map(c =>
+    `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${shortName(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
   $('model').value = state.ckpt[state.mode] || '';
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
@@ -3257,6 +3259,16 @@ $('mp4Link').onclick = async e => {
 // A run dragged off the stage onto the panel becomes the input: one frame (or the Image tab) -> that
 // frame as the picture, otherwise the run's mp4 as the clip.
 var RUN_MIME = 'application/x-dwarp-run';   // var: the stage's dragstart is wired before this line
+// A strip thumbnail drags as the run itself, like the stage: dropped on the panel it brings the full frame
+// (or the mp4), never the 320 px preview picture the browser would hand over
+addEventListener('dragstart', e => {
+  const card = e.target.closest?.('#runs .run'); if (!card) return;
+  const r = runsCache.find(x => x.id === card.dataset.id);
+  if (!r?.frames) return e.preventDefault();
+  e.dataTransfer.setData(RUN_MIME, JSON.stringify({ run: r.id, frame: r.last_frame, count: r.frames }));
+  e.dataTransfer.effectAllowed = 'copy'; document.body.classList.add('runDrag');
+});
+addEventListener('dragend', () => document.body.classList.remove('runDrag'));
 function runDragData(e) {
   document.body.classList.remove('runDrag');
   try { return JSON.parse(e.dataTransfer?.getData(RUN_MIME) || 'null'); } catch { return null; }
