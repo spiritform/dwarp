@@ -577,6 +577,24 @@
   .rs-card.doomed .thumb::after { background: rgba(255,90,90,.25); }
   .rs-card b { display: block; font-size: 11px; font-weight: 600; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
   .rs-card span { display: block; color: var(--faint); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* the Shape library: a grid of masks over the stage, like All runs */
+  #shapeLib { user-select: none; -webkit-user-select: none; }
+  .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px 12px; }
+  .sl-card { cursor: pointer; min-width: 0; }
+  .sl-card .thumb { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: #000; position: relative; }
+  .sl-card .thumb img, .sl-card .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
+  .sl-card:hover .thumb { box-shadow: 0 0 0 2px var(--accent-2); }
+  .sl-card.on .thumb { box-shadow: 0 0 0 2px var(--accent); }
+  .sl-card b { display: block; font-size: 11px; font-weight: 600; margin-top: 5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl-card .tag { position: absolute; bottom: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.75); color: var(--dim); padding: 1px 5px; border-radius: 3px; z-index: 1; }
+  .sl-card .x { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; border: 0; z-index: 1;
+                background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 10px; line-height: 18px; padding: 0; }
+  .sl-card:hover .x, .sl-card .x.armed { display: block; }
+  .sl-card .x:hover, .sl-card .x.armed { background: var(--bad); color: #fff; }
+  .sl-head h4 { margin: 18px 0 10px; }
+  .sl-tabs { display: flex; gap: 4px; }
+  .sl-tabs .setbtn.on { background: rgba(255,106,61,.2); color: var(--text); }
+  #shapeLib.dropping { box-shadow: inset 0 0 0 2px var(--accent); }
   /* page intro: everything waits hidden until intro() builds it in (anime.js); a timer reveals it regardless */
   body.intro aside, body.intro main, body.intro footer { visibility: hidden; }
   .run.ghost.idle .thumb { animation: none; background: #17171b; }   /* no runs: still cells, no shimmer */
@@ -805,7 +823,7 @@
   </svg>
   <section id="shapeBox">
     <div class="card" data-card="shape">
-    <div class="card-head" title="A mask picture or video (white = the subject) that steers where things are and how they move, apart from the clip"><span class="title">Shape</span><span class="sum" id="sum_shape"></span><span class="chev">▾</span></div>
+    <div class="card-head" title="A mask picture or video (white = the subject) that steers where things are and how they move, apart from the clip"><span class="title">Shape</span><span class="sum" id="sum_shape"></span><a id="shapeLibBtn" class="randlink" title="Shape library: ready-made black / white masks and loops to try (QR Code Monster loves them), and your own">library</a><span class="chev">▾</span></div>
     <div class="card-body">
     <div id="shapeSlot"></div>
     <input type="file" id="shapeFile" accept="image/*,video/*" hidden>
@@ -861,6 +879,8 @@
     <div class="helppanel" id="helpPanel" hidden></div>
     <div class="helppanel" id="setPanel" hidden></div>
     <div class="helppanel" id="runsPanel" hidden></div>
+    <div class="helppanel" id="shapeLib" hidden></div>
+    <input type="file" id="shapeLibFile" accept="image/*,video/*" multiple hidden>
     <div class="helppanel enh" id="enh" hidden>
       <button class="logbtn close" id="enhClose">✕</button>
       <h3>Enhance <span id="enhRun" style="color:var(--dim);font-weight:400"></span></h3>
@@ -2509,6 +2529,10 @@ const HELP = {
           picture in Image mode.</td></tr>
     </table>
     <h4>Seeing it</h4>
+    <p><b>library</b> (in the Shape card's header) opens a grid of ready-made black / white masks — spirals (the classic
+       "spiral illusion"), rings, sunburst, checker, stripes, waves, halftone, shapes — and loops (a turning spiral, rings
+       moving out, a tunnel, shuffling QR-like blocks…) that load with <b>loop</b> on. They're made for QR Code Monster but work
+       for any Shape. <b>Yours</b> keeps your own: Upload, or drop images / videos on the grid (they live in shapes/yours).</p>
     <p>The <b>Shape</b> tab above the image previews the mask with all of the above applied; scrub or play it. Park it
        on a frame and <b>Frame</b> renders there — the result stays on that frame, so you can flip between Shape
        and Output.</p>`],
@@ -2622,7 +2646,7 @@ function paintHelp() {
 }
 function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
-  if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; paintHelp(); }
+  if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; paintHelp(); }
 }
 
 // ---------------------------------------------------------------- settings
@@ -2672,7 +2696,7 @@ async function paintSettings() {
 }
 function toggleSettings(open = $('setPanel').hidden) {
   $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
-  if (open) { toggleHelp(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; paintSettings(); }
+  if (open) { toggleHelp(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; paintSettings(); }
 }
 $('setBtn').onclick = () => toggleSettings();
 
@@ -2689,7 +2713,7 @@ const rsShown = () => RS.kind === 'all' ? RS.list : RS.kind === 'removed' ? RS.l
   : RS.list.filter(r => rsKind(r) === RS.kind);
 function toggleRunsPanel(open = $('runsPanel').hidden) {
   $('runsPanel').hidden = !open; $('manageRuns').classList.toggle('on', open);
-  if (open) { toggleHelp(false); toggleSettings(false); $('enh').hidden = true; loadRunsPanel(); }
+  if (open) { toggleHelp(false); toggleSettings(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; loadRunsPanel(); }
   else { clearTimeout(RS.timer); RS.ask = false; }
 }
 $('manageRuns').onclick = () => toggleRunsPanel();
@@ -3336,6 +3360,94 @@ $('loadRun').onclick = async () => {
   save(); renderClip(); renderControls(); renderShape(); shapeChanged();
   setStatus(`using the settings of run ${viewRun}${gone}`, gone ? 'bad' : 'done');
 };
+
+// ---------------------------------------------------------------- the Shape library
+// Ready-made black / white masks (drawn by shapelib.py on first open) and the user's own (shapes/yours).
+// A click loads one into the Shape card; videos preview on hover, and the preset loops load with loop on.
+var SL = { tab: 'presets', data: null, timer: 0, armed: null };
+function toggleShapeLib(open = $('shapeLib').hidden) {
+  $('shapeLib').hidden = !open; $('shapeLibBtn').classList.toggle('on', open);
+  if (open) { toggleHelp(false); toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; loadShapeLib(true); }
+  else { clearTimeout(SL.timer); SL.armed = null; }
+}
+$('shapeLibBtn').onclick = () => toggleShapeLib();
+async function loadShapeLib(intro) {
+  clearTimeout(SL.timer);
+  try { SL.data = await api('/api/shapes'); }
+  catch { $('shapeLib').innerHTML = '<div class="rs-head"><h3>Shape library</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="slClose">\u2715</button></div>';
+          $('slClose').onclick = () => toggleShapeLib(false); return; }
+  paintShapeLib(intro);
+  if (!SL.data.ready && !$('shapeLib').hidden) SL.timer = setTimeout(() => loadShapeLib(false), 1500);   // presets still being drawn
+}
+function paintShapeLib(intro) {
+  const d = SL.data, yours = SL.tab === 'yours', list = yours ? d.yours : d.presets;
+  const tab = (k, label) => `<button class="setbtn${SL.tab === k ? ' on' : ''}" data-tab="${k}">${label}</button>`;
+  const card = e => {
+    const src = e.video ? `/api/video/thumbnail?${qs({ path: e.path, frame: 0 })}` : `/api/image/file?${qs({ path: e.path })}`;
+    return `<div class="sl-card${state.shape?.path === e.path ? ' on' : ''}" data-path="${e.path.replace(/"/g, '&quot;')}" data-video="${e.video ? 1 : ''}" data-name="${e.name.replace(/"/g, '&quot;')}"
+      title="${e.video ? 'A loop: hover to play it, click to use it as the Shape' : 'Click to use it as the Shape'}">
+      <div class="thumb"><img src="${src}" alt="" loading="lazy">${e.video ? '<span class="tag">loop</span>' : ''}${yours ? `<button class="x${SL.armed === e.path ? ' armed' : ''}" title="${SL.armed === e.path ? 'Click again to delete it' : 'Delete'}">${SL.armed === e.path ? '\u2713' : '\u2715'}</button>` : ''}</div>
+      <b>${e.name}</b></div>`;
+  };
+  const stills = list.filter(e => !e.video), loops = list.filter(e => e.video);
+  const section = (title, items) => items.length ? `<div class="sl-head"><h4>${title}</h4></div><div class="sl-grid">${items.map(card).join('')}</div>` : '';
+  $('shapeLib').innerHTML = `<div class="rs-head">
+      <h3>Shape library</h3><div class="sl-tabs">${tab('presets', 'Presets')}${tab('yours', `Yours${d.yours.length ? ' \u00b7 ' + d.yours.length : ''}`)}</div>
+      <div class="rs-info">${!d.ready && !yours ? 'drawing the presets\u2026 (first time only)' : 'black = background, white = the subject; ◐ on the card flips it'}</div>
+      <span class="rs-btns"><button class="setbtn" id="slUpload" title="Add your own masks (images or videos) — or drop them here">Upload</button>
+        ${yours ? '<button class="setbtn" id="slFolder" title="Open the folder (shapes/yours)">Folder</button>' : ''}</span>
+      <button class="logbtn close" id="slClose" title="Close (Esc)">\u2715</button>
+    </div>
+    ${list.length ? section('Stills', stills) + section('Loops', loops)
+      : `<p class="rs-empty">${yours ? 'None yet \u2014 Upload, or drop images / videos here.' : 'Drawing the presets\u2026'}</p>`}`;
+  $('slClose').onclick = () => toggleShapeLib(false);
+  $('slUpload').onclick = () => $('shapeLibFile').click();
+  if ($('slFolder')) $('slFolder').onclick = () => api('/api/shapes/open', { method: 'POST' }).catch(() => {});
+  $('shapeLib').querySelector('.sl-tabs').onclick = e => { const t = e.target.dataset.tab; if (t) { SL.tab = t; SL.armed = null; paintShapeLib(true); } };
+  if (intro && window.anime) anime({ targets: [...$('shapeLib').querySelectorAll('.sl-card')].slice(0, 40), opacity: [0, 1], translateY: [10, 0],
+    duration: 520, easing: 'easeOutCubic', delay: anime.stagger(18),
+    complete: a => a.animatables.forEach(({ target: t }) => { t.style.transform = t.style.opacity = ''; }) });
+}
+$('shapeLib').addEventListener('click', async e => {
+  const card = e.target.closest('.sl-card'); if (!card) return;
+  const path = card.dataset.path;
+  if (e.target.closest('.x')) {                // your own: ✕ arms, ✓ deletes
+    if (SL.armed !== path) { SL.armed = path; return paintShapeLib(false); }
+    SL.armed = null;
+    await api(`/api/shapes?${qs({ path })}`, { method: 'DELETE' }).catch(err => setStatus('could not delete: ' + err.message, 'bad'));
+    return loadShapeLib(false);
+  }
+  const video = !!card.dataset.video;
+  if (video && SL.tab === 'presets') state.shapeLoop = true;   // the preset loops are made to loop
+  await setShape({ path, name: card.dataset.name }, video);
+  setStatus(`shape: ${card.dataset.name}`, 'done');
+  toggleShapeLib(false);
+});
+$('shapeLib').addEventListener('mouseover', e => {         // a loop plays while the pointer is on it
+  const card = e.target.closest('.sl-card[data-video="1"]'); if (!card || card.querySelector('video')) return;
+  card.querySelector('.thumb').insertAdjacentHTML('beforeend', `<video src="/api/video/file?${qs({ path: card.dataset.path })}" autoplay muted loop playsinline></video>`);
+});
+$('shapeLib').addEventListener('mouseout', e => {
+  const card = e.target.closest('.sl-card'); if (!card || card.contains(e.relatedTarget)) return;
+  card.querySelector('video')?.remove();
+});
+async function addToShapeLib(files) {
+  const ok = [...files].filter(f => /^(image|video)\//.test(f.type));
+  if (!ok.length) return setStatus('drop images or videos', 'bad');
+  for (const f of ok) await api(`/api/shapes/upload?${qs({ filename: f.name })}`, { method: 'POST', body: f }).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+  SL.tab = 'yours'; setStatus(`${ok.length} added to your shapes`, 'done'); loadShapeLib(true);
+}
+$('shapeLibFile').onchange = e => { addToShapeLib(e.target.files); e.target.value = ''; };
+$('shapeLib').addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); $('shapeLib').classList.add('dropping'); } });
+$('shapeLib').addEventListener('dragleave', e => { if (!$('shapeLib').contains(e.relatedTarget)) $('shapeLib').classList.remove('dropping'); });
+$('shapeLib').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); $('shapeLib').classList.remove('dropping'); dragDepth = 0; document.body.classList.remove('dragging');
+  addToShapeLib(e.dataTransfer?.files || []);
+});
+addEventListener('keydown', e => {
+  if ($('shapeLib').hidden || e.key !== 'Escape') return;
+  e.stopPropagation(); if (SL.armed) { SL.armed = null; paintShapeLib(false); } else toggleShapeLib(false);
+}, true);
 
 // ---------------------------------------------------------------- runs strip
 // A run's name as shown. Older runs were labelled "single frame": shown as "frame", like new ones.

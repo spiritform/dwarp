@@ -24,6 +24,7 @@ sys.path.insert(0, str(HERE))
 
 import post  # noqa: E402
 import runs  # noqa: E402
+import shapelib  # noqa: E402
 from jobs import TERMINAL, JobManager  # noqa: E402
 from models import list_checkpoints  # noqa: E402
 
@@ -248,6 +249,47 @@ def build_app() -> FastAPI:
                 raise HTTPException(422, detail=f"Could not read that image: {filename}")
             return {"path": str(target), "name": filename, "bytes": size, "image": True, "width": w, "height": h}
         return {"path": str(target), "name": filename, "bytes": size}
+
+    # -------------------------------------------------------------- the Shape library (shapelib.py)
+    @app.get("/api/shapes")
+    def shapes_list():
+        """Presets (drawn on first use: ready is false until they're on disk) and the user's own masks."""
+        return shapelib.listing()
+
+    @app.post("/api/shapes/upload")
+    async def shapes_upload(request: Request, filename: str = "mask.png"):
+        suffix = Path(filename).suffix.lower()
+        if suffix not in VIDEO_EXTS | IMAGE_EXTS:
+            raise HTTPException(422, detail=f"Not a video or image file: {filename}")
+        shapelib.YOURS.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^\w\- ]+", "_", Path(filename).stem)[:60].strip() or "mask"
+        target, n = shapelib.YOURS / f"{stem}{suffix}", 2
+        while target.exists():                   # keep both: "name 2.png"
+            target, n = shapelib.YOURS / f"{stem} {n}{suffix}", n + 1
+        size = 0
+        with open(target, "wb") as fh:
+            async for chunk in request.stream():
+                fh.write(chunk)
+                size += len(chunk)
+        if size == 0:
+            target.unlink(missing_ok=True)
+            raise HTTPException(422, detail="Empty upload")
+        return {"path": str(target), "name": target.stem, "video": suffix in VIDEO_EXTS}
+
+    @app.delete("/api/shapes")
+    def shapes_delete(path: str):
+        """Only the user's own masks (shapes/yours) can be deleted; presets come back anyway."""
+        p = Path(path).resolve()
+        if p.parent != shapelib.YOURS.resolve() or not p.is_file():
+            raise HTTPException(404, detail="Not one of your shapes")
+        p.unlink()
+        return {"deleted": str(p)}
+
+    @app.post("/api/shapes/open")
+    def shapes_open():
+        shapelib.YOURS.mkdir(parents=True, exist_ok=True)
+        os.startfile(shapelib.YOURS)  # Windows-only; this is a local tool
+        return {"ok": True}
 
     @app.get("/api/image/file")
     def image_file(path: str = ""):

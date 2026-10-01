@@ -68,6 +68,8 @@ the same differential diffusion underneath:
 - A filmstrip with **in / out** handles picks the part of a mask video to use (held at Out, or **looped** for animated textures), and the **Shape** tab above the image
   previews it (scrub it, and Frame renders at the mask frame shown).
 
+**Shape library**: the *library* link on the Shape card opens ready-made black / white masks to try, drawn by DWARP itself (no downloads): spirals for the classic QR Code Monster "spiral illusion", rings, sunburst, checker, stripes, waves, halftone and simple shapes, plus seamless loops (turning spirals, rings moving out, a tunnel, shuffling QR-like blocks). Your own masks go in *Yours* (`shapes/yours`).
+
 ## Features
 
 - SD 1.5, SD 2.1 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers. SD 2.1 reads the original 768-v / 512 `.ckpt` files (converted once, safely, to fp16 safetensors) and has depth + HED ControlNets
