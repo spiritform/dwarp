@@ -232,6 +232,9 @@
   #shapeSlot .clip-top > button:not(.clip-thumb) { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 6px; flex: none; }
   #shapeSlot .clip-top > button.del:hover { color: #ff9a8a; }
   #shapeSlot .clip-top > button.inv { font-size: 14px; }
+  #shapeSlot .clip-top > button.loop { display: grid; place-items: center; }
+  #shapeSlot .clip-top > button.loop:hover { color: var(--text); }
+  #shapeSlot .clip-top > button.loop.on { color: var(--accent); }
   #shapeSlot .clip-top > button.inv:hover { color: var(--text); }
   #shapeSlot .clip-top > button.inv.on { color: var(--accent); }
   #shapeSlot .range { margin: 0 8px 8px; }
@@ -1019,7 +1022,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
-  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
+  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false, shapeLoop: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
@@ -1157,6 +1160,7 @@ $('styleRef').addEventListener('dragover', e => e.preventDefault());
 $('styleRef').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
   const run = runDragData(e);               // a render dragged off the stage: the frame shown
+  if (run?.clip) return setStatus('drop a picture or a run here — the Source clip goes on the Shape slot', 'bad');
   if (run) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
     .then(res => { state.styleRef = { path: res.path, name: res.name }; renderStyleRef(); save(); setStatus('style ref set'); })
     .catch(err => setStatus('style ref failed: ' + err.message, 'bad'));
@@ -1183,7 +1187,7 @@ function renderShape() {
     ? `<div class="clip"><div class="clip-top">
          <button class="clip-thumb" title="Replace the mask"><img class="fx" src="${thumb()}" alt=""><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></button>
          <div class="clip-name" title="${sh.path}">${sh.name}</div>
-         <button class="inv${state.shapeInvert ? ' on' : ''}" title="Invert: now ${state.shapeInvert ? 'black' : 'white'} is the subject">◐</button><button class="del" title="No shape">✕</button></div>
+         ${sh.video && n > 1 ? `<button class="loop${state.shapeLoop ? ' on' : ''}" title="${state.shapeLoop ? 'Loop: after Out it starts again at In (click to hold the Out frame instead)' : 'Hold: after Out the mask stays on its Out frame (click to loop it: animated textures)'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg></button>` : ''}<button class="inv${state.shapeInvert ? ' on' : ''}" title="Invert: now ${state.shapeInvert ? 'black' : 'white'} is the subject">◐</button><button class="del" title="No shape">✕</button></div>
        ${sh.video && n > 1 ? `<div class="range" id="shapeRange" title="In / out: the part of the mask video used — drag the handles (double-click: all of it)">
          ${Array.from({ length: 8 }, (_, i) => `<img class="fx" src="${thumb(Math.floor((i + .5) / 8 * (n - 1)))}" alt="">`).join('')}
          <div class="shade l" style="left:0"></div><div class="sel"><div class="h l"></div><div class="h r"></div></div><div class="shade r" style="right:0"></div></div>` : ''}</div>`
@@ -1273,6 +1277,7 @@ function shapeFilters() {                   // the preview filters follow levels
   el.addEventListener('dblclick', () => { state.shapeLv = [0, 0.5, 255]; paintLevels(); shapeLook(); save(); paintSums(); });
 })();
 $('shapeSlot').onclick = e => {
+  if (e.target.closest('button.loop')) { state.shapeLoop = !state.shapeLoop; renderShape(); paintSums(); save(); return; }
   if (e.target.closest('button.inv')) { state.shapeInvert = !state.shapeInvert; renderShape(); save(); shapeLook(); return; }   // renderShape repaints the filters
   if (e.target.closest('button.del')) { state.shape = null; renderShape(); save(); shapeChanged(); return; }
   if (e.target.closest('.clip-thumb, .clip-empty')) $('shapeFile').click();
@@ -1333,9 +1338,13 @@ $('shapeFile').onchange = e => { uploadShape(e.target.files[0]); e.target.value 
 $('shapeSlot').addEventListener('dragover', e => e.preventDefault());
 $('shapeSlot').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
-  const run = runDragData(e);               // a render dragged off the stage: the frame shown
-  if (run) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
-    .then(res => setShape(res, false)).catch(err => setStatus('shape failed: ' + err.message, 'bad'));
+  const run = runDragData(e);               // dragged off the stage or the strip: a run, or the Source clip
+  if (run?.clip) return setShape({ path: run.clip, name: run.name }, true);
+  if (run) return (async () => {
+    const video = run.count > 1;             // a render or preview: the whole thing as a mask video
+    if (video) { setStatus(`run ${run.run} → shape…`, 'live'); await ensureMp4(run.run); }
+    setShape(await api(`/api/runs/${run.run}/as_input?${video ? '' : qs({ frame: run.frame })}`, { method: 'POST' }), video);
+  })().catch(err => setStatus('shape failed: ' + err.message, 'bad'));
   uploadShape(e.dataTransfer?.files?.[0]);
 });
 for (const k of SHAPE_SLIDERS) {
@@ -1348,7 +1357,7 @@ function shapeJob(kind) {                        // the job's Shape fields (none
   if (!sh) return {};
   const [inF, outF] = sh.video ? shapeInOut() : [0, -1], lv = state.shapeLv || [0, 0.5, 255];
   return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : inF, shape_end: kind === 'frame' ? -1 : outF,
-           shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
+           shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_loop: !!(state.shapeLoop && sh.video), shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
            shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0, shape_opacity: +(state.shapeOpacity ?? 1),
            ...(modeCfg().illusion?.have && state.shapeIllu > 0 ? { shape_illusion: +state.shapeIllu, shape_qr_cn: modeCfg().illusion.path } : {}) };
 }
@@ -1385,7 +1394,7 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
@@ -1781,7 +1790,7 @@ addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
   const run = runDragData(e);
-  if (run) { if (e.target.closest('aside')) runAsInput(run); return; }   // dropped back on the stage: nothing
+  if (run) { if (e.target.closest('aside') && !run.clip) runAsInput(run); return; }   // back on the stage, or the clip onto itself: nothing
   const f = [...(e.dataTransfer?.files || [])].find(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|avi|m4v|png|jpe?g|webp|bmp)$/i.test(f.name));
   if (f) uploadFile(f); else setStatus('that is not a video or image file', 'bad');
 });
@@ -2486,7 +2495,8 @@ const HELP = {
     <h4>The card</h4>
     <table>
       <tr><td><b>Filmstrip</b></td><td>A mask video's frames, shown the way the engine reads them. Drag the handles to
-          set <b>in / out</b>: Preview and Render start at In and hold Out. Double-click for all of it.</td></tr>
+          set <b>in / out</b>: Preview and Render start at In and hold Out. Double-click for all of it. The <b>loop</b> button
+          (next to ◐, mask videos only) plays In → Out over and over instead, for animated textures on a longer clip.</td></tr>
       <tr><td><b>Levels</b></td><td>Black, midtone and white points. Pull black and white together to turn soft footage
           into a crisp mask; the midtone shifts the greys. Double-click resets.</td></tr>
       <tr><td><b>Repaint</b></td><td>From frame 2 on: white keeps changing, black holds. Where the mask newly spreads is
@@ -2554,7 +2564,7 @@ const HELP = {
     <p>The grid button next to the folder (bottom right) opens every run on disk, hidden ones too (tagged <b>hidden</b>),
        newest first, with each one's size and the total. The run on the stage is outlined.</p>
     <table>
-      <tr><td><b>All runs ▾</b></td><td>Only Frames, Previews or Renders.</td></tr>
+      <tr><td><b>All runs ▾</b></td><td>Only Frames, Previews or Renders — or <b>Removed</b>: the runs taken off the strip, to bring back or clear out.</td></tr>
       <tr><td><b>Click · Shift-click · Ctrl-A</b></td><td>Select one, a range, or everything shown (<b>Select all</b> does the same).</td></tr>
       <tr><td><b>Hide / Show</b></td><td>Take runs out of the strip, or put hidden ones back. The files stay.</td></tr>
       <tr><td><b>Delete</b></td><td>Deletes the selected runs <b>from disk, for good</b> — it asks first (the button, or
@@ -2675,7 +2685,8 @@ const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.
 const rsBytes = ids => ids.reduce((t, id) => t + (RS.sizes[id] || 0), 0);
 // every run, newest first (hidden ones tagged), or one kind: Frames, Previews, Renders (refines count as renders)
 const rsKind = r => r.kind === 'refine' ? 'render' : r.kind;
-const rsShown = () => RS.kind === 'all' ? RS.list : RS.list.filter(r => rsKind(r) === RS.kind);
+const rsShown = () => RS.kind === 'all' ? RS.list : RS.kind === 'removed' ? RS.list.filter(r => r.hidden)   // taken off the strip
+  : RS.list.filter(r => rsKind(r) === RS.kind);
 function toggleRunsPanel(open = $('runsPanel').hidden) {
   $('runsPanel').hidden = !open; $('manageRuns').classList.toggle('on', open);
   if (open) { toggleHelp(false); toggleSettings(false); $('enh').hidden = true; loadRunsPanel(); }
@@ -2704,7 +2715,7 @@ async function pollSizes(recount) {
 function paintRunsPanel(intro) {
   $('runsPanel').innerHTML = `<div class="rs-head">
       <h3>Runs</h3><div class="rs-info" id="rsInfo"></div>
-      <select id="rsKind">${Object.entries({ all: 'All runs', frame: 'Frames', test: 'Previews', render: 'Renders' }).map(([k, label]) =>
+      <select id="rsKind">${Object.entries({ all: 'All runs', frame: 'Frames', test: 'Previews', render: 'Renders', removed: 'Removed' }).map(([k, label]) =>
         `<option value="${k}" ${RS.kind === k ? 'selected' : ''}>${label}</option>`).join('')}</select>
       <button class="logbtn close" id="rsClose" title="Close (Esc)">\u2715</button>
     </div>
@@ -3044,10 +3055,17 @@ function ensureFrameEl(hasInit) {
   // as the picture) or the style ref slot (this frame)
   const fr = $('frame'); fr.draggable = true;
   fr.addEventListener('dragstart', e => {
-    if (!viewRun || clipMode() || shapeMode() || !frames.length || e.target.closest('.divider, .save')) return e.preventDefault();
-    e.dataTransfer.setData(RUN_MIME, JSON.stringify({ run: viewRun, frame: frames[frameIdx], count: frames.length }));
+    if (e.target.closest('.divider, .save') || shapeMode()) return e.preventDefault();
+    if (clipMode()) {                       // the Source clip on show: it drags as that video (onto the Shape slot)
+      if (!state.clip || state.t2v) return e.preventDefault();
+      e.dataTransfer.setData(RUN_MIME, JSON.stringify({ clip: state.clip.path, name: state.clip.name }));
+    } else {
+      if (!viewRun || !frames.length) return e.preventDefault();
+      e.dataTransfer.setData(RUN_MIME, JSON.stringify({ run: viewRun, frame: frames[frameIdx], count: frames.length }));
+    }
     e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setDragImage($('imgOut'), e.offsetX, e.offsetY);
+    const ghost = [...fr.querySelectorAll('img, canvas')].find(el => el.offsetParent && el.getClientRects().length);   // what's visible
+    try { if (ghost) e.dataTransfer.setDragImage(ghost, e.offsetX, e.offsetY); } catch {}
     stopPlay(); document.body.classList.add('runDrag');
   });
   fr.addEventListener('dragend', () => document.body.classList.remove('runDrag'));
@@ -3302,7 +3320,7 @@ $('loadRun').onclick = async () => {
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
   for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
-                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint']) if (k in ui) state[k] = ui[k];
+                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
   let gone = '';
   if (state.shape?.path && !(await api(`/api/fs/exists?${qs({ path: state.shape.path })}`).catch(() => ({})))?.exists) { state.shape = null; gone = ' (its shape file is gone)'; }

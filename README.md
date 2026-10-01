@@ -65,7 +65,7 @@ the same differential diffusion underneath:
   **Opacity** makes the whole effect subtler, **◐** swaps which side is the subject.
 - **Background** (Text / Image mode): *off* keeps a clean cut-out on black; *on* fills the frame around the shape —
   a generated background in Text mode, your picture in Image mode.
-- A filmstrip with **in / out** handles picks the part of a mask video to use, and the **Shape** tab above the image
+- A filmstrip with **in / out** handles picks the part of a mask video to use (held at Out, or **looped** for animated textures), and the **Shape** tab above the image
   previews it (scrub it, and Frame renders at the mask frame shown).
 
 ## Features

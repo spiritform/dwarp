@@ -131,6 +131,7 @@ class RenderJob:
     shape_start: int = 0                 # the mask frame (its own numbering) render frame 1 uses: its In point, or
                                          # Single Frame's spot
     shape_end: int = -1                  # its Out point: later render frames hold it. -1 = the mask's last frame
+    shape_loop: bool = False             # past Out, start again at In (a looping mask video: animated textures)
     shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5
@@ -1131,7 +1132,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         if shapes:                              # this frame's Shape mask, 1x1xHxW 0..1 (white = the subject)
             nth = max(1, job.nth)
             last = len(shapes) - 1 if job.shape_end < 0 else min(len(shapes) - 1, job.shape_end // nth)
-            sm = Image.open(shapes[min(i + job.shape_start // nth, last)]).convert("L").resize((job.width, job.height), Image.LANCZOS)
+            first = min(job.shape_start // nth, last)
+            k = first + i % (last - first + 1) if job.shape_loop else min(first + i, last)   # loop: In..Out again
+            sm = Image.open(shapes[k]).convert("L").resize((job.width, job.height), Image.LANCZOS)
             smask = torch.from_numpy(np.asarray(sm, dtype=np.float32) / 255).to(device)[None, None]
             b, wp = job.shape_black / 255, job.shape_white / 255      # levels: footage -> a crisp mask
             if b > 0 or wp < 1 or job.shape_mid != 0.5:
