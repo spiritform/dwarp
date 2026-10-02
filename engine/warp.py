@@ -585,6 +585,25 @@ def fetch_missing(job: RenderJob, log) -> None:
             log(f"downloaded {p.name} ({p.stat().st_size / 1e6:.0f} MB) in {time.time() - t:.0f}s")
 
 
+def fetch_known(job: RenderJob, log, progress=None) -> None:
+    """Everything this job needs that DWARP knows how to fetch (downloads.py: checkpoint, ControlNets, QR Code
+    Monster, Motion's module + AnimateLCM LoRA), downloaded and checksummed before anything loads."""
+    import downloads
+    want = [job.checkpoint, *(c.path for c in job.controlnets), job.shape_qr_cn, job.motion]
+    if job.motion and "lcm" in Path(job.motion).name.lower():   # AnimateLCM: its spatial LoRA too
+        from engine.animatediff import animatelcm_lora
+        if not animatelcm_lora(job.motion):
+            want.append(str(Path(__file__).resolve().parents[1] / "models" / "loras" / "AnimateLCM_sd15_t2v_lora.safetensors"))
+    for path in dict.fromkeys(w for w in want if w and downloads.missing(w)):
+        name, last = Path(path).name, [0.0]
+
+        def tick(done, total, name=name, last=last):  # the status line, a few times a second at most
+            if progress and time.time() - last[0] > 0.5:
+                last[0] = time.time()
+                progress("downloading", 0, 0, f"downloading {name} · {done / 1e9:.1f} / {total / 1e9:.1f} GB (first use)")
+        downloads.fetch(path, log, tick)
+
+
 def fetch_file(path: str, repo: str, log) -> None:
     """A model file that downloads on first use: `repo` is "hf-repo::path/in/repo", saved as `path`."""
     p = Path(path)
@@ -1007,6 +1026,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode), and/or
     "camera": new Text / Image -> Video camera values ({cam_zoom, cam_rotate, ...}), eased in over a few frames.
     `on_keys` hears the keyframes in use at the start and after every edit."""
+    fetch_known(job, log, progress)            # first use: models DWARP can download, before anything loads
     if job.motion:                             # Motion: AnimateDiff instead of the frame-by-frame warp
         from engine.animatediff import render_ad
         return render_ad(job, progress, cancelled, log, live, on_keys)

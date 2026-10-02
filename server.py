@@ -25,6 +25,7 @@ sys.path.insert(0, str(HERE))
 import post  # noqa: E402
 import runs  # noqa: E402
 import shapelib  # noqa: E402
+import downloads  # noqa: E402
 from jobs import TERMINAL, JobManager  # noqa: E402
 from models import list_checkpoints  # noqa: E402
 
@@ -61,6 +62,8 @@ def settings() -> dict:
             paths = [str(HERE / "models" / "controlnet" / n) for n in names] + [f"{root}/controlnet/{n}" for n in names]
             c["path"] = next((q for q in paths if os.path.isfile(q)), paths[0])   # missing: DWARP's folder
             c["have"] = os.path.isfile(c["path"])
+            c["fetch"] = 0 if c["have"] else downloads.size(c["path"])   # downloads on first use: this many bytes
+    d["fetchable"] = {name: k[2] for name, k in downloads.KNOWN.items()}   # checkpoints etc. the panel can promise
     return d
 
 
@@ -267,9 +270,18 @@ def build_app() -> FastAPI:
         skip = re.compile(r"sdxl|adapter|sparsectrl", re.I)
         modules = [m for m in scan(HERE / "models" / "animatediff", root / "animatediff_models")
                    if not skip.search(m["name"])]
+        for m in modules:
+            m["fetch"] = 0
+        have = {Path(m["path"]).name for m in modules}
+        for name in ("temporaldiff-v1-animatediff.safetensors", "mm_sd_v15_v2.ckpt", "AnimateLCM_sd15_t2v.ckpt"):
+            if name not in have:                  # not on disk: listed anyway, downloads on first use
+                modules.append({"name": Path(name).stem, "path": (HERE / "models" / "animatediff" / name).as_posix(),
+                                "fetch": downloads.size(name)})
+        lcm = animatelcm_lora(str(root / "animatediff_models" / "x"))
         return {"modules": modules,
                 "loras": scan(HERE / "models" / "animatediff_motion_lora", root / "animatediff_motion_lora"),
-                "lcm_lora": animatelcm_lora(str(root / "animatediff_models" / "x"))}
+                "lcm_lora": lcm or str(HERE / "models" / "loras" / "AnimateLCM_sd15_t2v_lora.safetensors"),
+                "lcm_lora_fetch": 0 if lcm else downloads.size("AnimateLCM_sd15_t2v_lora.safetensors")}
 
     @app.get("/api/checkpoints")
     def checkpoints():
@@ -428,17 +440,18 @@ def build_app() -> FastAPI:
             raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
         for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
                     else ("video", "checkpoint")):   # text / image -> video: no clip
-            if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])):
+            if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])
+                                        or key == "checkpoint" and downloads.missing(job[key])):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
-        for key in ("motion", "motion_lora"):    # Motion (AnimateDiff): its module / LoRA files
-            if job.get(key) and not os.path.isfile(job[key]):
+        for key in ("motion", "motion_lora", "shape_qr_cn"):    # Motion's module / LoRA, QR Code Monster
+            if job.get(key) and not os.path.isfile(job[key]) and not downloads.missing(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job[key]!r}"}])
         if job.get("style_image") and not os.path.isfile(job["style_image"]):
             raise HTTPException(422, detail=[{"message": f"style image not found: {job['style_image']!r}"}])
         if job.get("shape") and not os.path.exists(job["shape"]):
             raise HTTPException(422, detail=[{"message": f"shape mask not found: {job['shape']!r}"}])
         for c in job.get("controlnets", []):
-            if not os.path.isfile(c.get("path", "")) and not c.get("repo"):   # a repo = downloads on first use
+            if not os.path.isfile(c.get("path", "")) and not c.get("repo") and not downloads.missing(c.get("path", "")):   # downloads on first use
                 raise HTTPException(422, detail=[{"message": f"ControlNet not found: {c.get('path')!r}"}])
         run_id, _ = runs.new_run()
         runs.write_meta(run_id, label=meta.get("label", ""), ui=meta.get("ui", {}), fps=meta.get("fps", 24))

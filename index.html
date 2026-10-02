@@ -683,6 +683,7 @@
     <div class="seg mode" id="mode"></div>
     <div class="sublabel">Checkpoint</div>
     <select class="model" id="model" title="Checkpoint"></select>
+    <div class="adnote" id="ckptFetch" hidden style="margin:6px 0 0"></div>
     <div class="pair" style="margin-top:4px">
       <div><div class="sublabel">Sampler</div><select class="model" id="sampler" title="How each step moves toward the image"></select></div>
       <div><div class="sublabel">Schedule</div><select class="model" id="schedule" title="How the noise levels are spaced across the steps"></select></div>
@@ -1261,7 +1262,8 @@ function renderShape() {
   $('shapeCtl').hidden = !sh;
   $('shapeBgBox').hidden = !state.t2v;                     // Video: the background is the clip
   const il = modeCfg().illusion;                             // QR Code Monster: SD 1.5 / SDXL, when its file is there
-  $('shapeIlluBox').hidden = !il?.have;
+  $('shapeIlluBox').hidden = !(il?.have || il?.fetch);
+  $('shapeIlluBox').title = il && !il.have && il.fetch ? `QR Code Monster downloads on the first render that uses it (${fmtGB(il.fetch)}, once)` : '';
   [...$('shapeBg').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.shapeBg ? 1 : 0)));
   for (const k of SHAPE_SLIDERS) { $(k).value = state[k] ?? (k === 'shapeOpacity' ? 1 : 0); $(k + 'V').textContent = k === 'shapeBlur' ? `${state[k] || 0}px` : k === 'shapeIllu' && !state[k] ? 'off' : (+(state[k] ?? 1)).toFixed(2); }
   if ($('shapeRange')) { bindShapeRange(); paintShapeRange(); }
@@ -1425,7 +1427,7 @@ function shapeJob(kind) {                        // the job's Shape fields (none
   return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : inF, shape_end: kind === 'frame' ? -1 : outF,
            shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_loop: !!(state.shapeLoop && sh.video), shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
            shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0, shape_opacity: +(state.shapeOpacity ?? 1),
-           ...(modeCfg().illusion?.have && state.shapeIllu > 0 ? { shape_illusion: +state.shapeIllu, shape_qr_cn: modeCfg().illusion.path } : {}) };
+           ...((modeCfg().illusion?.have || modeCfg().illusion?.fetch) && state.shapeIllu > 0 ? { shape_illusion: +state.shapeIllu, shape_qr_cn: modeCfg().illusion.path } : {}) };
 }
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
@@ -1460,7 +1462,7 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
     (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
@@ -1913,6 +1915,10 @@ function renderMode() {
   $('model').value = state.ckpt[state.mode] || '';
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
+  // a fresh install: the checkpoint in use isn't on disk yet, but DWARP knows where to get it
+  const ck = checkpointPath(), ckName = ck.split('/').pop(), ckOn = CHECKPOINTS.some(c => c.path === ck);
+  $('ckptFetch').hidden = ckOn || !FETCHABLE[ckName];
+  if (!$('ckptFetch').hidden) $('ckptFetch').textContent = `${shortName(ck)} downloads on the first render (${fmtGB(FETCHABLE[ckName])}, once)`;
 }
 // Distilled models (Lightning / Turbo / Hyper / LCM / Flash) want few steps, low CFG and a trailing schedule;
 // at a normal CFG they overcook (hard edges, blotchy colour). Picking a model sets what suits it; the sliders
@@ -1971,6 +1977,8 @@ $('embedVer').onchange = e => { state.embed = e.target.value; renderControls(); 
 // the style weaker. Image: the v2 module + a motion LoRA moves the picture (TemporalDiff holds it too still);
 // Denoise 0.7 keeps the subject (0.8 invents a new one). AnimateLCM takes the same LoRAs at ~2x the speed.
 var MOTION = { modules: [], loras: [], lcm_lora: null };
+var FETCHABLE = {};                        // file name -> bytes: what a first render downloads (downloads.py)
+const fmtGB = b => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`;
 const AD = {
   v2v: { quality: { mm: /temporaldiff/i, label: 'TemporalDiff', steps: 20, cfg: 7 },
          fast:    { mm: /animatelcm|lcmmotion/i, label: 'AnimateLCM', steps: 6, cfg: 2 }, denoise: 0.75 },
@@ -2003,9 +2011,9 @@ function renderMotion() {
     b.title = have ? `${prof.label} · ${prof.steps} steps, CFG ${prof.cfg}` : `${prof.label} isn't in your animatediff_models folder`;
   });
   const p = adProfile(), mod = adModule(p);
-  $('adModule').textContent = mod ? `${p.label} · ${p.steps} steps · CFG ${p.cfg} · 16 frames at a time`
-    : `${p.label} isn't installed (animatediff_models in your models folder)`;
-  if (mod && /lcm/i.test(p.label) && !MOTION.lcm_lora) $('adModule').textContent += ' · AnimateLCM LoRA missing';
+  const dl = (mod?.fetch || 0) + (/lcm/i.test(p.label) ? MOTION.lcm_lora_fetch || 0 : 0);
+  $('adModule').textContent = !mod ? `${p.label} isn't installed (animatediff_models in your models folder)`
+    : dl ? `${p.label} · downloads on the first render (${fmtGB(dl)}, once)` : `${p.label} · ${p.steps} steps · CFG ${p.cfg} · 16 frames at a time`;
   $('mloraPane').hidden = !adI2V();
   const cam = MOTION.loras.filter(m => /^v2_lora_/i.test(m.name)), fx = MOTION.loras.filter(m => !cam.includes(m));
   const opts = list => list.map(m => `<option value="${m.path}" title="${m.name}">${loraName(m.name)}</option>`).join('');
@@ -2039,9 +2047,9 @@ function renderControls() {
   if (!nets) state.cn[state.mode] = 'off';
   $('cnNone').hidden = nets > 0; $('cnSel').hidden = !nets;
   // nets that download on first use (DWARP installs without them): say so while they're missing
-  const toFetch = Object.values(modeCfg().controlnets || {}).filter(c => c.repo && !c.have);
+  const toFetch = [...new Map(Object.values(modeCfg().controlnets || {}).filter(c => !c.have && (c.repo || c.fetch)).map(c => [c.path, c])).values()];
   $('cnFetch').hidden = !toFetch.length || (state.cn[state.mode] || 'both') === 'off';
-  $('cnFetch').textContent = `${toFetch.length === 1 ? 'This ControlNet downloads' : 'These ControlNets download'} on the first render that uses ${toFetch.length === 1 ? 'it' : 'them'} (~${(toFetch.length * 0.73).toFixed(1)} GB, once).`;
+  $('cnFetch').textContent = `${toFetch.length === 1 ? 'This ControlNet downloads' : 'These ControlNets download'} on the first render that uses ${toFetch.length === 1 ? 'it' : 'them'} (${fmtGB(toFetch.reduce((t, c) => t + (c.fetch || 0.73e9), 0))}, once).`;
   const cn = state.cn[state.mode] || 'both';
   // off, then two toggles: depth and edge each on / off (both off = off lit); one-net modes have depth only
   $('cnSel').style.gridTemplateColumns = `repeat(${nets < 2 ? 2 : 3}, 1fr)`;   // off · depth (· edge), like DepthDiff's row
@@ -3900,7 +3908,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
 (async function boot() {
   load();
   try {
-    [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES }, { checkpoints: CHECKPOINTS }] = await Promise.all([
+    [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES, fetchable: FETCHABLE = {} }, { checkpoints: CHECKPOINTS }] = await Promise.all([
       api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };

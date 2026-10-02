@@ -87,7 +87,7 @@
       "test_size": 512,
       "ref_size": 768,
       "spf": 2.5,
-      "default_checkpoint": "768-v-ema.ckpt",
+      "default_checkpoint": "v2-1_768-ema-pruned.safetensors",
       "controlnets": {
         "depth": {
           "kind": "depth",
