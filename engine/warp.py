@@ -137,6 +137,7 @@ class RenderJob:
     motion_lora: str = ""
     motion_lora_weight: float = 1.0
     lcm_lora_weight: float = 0.8         # AnimateLCM's spatial LoRA on the checkpoint (AnimateLCM modules only)
+    motion_context: bool = False         # smooth long clips: one pass, the motion model's 16-frame windows blended at every step
     shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5

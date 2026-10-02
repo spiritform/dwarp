@@ -2448,7 +2448,7 @@ async function buildConfig(kind) {
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets: t2v && !state.i2v ? [] : adOn() && adI2V() ? [] : controlnets,     // Text -> Video: nothing to follow; Motion on a still: the module moves it
-    ...(adOn() ? { motion: motionPath(), motion_lora: motionLora(), motion_lora_weight: state.ad.loraW } : {}),
+    ...(adOn() ? { motion: motionPath(), motion_lora: motionLora(), motion_lora_weight: state.ad.loraW, motion_context: !!state.ad.context } : {}),
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
@@ -2655,7 +2655,9 @@ const HELP = {
     <p>The third choice next to Warp and Boil (SD 1.5, Video or Image mode). Instead of carrying paint from frame to
        frame, a <b>motion model</b> paints <b>16 frames at a time</b> and makes them move together: smooth, coherent motion
        with a softer, more animated look. Longer clips go in overlapping 16-frame windows, so frames arrive in
-       batches rather than one by one, and even a short Preview renders one full window.</p>
+       batches rather than one by one, and even a short Preview renders one full window. With <b>Settings → Smooth long
+       clips</b> on, a long clip renders in one pass instead, the windows blended at every step so the whole clip shares one
+       motion (no drift from window to window) — it needs more VRAM.</p>
     <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>animate →</b> (under the stage) sends it
        to Image mode as the picture, with Motion on. Works on any Frame run.</p>
     <table>
@@ -2812,7 +2814,8 @@ const HELP = {
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
       <li>Motion: <a href="https://github.com/guoyww/AnimateDiff" target="_blank">AnimateDiff</a> (Guo et al.) and its v2 camera LoRAs,
           <a href="https://huggingface.co/CiaraRowles/TemporalDiff" target="_blank">TemporalDiff</a> (Ciara Rowles),
-          <a href="https://github.com/G-U-N/AnimateLCM" target="_blank">AnimateLCM</a> (Fu-Yun Wang et al.)</li>
+          <a href="https://github.com/G-U-N/AnimateLCM" target="_blank">AnimateLCM</a> (Fu-Yun Wang et al.);
+          smooth long clips: <a href="http://haonanqiu.com/projects/FreeNoise.html" target="_blank">FreeNoise</a> (Haonan Qiu et al.), via diffusers</li>
       <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
           <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
       <li><a href="https://github.com/google-research/frame-interpolation" target="_blank">FILM</a> frame interpolation (Google Research, Reda et al.),
@@ -2871,8 +2874,17 @@ async function paintSettings() {
     <div class="setrow">
       <h4>LoRAs</h4>
       ${pathRow('setLora', 'loras', c.loras_dir ?? '', 'Default')}
+    </div>
+    <div class="setrow">
+      <h4>Motion</h4>
+      <label><input type="checkbox" id="setMotionCtx" ${state.ad?.context ? 'checked' : ''}> Smooth long clips <span class="note" style="margin:0">(experimental)</span></label>
+      <div class="note">Clips longer than 16 frames render in one pass, the motion model's windows blended at every step (like
+        ComfyUI's context options): smoother, one motion all the way through. <b>Needs more VRAM</b> — fine on 16 GB+;
+        on 12 GB keep the size at 512 or below, and it runs without a Style ref (with one it falls back to window by
+        window). Live edits don't apply while it renders.</div>
     </div>`;
   $('setClose').onclick = () => toggleSettings(false);
+  $('setMotionCtx').onchange = e => { state.ad.context = e.target.checked; save(); setStatus(`smooth long clips ${state.ad.context ? 'on' : 'off'}`, 'done'); };
   const post = async body => {
     try {
       await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });

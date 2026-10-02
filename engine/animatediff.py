@@ -209,6 +209,81 @@ class FrameNoise:
         self.pipe.scheduler.__dict__.pop("add_noise", None)
 
 
+def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, ip_embeds, nets, kinds, i2v, out,
+                   device, log, progress, cancelled) -> list[Path]:
+    """Smooth long clips: the whole clip in one pass, the motion model's 16-frame context windows (stride 4,
+    pyramid weights) blended at EVERY denoising step (diffusers' FreeNoise, like ComfyUI's context options), so all
+    windows agree on one motion. The window-by-window path only crossfades finished frames, and at a high Denoise
+    neighbouring windows invent different poses. Needs more VRAM (split inference keeps it in check); one pass, so
+    Live edits don't apply."""
+    n = len(src_np)
+    pipe.enable_free_noise(context_length=WINDOW, context_stride=4, weighting_scheme="pyramid")
+    if ip_embeds is None:                       # split inference cuts the spatial blocks' batch into chunks, but a Style
+        pipe.enable_free_noise_split_inference(spatial_split_size=256, temporal_split_size=WINDOW)   # ref's image
+    else:                                       # tokens ride along uncut ("shape '[96, -1, 8, 40]' is invalid"): off
+        log("smooth long clip with a Style ref: split inference off (they don't mix) — uses more VRAM")
+    try:
+        # FreeNoise takes text prompts by output frame and interpolates between them (prompt travel); embeddings named
+        # in them were loaded into the pipeline by encode_prompts already
+        nth = max(1, job.nth)
+        at = (lambda f: f // nth) if i2v else (lambda f: f // nth - job.frame_start)
+        prompts = {}
+        for f, p in keys:
+            prompts[min(n - 1, max(0, at(int(f))))] = p
+        prompts.setdefault(0, keys[0][1])
+        cn_kw = {}
+        if nets > 1:
+            c0 = job.controlnets
+            cn_kw = dict(conditioning_frames=[hints[k] for k in kinds], controlnet_conditioning_scale=[c.weight for c in c0],
+                         control_guidance_start=[c.start for c in c0], control_guidance_end=[c.end for c in c0])
+        elif nets:
+            c = job.controlnets[0]
+            cn_kw = dict(conditioning_frames=hints[c.kind], controlnet_conditioning_scale=c.weight,
+                         control_guidance_start=c.start, control_guidance_end=c.end)
+        amount = torch.cat(amounts) if amounts else None
+        if amount is not None and amount.min() >= 1:
+            amount = None
+        vd = VideoDiff(pipe, amount) if amount is not None else None
+
+        def step(p_, i, t, kw):                  # progress per step: the frames only arrive at the end
+            progress("rendering", 0, total, f"all {total} frames together · step {i + 1}/{steps}")
+            if cancelled():
+                p_._interrupt = True
+            return vd(p_, i, t, kw) if vd else kw
+        log(f"smooth long clip: {total} frames in one pass, 16-frame windows blended every step (FreeNoise, stride 4); "
+            f"{len(prompts)} prompt{'s' * (len(prompts) > 1)}; Live edits don't apply in this mode")
+        tw = time.time()
+        g = torch.Generator(device="cpu").manual_seed(int(job.seed))
+        frame_noise: dict[int, torch.Tensor] = {}
+        with torch.inference_mode(), FrameNoise(pipe, job.seed, 0, frame_noise), (vd if vd else torch.no_grad()):
+            res = pipe(video=[Image.fromarray(x) for x in src_np], **cn_kw, prompt=prompts,
+                       negative_prompt=job.negative or "", strength=job.style, num_inference_steps=steps,
+                       guidance_scale=cfg, generator=g, output_type="np",
+                       **({"ip_adapter_image_embeds": ip_embeds} if ip_embeds is not None else {}),
+                       callback_on_step_end=step, callback_on_step_end_tensor_inputs=["latents"])
+        frames = res.frames[0]
+        del res
+        torch.cuda.empty_cache()
+    finally:
+        pipe.disable_free_noise()
+    if cancelled():
+        log("cancelled")
+        return []
+    written, first = [], None
+    for i, f in enumerate(frames[:total]):     # padding frames (a short clip) aren't written
+        res_t = to_tensor((np.clip(f, 0, 1) * 255).astype(np.uint8), device)
+        if first is None:
+            first = res_t
+        else:
+            res_t = match_color(res_t, first, job.color_match)
+        path = out / "frames" / f"{i:06d}.png"
+        to_image(res_t).save(path)
+        written.append(path)
+    log(f"{total} frames in {time.time() - tw:.0f}s ({(time.time() - tw) / max(1, total):.1f} s/frame)")
+    progress("rendering", len(written), total, f"frame {len(written)}/{total}")
+    return written
+
+
 def windows(total: int) -> list[tuple[int, int]]:
     if total <= WINDOW:
         return [(0, total)]
@@ -324,6 +399,15 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
     frame_noise: dict[int, torch.Tensor] = {}  # each frame's start noise, shared by the windows that cover it
     done: dict[int, np.ndarray] = {}           # rendered frames waiting for the next window's crossfade
     written = []
+    smooth = job.motion_context and len(src_np) > WINDOW   # smooth long clips (Settings): one pass, blended windows
+    if smooth and ip_embeds is not None and torch.cuda.get_device_properties(0).total_memory < 15.5 * 2 ** 30:
+        # with a Style ref, split inference has to be off: on 12 GB that spilled into system RAM (a step took minutes)
+        log("smooth long clips skipped: with a Style ref it needs a 16 GB+ GPU — window by window instead "
+            "(turn the Style ref off to keep it smooth)")
+        smooth = False
+    if smooth:
+        return render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, ip_embeds, nets, kinds,
+                              i2v, out, device, log, progress, cancelled)
     for w, (s, e) in enumerate(wins):
         if cancelled():
             log("cancelled")
