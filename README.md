@@ -13,6 +13,8 @@ paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repain
 
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Frame** or **Preview**.
 
+![DWARP: the panel on the left, the stage with a run, the runs strip below](docs/screenshot.png)
+
 ## How it works
 
 For every frame:
