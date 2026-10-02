@@ -132,6 +132,11 @@ class RenderJob:
                                          # Single Frame's spot
     shape_end: int = -1                  # its Out point: later render frames hold it. -1 = the mask's last frame
     shape_loop: bool = False             # past Out, start again at In (a looping mask video: animated textures)
+    # Motion (AnimateDiff, engine/animatediff.py): a motion module file instead of the warp; optional motion LoRA
+    motion: str = ""
+    motion_lora: str = ""
+    motion_lora_weight: float = 1.0
+    lcm_lora_weight: float = 0.8         # AnimateLCM's spatial LoRA on the checkpoint (AnimateLCM modules only)
     shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5
@@ -1002,6 +1007,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode), and/or
     "camera": new Text / Image -> Video camera values ({cam_zoom, cam_rotate, ...}), eased in over a few frames.
     `on_keys` hears the keyframes in use at the start and after every edit."""
+    if job.motion:                             # Motion: AnimateDiff instead of the frame-by-frame warp
+        from engine.animatediff import render_ad
+        return render_ad(job, progress, cancelled, log, live, on_keys)
     device = torch.device("cuda")
     out = Path(job.out_dir)
     (out / "frames").mkdir(parents=True, exist_ok=True)

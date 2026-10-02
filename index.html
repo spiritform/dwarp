@@ -45,7 +45,7 @@
   }
   /* the wordmark's face: Alien Block (Google Fonts, OFL), bundled in vendor/fonts so it works offline */
   .brand { display: flex; align-items: center; margin-right: 6px; }
-  .barbtns { display: flex; gap: 3px; }                  /* log · ? · ⚙ close together */   /* the logo, heading the tab row */
+  .barbtns { display: flex; gap: 3px; margin-left: auto; min-width: 0; }                  /* log · ? · ⚙ close together */   /* the logo, heading the tab row */
   .brand .logo { height: 16px; fill: #ecebef; display: block; }
 
   .label, .sublabel, .slider-head b { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
@@ -166,9 +166,12 @@
   .range-text { display: flex; justify-content: space-between; color: #a9a7b1; font-size: 11px; margin: -4px 10px 10px; }
   /* Frames: on ones / twos / threes — which of the range's frames get drawn */
   .ons { display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; font-size: 11px; color: #a9a7b1; }
+  .adnote { color: var(--faint); font-size: 11px; margin: 0 0 12px; }
+  #adBox[hidden], #mloraPane[hidden], #mloraBox[hidden] { display: none; }
   .ons .seg { grid-template-columns: repeat(3, 1fr); flex: 1; }
   .ons .seg button { padding: 3px 0; font-size: 11px; }
   .ons > span:first-child { min-width: 38px; }
+  .ons[hidden] { display: none; }            /* e.g. Aspect in Image mode: the picture sets it */
   .sizeSlot { flex: 1; }                  /* Size lives in the source card: the clip's, or Size / Duration */
   .uploading { padding: 10px; color: var(--dim); font-size: 12px; }
   .uploading i { display: block; height: 3px; background: var(--accent); margin-top: 6px; width: 0; transition: width .2s; }
@@ -319,6 +322,20 @@
 
   .status { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* the log chip carries the status: dot + the latest line, cut with … (the whole line in its tooltip) */
+  .logbtn.logstat { display: flex; align-items: center; min-width: 0; max-width: min(46vw, 560px); }
+  .logbtn.logstat.new::after { display: none; }   /* the status dot already says something's happening */
+  .logbtn .status { margin-left: 0; display: flex; align-items: center; min-width: 0; color: inherit; }
+  .logbtn .status.bad { color: var(--bad); }
+  #statusText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  /* the GPU chip: VRAM as a small bar, green to red as it fills; load, heat and power in its tooltip */
+  .gpuchip { display: flex; align-items: center; gap: 6px; cursor: default; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gpuchip[hidden] { display: none; }
+  .gpuchip .gpulab { font-size: 10px; font-weight: 700; letter-spacing: .6px; color: var(--faint); }
+  .gpubar { position: relative; width: 34px; height: 6px; border-radius: 2px; overflow: hidden;
+            background: linear-gradient(90deg, #5fc58a 0%, #b9d36a 45%, var(--accent-2) 72%, var(--accent) 86%, var(--bad) 100%); }
+  /* the bar is the gradient; a dark mask over the unused part pulls back as VRAM fills (a hint of colour shows through) */
+  .gpubar i { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: rgba(28,28,33,.82); transition: width .6s ease; }
   .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 6px; vertical-align: 1px; }
   .status.live .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
   .status.done .dot { background: var(--ok); }
@@ -701,6 +718,17 @@
     <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
       <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
+      <button data-f="motion" title="Motion (AnimateDiff, SD 1.5): a motion model renders 16 frames at a time, so the frames move together — smooth, coherent motion, a softer look">Motion</button>
+    </div>
+    <div id="adBox" hidden>
+      <div class="ons" style="margin:0 0 6px"><span>Motion</span><div class="seg" id="adSpeed" style="grid-template-columns:1fr 1fr"><button data-s="quality">Quality</button><button data-s="fast">Fast</button></div></div>
+      <div class="adnote" id="adModule"></div>
+      <div id="mloraPane">
+        <div class="sublabel" title="Image mode: a motion LoRA moves the picture (camera moves, effects). In Video mode the clip is the motion">Motion LoRA</div>
+        <select class="model" id="mlora"></select>
+        <div class="slider" id="mloraBox" style="margin-top:10px"><div class="slider-head"><b>Strength</b><span id="mloraWV"></span></div>
+          <input type="range" id="mloraW" min="0" max="1.5" step="0.05"></div>
+      </div>
     </div>
     <div class="slider" id="nextBox">
       <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look. High keeps it and just follows the motion (only what the motion uncovers is painted fresh); low repaints every frame more. Double-click: the old default (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
@@ -712,7 +740,7 @@
       <input type="range" id="srcMix" min="0" max="0.5" step="0.01">
       <div class="ends"><span>carry the paint</span><span>fresh source</span></div>
     </div>
-    <div class="slider">
+    <div class="slider" id="edgeBox">
       <div class="slider-head"><b title="padded: every frame is repainted with a mirrored margin that's cropped off after, so the edges don't darken or smear over a long render (about 30% slower). plain: the frame as it is">Edges</b></div>
       <div class="seg" id="edgePad" style="grid-template-columns:1fr 1fr"><button data-v="0">plain</button><button data-v="1">padded</button></div>
     </div>
@@ -868,8 +896,7 @@
       <button data-v="out" class="on">Output</button>
       <button data-v="split">Split</button>
     </div>
-    <div class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></div>
-    <span class="barbtns"><button class="logbtn" id="logBtn" title="Show the renderer log">log</button><button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button><button class="logbtn" id="setBtn" title="Settings">⚙</button></span>
+    <span class="barbtns"><button class="logbtn logstat" id="logBtn" title="The renderer log (L)"><span class="status" id="status"><span class="dot"></span><span id="statusText">idle</span></span></button><span class="logbtn gpuchip" id="gpuChip" hidden><span class="gpulab">GPU</span><span class="gpubar"><i id="gpuFill"></i></span><span id="gpuText"></span></span><button class="logbtn" id="helpBtn" title="Help: how DWARP works">?</button><button class="logbtn" id="setBtn" title="Settings">⚙</button></span>
   </div>
   <div class="stage-wrap">
     <div class="stage" id="stage">
@@ -1078,10 +1105,29 @@ const img = (run, layer, frame, thumb) =>
   `/api/runs/${run}/${thumb ? 'thumbnail' : 'image'}?${qs({ layer, frame, output_dir: INFO.output_dir, batch_name: INFO.batch_name, v: `${BOOT}.${runGen[run] || 0}` })}`;
 
 // ---------------------------------------------------------------- status
-function setStatus(text, cls = '') { $('status').className = 'status ' + cls; $('statusText').textContent = text; }
+function setStatus(text, cls = '') { $('status').className = 'status ' + cls; $('statusText').textContent = text; $('logBtn').title = `${text}\n\nThe renderer log (L)`; }
 function showError(summary, log) {
   $('err').hidden = !summary; $('errSummary').textContent = summary || ''; $('errLog').textContent = log || '';
 }
+
+// ---- the GPU chip: polled every 2 s while the page is in view
+async function pollSystem() {
+  if (document.hidden) return;
+  const r = await api('/api/system').catch(() => null), g = r?.gpu;
+  if (!g || g.vram_total == null) { $('gpuChip').hidden = true; return; }
+  const frac = g.vram_used / g.vram_total, gb = v => (v / 1024).toFixed(1);
+  $('gpuChip').hidden = false;
+  $('gpuFill').style.width = `${100 - Math.round(frac * 100)}%`;   // the mask: what's still free
+  $('gpuChip').classList.toggle('warm', frac >= 0.8 && frac < 0.92); $('gpuChip').classList.toggle('hot', frac >= 0.92);
+  $('gpuText').textContent = `${gb(g.vram_used)}/${gb(g.vram_total)} GB`;
+  const capped = g.power_limit != null && g.power_default != null && g.power_limit < g.power_default;
+  $('gpuChip').title = [`${g.name}`, `VRAM ${gb(g.vram_used)} of ${gb(g.vram_total)} GB (${Math.round(frac * 100)}%)`,
+    `load ${g.load ?? '?'}% · ${g.temp ?? '?'} °C`,
+    `power ${g.power != null ? Math.round(g.power) : '?'} W of ${g.power_limit != null ? Math.round(g.power_limit) : '?'} W${capped ? ` (capped; default ${Math.round(g.power_default)} W)` : ''}`,
+    r.cpu != null ? `CPU ${Math.round(r.cpu)}% · RAM ${r.ram_used.toFixed(1)} of ${r.ram_total.toFixed(0)} GB` : ''].filter(Boolean).join('\n');
+}
+setInterval(pollSystem, 2000); setTimeout(pollSystem, 400);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollSystem(); });
 
 // ---------------------------------------------------------------- clip
 const T2V_FPS = 24;                         // Text -> Video's clock (FPS 2s / 3s hold drawings on it)
@@ -1415,7 +1461,8 @@ function paintSums() {
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && modeCfg().illusion?.have ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
-  set('render', (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+  set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
+    (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -1857,9 +1904,12 @@ function renderMode() {
   const def = defaultCheckpoint();
   // the file name only (the folder is the family already picked), ⚡ first so a long name can't push it off the line
   const bolt = path => isFast(path) ? '⚡ ' : '';
+  // the same file name in two folders: those two show their folder too (AnimateDiff/photonLCM_v10)
+  const dup = n => list.filter(c => shortName(c.path) === n).length > 1;
+  const label = path => dup(shortName(path)) ? path.split('/').slice(-2).join('/').replace(/\.(safetensors|ckpt)$/, '') : shortName(path);
   const first = `${bolt(def)}${shortName(def)} (${state.mode === 'sd15' ? 'look default' : 'default'})`;
   $('model').innerHTML = `<option value="" title="${def}">${first}</option>` + list.filter(c => c.path !== def).map(c =>
-    `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${shortName(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
+    `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${label(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
   $('model').value = state.ckpt[state.mode] || '';
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
@@ -1916,6 +1966,58 @@ $('embed').onchange = e => {
 $('lora').onchange = e => { state.lora = e.target.value; renderLora(); save(); };
 $('loraW').oninput = e => { state.loraW = +e.target.value; $('loraWV').textContent = state.loraW.toFixed(2); save(); };
 $('embedVer').onchange = e => { state.embed = e.target.value; renderControls(); save(); };
+// ---- Motion (AnimateDiff, SD 1.5): the third way frames connect. Two choices per source, each a tested motion
+// module + sampler settings. Video: TemporalDiff paints the style and follows the clip; AnimateLCM is ~2.5x faster,
+// the style weaker. Image: the v2 module + a motion LoRA moves the picture (TemporalDiff holds it too still);
+// Denoise 0.7 keeps the subject (0.8 invents a new one). AnimateLCM takes the same LoRAs at ~2x the speed.
+var MOTION = { modules: [], loras: [], lcm_lora: null };
+const AD = {
+  v2v: { quality: { mm: /temporaldiff/i, label: 'TemporalDiff', steps: 20, cfg: 7 },
+         fast:    { mm: /animatelcm|lcmmotion/i, label: 'AnimateLCM', steps: 6, cfg: 2 }, denoise: 0.75 },
+  i2v: { quality: { mm: /mm_sd_v15_v2/i, label: 'AnimateDiff v2', steps: 20, cfg: 7 },
+         fast:    { mm: /animatelcm|lcmmotion/i, label: 'AnimateLCM', steps: 6, cfg: 1.5 }, denoise: 0.7 },
+};
+const adAllowed = () => state.mode === 'sd15' && (!state.t2v || state.i2v);   // SD 1.5, a video or a picture
+const adOn = () => !!state.ad?.on && adAllowed();
+const adI2V = () => !!state.t2v && !!state.i2v;
+const adProfile = () => AD[adI2V() ? 'i2v' : 'v2v'][state.ad.speed] || AD.v2v.quality;
+const adModule = prof => MOTION.modules.find(m => prof.mm.test(m.name));
+const motionPath = () => (adModule(adProfile()) || {}).path || '';
+const motionLora = () => adI2V() && MOTION.loras.some(m => m.path === state.ad.lora) ? state.ad.lora : '';
+// a readable name: v2_lora_ZoomIn -> Zoom in, explosiveAnimatediff_v10 -> Explosive
+const loraName = n => n.replace(/^v2_lora_/i, '').replace(/animatediff|motionloras?|_?\d+steps|[-_ ]?v?\d+([-_.]\d+)*$/gi, '')
+  .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().toLowerCase().replace(/^./, c => c.toUpperCase()) || n;
+function applyAdProfile(denoise = false) {        // the profile's steps / CFG (a ⚡ checkpoint keeps its own)
+  const p = adProfile();
+  if (!isFast(checkpointPath())) { state.steps = p.steps; state.cfg = p.cfg; }
+  if (denoise) state.style = AD[adI2V() ? 'i2v' : 'v2v'].denoise;
+}
+function renderMotion() {
+  const on = adOn();
+  $('adBox').hidden = !on;
+  if (!on) return;
+  const tab = AD[adI2V() ? 'i2v' : 'v2v'];
+  [...$('adSpeed').children].forEach(b => {
+    const prof = tab[b.dataset.s], have = !!adModule(prof);
+    b.classList.toggle('on', b.dataset.s === state.ad.speed); b.disabled = !have;
+    b.title = have ? `${prof.label} · ${prof.steps} steps, CFG ${prof.cfg}` : `${prof.label} isn't in your animatediff_models folder`;
+  });
+  const p = adProfile(), mod = adModule(p);
+  $('adModule').textContent = mod ? `${p.label} · ${p.steps} steps · CFG ${p.cfg} · 16 frames at a time`
+    : `${p.label} isn't installed (animatediff_models in your models folder)`;
+  if (mod && /lcm/i.test(p.label) && !MOTION.lcm_lora) $('adModule').textContent += ' · AnimateLCM LoRA missing';
+  $('mloraPane').hidden = !adI2V();
+  const cam = MOTION.loras.filter(m => /^v2_lora_/i.test(m.name)), fx = MOTION.loras.filter(m => !cam.includes(m));
+  const opts = list => list.map(m => `<option value="${m.path}" title="${m.name}">${loraName(m.name)}</option>`).join('');
+  $('mlora').innerHTML = `<option value="">${MOTION.loras.length ? 'none — the prompt alone' : 'none — add some to animatediff_motion_lora'}</option>` +
+    (cam.length ? `<optgroup label="Camera">${opts(cam)}</optgroup>` : '') + (fx.length ? `<optgroup label="Effects">${opts(fx)}</optgroup>` : '');
+  $('mlora').value = motionLora();
+  $('mloraBox').hidden = !motionLora();
+  $('mloraW').value = state.ad.loraW; $('mloraWV').textContent = (+state.ad.loraW).toFixed(2);
+}
+$('adSpeed').onclick = e => { const sp = e.target.dataset.s; if (!sp || e.target.disabled) return; state.ad.speed = sp; applyAdProfile(); renderControls(); save(); };
+$('mlora').onchange = e => { state.ad.lora = e.target.value; renderControls(); save(); };
+$('mloraW').oninput = e => { state.ad.loraW = +e.target.value; $('mloraWV').textContent = state.ad.loraW.toFixed(2); save(); };
 function renderControls() {
   renderMode(); renderEmbed(); renderSampler(); renderLora();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
@@ -1923,7 +2025,8 @@ function renderControls() {
   renderStyleRef(); renderShape(); paintNeg();
   $('styleNext').value = 1 - state.styleNext; $('styleNextV').textContent = (1 - state.styleNext).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
-  [...$('frameMode').children].forEach(b => b.classList.toggle('on', (b.dataset.f === 'fresh') === !!state.fresh));
+  const ad = adOn();
+  [...$('frameMode').children].forEach(b => b.classList.toggle('on', ad ? b.dataset.f === 'motion' : b.dataset.f !== 'motion' && (b.dataset.f === 'fresh') === !!state.fresh));
   [...$('edgePad').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.edgePad ? 1 : 0)));
   $('srcMixBox').hidden = $('nextBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
@@ -1957,13 +2060,27 @@ function renderControls() {
   $('guideBox').hidden = state.t2v && !state.i2v;   // Text -> Video: nothing to guide by
   applyCards(); paintSums();
   if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
-    $('frameMode').hidden = $('srcMixBox').hidden = true;
+    $('frameMode').hidden = !(state.i2v && adAllowed());   // Image mode: Camera · Motion
+    $('srcMixBox').hidden = true;
     $('nextBox').hidden = false;           // Frame Lock: later frames hold what's there (a high Denoise every frame cooks)
     if (state.i2v) $('gTabs').hidden = false;
     else $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = true;
   } else {
     $('gTabs').hidden = $('frameMode').hidden = false;
   }
+  // the row: Warp · Boil · Motion for a video, Camera · Motion for a picture; Motion only on SD 1.5
+  const fmB = f => $('frameMode').querySelector(`[data-f="${f}"]`);
+  fmB('warp').textContent = state.t2v ? 'Camera' : 'Warp';
+  fmB('warp').title = state.t2v ? 'Camera: each frame moves on from the last (zoom, rotate, pan), repainted as it goes' : "Carry the paint along the footage's motion: strokes stick to things";
+  fmB('fresh').hidden = !!state.t2v; fmB('motion').hidden = !adAllowed();
+  $('frameMode').style.gridTemplateColumns = `repeat(${[...$('frameMode').children].filter(b => !b.hidden).length}, 1fr)`;
+  if (ad) {                                // the motion model ties frames together: no warp settings, no camera, no Shape
+    $('nextBox').hidden = $('srcMixBox').hidden = $('edgeBox').hidden = true;
+    $('camBox').hidden = true; $('shapeBox').hidden = true;
+  } else {
+    $('edgeBox').hidden = false; $('shapeBox').hidden = false;
+  }
+  renderMotion();
   [...$('ddSel').children].forEach(b => b.classList.toggle('on', b.dataset.d === dd.src));
   $('ddBox').classList.toggle('off', dd.src === 'off');
   $('ddInvert').classList.toggle('off', dd.src === 'off');
@@ -2035,7 +2152,12 @@ $('srcMode').onclick = e => {
   save();
 };
 $('edgePad').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.edgePad = +v; renderControls(); save(); };
-$('frameMode').onclick = e => { const f = e.target.dataset.f; if (!f) return; state.fresh = f === 'fresh'; renderControls(); save(); };
+$('frameMode').onclick = e => {
+  const f = e.target.dataset.f; if (!f) return;
+  if (f === 'motion') { if (!state.ad.on) { state.ad.on = true; applyAdProfile(true); } }
+  else { if (state.ad.on) { state.ad.on = false; applyModelDefaults(); } state.fresh = f === 'fresh'; }
+  renderControls(); save();
+};
 $('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
 $('cnSel').onclick = e => {
   const c = e.target.dataset.c; if (!c) return;
@@ -2281,7 +2403,8 @@ async function buildConfig(kind) {
     lora: loraOn(), lora_weight: state.loraW, ...styleRefJob(),
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
-    controlnets: t2v && !state.i2v ? [] : controlnets,     // Text -> Video: nothing to follow
+    controlnets: t2v && !state.i2v ? [] : adOn() && adI2V() ? [] : controlnets,     // Text -> Video: nothing to follow; Motion on a still: the module moves it
+    ...(adOn() ? { motion: motionPath(), motion_lora: motionLora(), motion_lora_weight: state.ad.loraW } : {}),
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
@@ -3344,7 +3467,7 @@ $('loadRun').onclick = async () => {
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
   for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
-                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint']) if (k in ui) state[k] = ui[k];
+                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
   let gone = '';
   if (state.shape?.path && !(await api(`/api/fs/exists?${qs({ path: state.shape.path })}`).catch(() => ({})))?.exists) { state.shape = null; gone = ' (its shape file is gone)'; }
@@ -3786,6 +3909,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   state.srcMix ??= 0.15;
   state.fresh ??= false;
+  state.ad = { on: false, speed: 'quality', lora: '', loraW: 1, ...(state.ad || {}) };   // Motion (AnimateDiff)
   state.styleNext ??= +((state.style ?? 0.75) * 0.65).toFixed(2);   // older saves: what the engine used to pick
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
@@ -3798,6 +3922,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
   EMBEDS = (await api('/api/embeddings').catch(() => ({ embeddings: [] }))).embeddings;
   LORAS = (await api('/api/loras').catch(() => ({ loras: [] }))).loras;
+  MOTION = await api('/api/motion').catch(() => ({ modules: [], loras: [], lcm_lora: null }));
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
   bindKeys();                               // the lane is static markup: bound once

@@ -218,6 +218,59 @@ def build_app() -> FastAPI:
                if (fam := embedding_family(f))]
         return {"embeddings": sorted(out, key=lambda e: e["name"].lower())}
 
+    _sys = {"t": 0.0, "v": None}
+
+    @app.get("/api/system")
+    def system():
+        """The header's GPU meter: VRAM, load, temperature, power (nvidia-smi), plus CPU and RAM. Cached a second."""
+        import time as _t
+        if _t.time() - _sys["t"] < 1.0 and _sys["v"]:
+            return _sys["v"]
+        out = {"gpu": None}
+        try:
+            r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu,"
+                                "power.draw,power.limit,power.default_limit", "--format=csv,noheader,nounits"],
+                               capture_output=True, text=True, timeout=3)
+            f = [x.strip() for x in r.stdout.splitlines()[0].split(",")]
+            num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
+            out["gpu"] = {"name": f[0], "vram_used": num(f[1]), "vram_total": num(f[2]), "load": num(f[3]),
+                          "temp": num(f[4]), "power": num(f[5]), "power_limit": num(f[6]), "power_default": num(f[7])}
+        except (OSError, IndexError, subprocess.SubprocessError):
+            pass
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            out["cpu"] = psutil.cpu_percent(interval=None)
+            out["ram_used"], out["ram_total"] = vm.used / 2 ** 30, vm.total / 2 ** 30
+        except Exception:
+            pass
+        _sys.update(t=_t.time(), v=out)
+        return out
+
+    @app.get("/api/motion")
+    def motion():
+        """Motion (AnimateDiff): motion modules and motion LoRAs, the models folder's (ComfyUI layout) and DWARP's own."""
+        root = Path(settings()["models_root"])
+        exts = (".safetensors", ".ckpt", ".pth")
+
+        def scan(*dirs):
+            found = {}
+            for d in dirs:
+                if d.is_dir():
+                    for f in sorted(d.iterdir()):
+                        if f.suffix.lower() in exts and f.name not in found:
+                            found[f.name] = {"name": f.stem, "path": f.as_posix()}
+            return list(found.values())
+        # SD 1.5 motion modules only: not SDXL ones, the v3 adapter (a LoRA) or SparseCtrl. The page picks from
+        # these by name (TemporalDiff, v2, AnimateLCM); AnimateLCM also needs its spatial LoRA.
+        from engine.animatediff import animatelcm_lora
+        skip = re.compile(r"sdxl|adapter|sparsectrl", re.I)
+        modules = [m for m in scan(HERE / "models" / "animatediff", root / "animatediff_models")
+                   if not skip.search(m["name"])]
+        return {"modules": modules,
+                "loras": scan(HERE / "models" / "animatediff_motion_lora", root / "animatediff_motion_lora"),
+                "lcm_lora": animatelcm_lora(str(root / "animatediff_models" / "x"))}
+
     @app.get("/api/checkpoints")
     def checkpoints():
         root = settings().get("checkpoint_dir", "")
@@ -377,6 +430,9 @@ def build_app() -> FastAPI:
                     else ("video", "checkpoint")):   # text / image -> video: no clip
             if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
+        for key in ("motion", "motion_lora"):    # Motion (AnimateDiff): its module / LoRA files
+            if job.get(key) and not os.path.isfile(job[key]):
+                raise HTTPException(422, detail=[{"message": f"{key} not found: {job[key]!r}"}])
         if job.get("style_image") and not os.path.isfile(job["style_image"]):
             raise HTTPException(422, detail=[{"message": f"style image not found: {job['style_image']!r}"}])
         if job.get("shape") and not os.path.exists(job["shape"]):
