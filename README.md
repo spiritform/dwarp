@@ -82,6 +82,7 @@ the same differential diffusion underneath:
 - **Style ref**: drop a picture and its look steers every frame ([IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)); *style only* borrows colours and strokes without the content ([InstantStyle](https://github.com/instantX-research/InstantStyle)'s style layers). SD 1.5 and SDXL
 - **LoRAs**: pick one per render from `models/loras` (or your models folder's, in Settings) with a strength; SD 1.5, SD 2.1 and SDXL, kohya / Stability / diffusers layouts
 - **Warp or Boil**: carry the paint along the motion for smooth, sticky strokes, or repaint every frame for the boiling look of hand-painted animation
+- **Motion (AnimateDiff)**: a third way next to Warp and Boil (SD 1.5): a motion model paints 16 frames at a time, for smooth, coherent movement. Quality (TemporalDiff for video, AnimateDiff v2 for a picture) or Fast (AnimateLCM, ~2–3× quicker); motion LoRAs and the Camera move a still; Style ref, LoRAs and ControlNet still apply
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
@@ -107,9 +108,10 @@ the same differential diffusion underneath:
    PyTorch with CUDA, ffmpeg if you don't have it, and the RIFE weights. It asks once where
    your models are. Press Enter to use DWARP's own `models` folder, or paste a ComfyUI `models`
    folder to reuse what you already have.
-3. Add models: see **[models/README.md](models/README.md)** for a short list of links. A single
-   SD 1.5 checkpoint is enough to start. The install already brings the depth model DepthDiff uses;
-   the SD 2.1 ControlNets download by themselves the first time a render needs them.
+3. Models download by themselves the first time a render needs them: the default checkpoint of each
+   family, the ControlNets, QR Code Monster and the Motion models, each checked against its SHA-256. The
+   panel says beforehand what a first render will fetch and how big it is. To use your own checkpoints,
+   or to download ahead of time, see **[models/README.md](models/README.md)**.
 4. Double-click **`run.bat`**. DWARP opens at http://localhost:8013.
 
 Re-running `install.bat` is safe: finished steps are skipped. Every download is pinned and
@@ -125,6 +127,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter) (Tencent AI Lab) and [InstantStyle](https://github.com/instantX-research/InstantStyle) (InstantX) for the style ref
 - Refine's tiling follows [Ultimate SD Upscale](https://github.com/Coyote-A/ultimate-upscale-for-automatic1111); tile ControlNets by Lvmin Zhang (SD 1.5) and xinsir (SDXL Union ProMax)
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
+- Motion: [AnimateDiff](https://github.com/guoyww/AnimateDiff) (Guo et al.) and its v2 camera LoRAs, [TemporalDiff](https://huggingface.co/CiaraRowles/TemporalDiff) (Ciara Rowles), [AnimateLCM](https://github.com/G-U-N/AnimateLCM) (Fu-Yun Wang et al.)
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
 - [FILM](https://github.com/google-research/frame-interpolation) (Google Research, Reda et al., Apache-2.0); TorchScript port by [dajes](https://github.com/dajes/frame-interpolation-pytorch)
 - [spandrel](https://github.com/chaiNNer-org/spandrel) for loading upscale models

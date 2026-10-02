@@ -982,6 +982,7 @@
     </div>
     <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
     <a id="enhanceLink" class="hide">enhance</a>
+    <a id="animateLink" class="hide" title="Animate this frame: it becomes Image mode's picture, with Motion on (SD 1.5) — press Preview to see it move">animate →</a>
     <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
@@ -1850,6 +1851,17 @@ async function setClipPath(path, name) {
   save(); renderClip();
 }
 
+// "animate →": a still you like, on to Image mode to be animated (Text / Image / Video Frame alike).
+$('animateLink').onclick = async () => {
+  if (!viewRun || frames.length !== 1) return;
+  try {
+    const res = await api(`/api/runs/${viewRun}/as_input?${qs({ frame: frames[0] })}`, { method: 'POST' });
+    await useInput(res);                                   // Image mode, this frame as the picture
+    if (adAllowed() && !state.ad.on) { state.ad.on = true; applyAdProfile(true); }
+    renderControls(); setControlTabs(); save();
+    setStatus(adOn() ? 'ready to animate — Motion is on, press Preview' : 'ready to animate — press Preview (Motion needs SD 1.5)', 'done');
+  } catch (e) { setStatus('could not send that frame: ' + e.message, 'bad'); }
+};
 async function useInput(res) {             // an uploaded (or run-fed) file on the server: the picture or the clip
   if (res.image) {
     state.image = { path: res.path, name: res.name, width: res.width, height: res.height };
@@ -2255,7 +2267,7 @@ function showClip() {
   ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
   setFoot(`${state.clip.name} · source`);
-  ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
   updateEst();                             // Frame's tooltip names the frame it will render
@@ -2639,6 +2651,28 @@ const HELP = {
        shimmer. ControlNet keeps
        it following the footage; lower Denoise or higher Hold calms the boil. It skips the optical flow, so it's a
        little faster.</p>
+    <h4>Motion (AnimateDiff)</h4>
+    <p>The third choice next to Warp and Boil (SD 1.5, Video or Image mode). Instead of carrying paint from frame to
+       frame, a <b>motion model</b> paints <b>16 frames at a time</b> and makes them move together: smooth, coherent motion
+       with a softer, more animated look. Longer clips go in overlapping 16-frame windows, so frames arrive in
+       batches rather than one by one, and even a short Preview renders one full window.</p>
+    <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>animate →</b> (under the stage) sends it
+       to Image mode as the picture, with Motion on. Works on any Frame run.</p>
+    <table>
+      <tr><td><b>Quality</b></td><td>Video: <b>TemporalDiff</b> (follows the clip, strongest style). Image: <b>AnimateDiff v2</b>
+          (moves a still, takes motion LoRAs). 20 steps, CFG 7.</td></tr>
+      <tr><td><b>Fast</b></td><td><b>AnimateLCM</b>: 6 steps, about 2–3× faster; steadier, the style a bit weaker.</td></tr>
+      <tr><td><b>Motion LoRA</b></td><td>Image mode: <b>Camera</b> moves (zoom, pan, tilt, roll) or <b>Effects</b>. Around
+          0.6–0.8 adds the effect without wiping the picture; 1.5 takes over.</td></tr>
+      <tr><td><b>Camera</b></td><td>Image mode: the Camera card's zoom / rotate / pan is baked into the frames first, and
+          the motion model paints over that real movement.</td></tr>
+    </table>
+    <p>Motion picks its own sampler (DPM++ 2M Karras, or LCM for Fast), so the Sampler menu doesn't apply. It works best
+       at <b>512</b>. Prompt, Look, Style ref, LoRA, embeddings, ControlNet, DepthDiff, keyframes and Live all work;
+       Shape, Frame Lock, Source mix and Edges are Warp / Boil only.</p>
+    <p><b>More movement</b> from a still: raise Denoise to 0.8–0.85 and drop the <b>same picture into Style ref</b> with
+       <i>style only</i> off (0.6–0.8): the motion model moves freely while IP-Adapter keeps the subject. Words that
+       describe movement in the prompt (<i>hair blowing in the wind, smoke drifting</i>) help more than you'd think.</p>
     <h4>ControlNet — keeps the shapes</h4>
     <p>ControlNets read a map from each source frame and hold the render to it: <b>depth</b> keeps the 3-D layout,
        <b>softedge</b> the outlines and expressions. <b>both</b> is usually best; <b>depth</b> alone gives the
@@ -2776,6 +2810,9 @@ const HELP = {
       <li><a href="https://huggingface.co/thibaud/controlnet-sd21" target="_blank">SD 2.1 ControlNets</a> (thibaud) — depth and HED edges</li>
       <li>Text → Video follows the 2D animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a></li>
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
+      <li>Motion: <a href="https://github.com/guoyww/AnimateDiff" target="_blank">AnimateDiff</a> (Guo et al.) and its v2 camera LoRAs,
+          <a href="https://huggingface.co/CiaraRowles/TemporalDiff" target="_blank">TemporalDiff</a> (Ciara Rowles),
+          <a href="https://github.com/G-U-N/AnimateLCM" target="_blank">AnimateLCM</a> (Fu-Yun Wang et al.)</li>
       <li><a href="https://github.com/hzwer/Practical-RIFE" target="_blank">RIFE</a> frame interpolation (hzwer), model code from
           <a href="https://github.com/Fannovel16/ComfyUI-Frame-Interpolation" target="_blank">ComfyUI-Frame-Interpolation</a></li>
       <li><a href="https://github.com/google-research/frame-interpolation" target="_blank">FILM</a> frame interpolation (Google Research, Reda et al.),
@@ -3193,6 +3230,7 @@ async function showRun(runId, { follow = false } = {}) {
   $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
   $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
+  $('animateLink').classList.toggle('hide', frames.length !== 1);   // a Frame: send it on to be animated
   if (switched || !follow) renderOutputs(runId);
   if (switched && !$('enh').hidden) openEnhance();
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));
@@ -3744,14 +3782,14 @@ function clearStage() {
     if (view !== 'mask' && view !== 'shape') view = 'src';
     setControlTabs(); $('scrub').hidden = true;
     if (shapeMode()) return showShape(); setFoot(`${state.image.name} · source`); paintFrame();
-    ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+    ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
     $('outputs').innerHTML = ''; $('enh').hidden = true;
     return;
   }
   if (state.shape && view === 'shape') { setControlTabs(); if (shapeMode()) return showShape(); }
   $('stage').innerHTML = WORDMARK;          // nothing on show: the name
   $('scrub').hidden = true; setFoot('');
-  ['mp4Link', 'loadRun', 'enhanceLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }
 $('runs').onclick = e => {

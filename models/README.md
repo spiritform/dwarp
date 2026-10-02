@@ -12,6 +12,11 @@ models/
   rife/             RIFE frame interpolation (the installer fetches this)
 ```
 
+**You don't have to download anything by hand.** The first render that needs a model fetches it into
+this folder and checks it against its SHA-256: each family's default checkpoint, the ControlNets,
+QR Code Monster and the Motion (AnimateDiff) models. The links below are for downloading ahead of
+time, or for knowing what goes where.
+
 ## Start here (SD 1.5, ~3.6 GB)
 
 Runs well on 8 GB GPUs. Download these into the folders below. **Keep the file names as they are.**
