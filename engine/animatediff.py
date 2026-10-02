@@ -20,8 +20,8 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-from engine.warp import (_CACHE, Annotators, RenderJob, diff_mask, encode_prompts, extract_frames, load_rgb,
-                         match_color, to_image, to_tensor, travel)
+from engine.warp import (_CACHE, Annotators, RenderJob, diff_mask, encode_prompts, extract_frames, load_lora, load_rgb,
+                         match_color, style_embeds, to_image, to_tensor, travel)
 
 WINDOW, OVERLAP = 16, 4                   # AnimateDiff's trained context; frames shared by neighbours
 
@@ -106,6 +106,9 @@ def load_ad_pipeline(job: RenderJob, device, dtype=torch.float16):
         sd = motion_lora_to_diffusers(raw)
         pipe.load_lora_weights(sd, adapter_name="motion")
         adapters.append(("motion", job.motion_lora_weight))
+    if job.lora:                              # the Style card's LoRA, alongside the motion ones
+        load_lora(pipe, job.lora)
+        adapters.append(("style", job.lora_weight))
     if adapters:
         pipe.set_adapters([a for a, _ in adapters], [w for _, w in adapters])
     pipe.to(device)
@@ -117,7 +120,7 @@ def load_ad_pipeline(job: RenderJob, device, dtype=torch.float16):
 def cached_ad_pipeline(job: RenderJob, device, log):
     # shares the frame-by-frame mode's slot, so switching modes frees the other pipeline
     key = ("ad", job.checkpoint, job.motion, job.motion_lora, job.motion_lora_weight, job.lcm_lora_weight,
-           tuple(dict.fromkeys(c.path for c in job.controlnets)))
+           job.lora, job.lora_weight, tuple(dict.fromkeys(c.path for c in job.controlnets)))
     if _CACHE.get("pipe_key") != key:
         _CACHE.pop("pipe", None)
         torch.cuda.empty_cache()
@@ -125,6 +128,7 @@ def cached_ad_pipeline(job: RenderJob, device, log):
         _CACHE["pipe"] = load_ad_pipeline(job, device)
         _CACHE["pipe_key"] = key
         lora = f" + {Path(job.motion_lora).stem} x{job.motion_lora_weight}" if job.motion_lora else ""
+        lora += f" + LoRA {Path(job.lora).stem} x{job.lora_weight}" if job.lora else ""
         log(f"loaded {Path(job.checkpoint).name} + {Path(job.motion).name}{lora} in {time.time() - t:.0f}s")
     else:
         log("reusing loaded AnimateDiff pipeline")
@@ -242,6 +246,8 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
     lightning = is_lightning(job.motion)
     steps = lightning_steps(job.motion) if lightning else job.steps
     cfg = 1.0 if lightning else job.cfg
+    from dataclasses import replace
+    ip_embeds = style_embeds(pipe, replace(job, cfg=cfg), device, log)   # Style ref (None without one)
     wins = windows(len(src_np))
     if job.motion_lora and not re.search(r"v2|temporaldiff|lcm", Path(job.motion).name, re.I):
         log(f"note: motion LoRAs are trained for the v2 motion module (TemporalDiff and AnimateLCM take them too); on "
@@ -316,6 +322,7 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
                        prompt_embeds=text["prompt_embeds"], negative_prompt_embeds=text["negative_prompt_embeds"],
                        strength=job.style, num_inference_steps=steps, guidance_scale=cfg,
                        generator=g, output_type="np",
+                       **({"ip_adapter_image_embeds": ip_embeds} if ip_embeds is not None else {}),
                        callback_on_step_end=vd, callback_on_step_end_tensor_inputs=["latents"])
         frames = res.frames[0]                  # F,H,W,3 in 0..1
         del res
