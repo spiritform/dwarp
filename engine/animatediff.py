@@ -266,6 +266,12 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
         torch.cuda.empty_cache()
     finally:
         pipe.disable_free_noise()
+        # disable_free_noise() doesn't undo split inference's wrappers around the motion blocks, and the next
+        # enable_free_noise() then fails its own check (AssertionError: ... BasicTransformerBlock). The pipeline is
+        # dropped instead, so the next render loads it clean (~15 s).
+        _CACHE.pop("pipe", None)
+        _CACHE.pop("pipe_key", None)
+        torch.cuda.empty_cache()
     if cancelled():
         log("cancelled")
         return []
