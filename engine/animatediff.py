@@ -217,12 +217,20 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
     neighbouring windows invent different poses. Needs more VRAM (split inference keeps it in check); one pass, so
     Live edits don't apply."""
     n = len(src_np)
-    pipe.enable_free_noise(context_length=WINDOW, context_stride=4, weighting_scheme="pyramid")
-    if ip_embeds is None:                       # split inference cuts the spatial blocks' batch into chunks, but a Style
-        pipe.enable_free_noise_split_inference(spatial_split_size=256, temporal_split_size=WINDOW)   # ref's image
-    else:                                       # tokens ride along uncut ("shape '[96, -1, 8, 40]' is invalid"): off
-        log("smooth long clip with a Style ref: split inference off (they don't mix) — uses more VRAM")
-    try:
+    try:                                       # from here on, the pipeline is dropped afterwards (finally)
+        # LoRAs (motion LoRA, AnimateLCM's, the Style card's) wrap layers that FreeNoise copies into its own blocks, and
+        # that copy expects plain layers ("Missing key(s) ... attn1.to_q.weight"). Bake them into the weights at their
+        # strengths first; the pipeline is dropped after this render anyway, so nothing later sees the fused weights.
+        adapters = pipe.get_active_adapters() if hasattr(pipe, "get_active_adapters") else []
+        if adapters:
+            pipe.fuse_lora(adapter_names=adapters)
+            pipe.unload_lora_weights()
+            log(f"smooth long clip: LoRAs baked in for this render ({', '.join(adapters)})")
+        pipe.enable_free_noise(context_length=WINDOW, context_stride=4, weighting_scheme="pyramid")
+        if ip_embeds is None:                       # split inference cuts the spatial blocks' batch into chunks, but a Style
+            pipe.enable_free_noise_split_inference(spatial_split_size=256, temporal_split_size=WINDOW)   # ref's image
+        else:                                       # tokens ride along uncut ("shape '[96, -1, 8, 40]' is invalid"): off
+            log("smooth long clip with a Style ref: split inference off (they don't mix) — uses more VRAM")
         # FreeNoise takes text prompts by output frame and interpolates between them (prompt travel); embeddings named
         # in them were loaded into the pipeline by encode_prompts already
         nth = max(1, job.nth)
