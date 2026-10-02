@@ -475,6 +475,25 @@
   .helppanel { position: absolute; inset: 0; z-index: 5; padding: 22px 26px; overflow: auto; background: rgba(14,14,16,.97);
                font-size: 12.5px; line-height: 1.55; color: #c9c7cf; }
   .helppanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
+  /* get-started tour: everything dimmed but one area (the hole's shadow is the dim), a card beside it */
+  .tour { position: fixed; inset: 0; z-index: 60; }
+  .tour-hole { position: fixed; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(6,6,8,.74); pointer-events: none;
+               transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+  .tour-card { position: fixed; width: 320px; padding: 16px 18px 14px; border-radius: var(--radius); background: var(--panel-2);
+               box-shadow: 0 10px 40px rgba(0,0,0,.5); font-size: 12.5px; line-height: 1.55; color: #c9c7cf;
+               transition: left .25s ease, top .25s ease; }
+  .tour-card .tc-n { font-size: 10.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--accent-2); }
+  .tour-card h3 { margin: 2px 0 6px; font-size: 15px; color: var(--text); }
+  .tour-card p { margin: 0; }
+  .tour-card b { color: var(--text); font-weight: 600; }
+  .tour-card .tc-foot { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+  .tour-card .tc-skip { margin-right: auto; color: var(--faint); cursor: pointer; font-size: 11.5px; }
+  .tour-card .tc-skip:hover { color: var(--dim); }
+  .tour-card button { border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
+                      background: var(--panel); color: var(--text); }
+  .tour-card button:hover { background: #24232a; }
+  .tour-card button.next { background: var(--accent); color: #1a0d07; }
+  .tour-card button.next:hover { background: var(--accent); filter: brightness(1.08); }
   .helppanel h4 { margin: 20px 0 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
   .helppanel p { margin: 6px 0; max-width: 150ch; }   /* as wide as the tables: one text column */
   .helppanel table { border-collapse: collapse; margin: 6px 0; width: 100%; max-width: 150ch; }
@@ -1874,8 +1893,9 @@ async function useInput(res) {             // an uploaded (or run-fed) file on t
 }
 function uploadFile(file) {
   if (!file) return;
-  if (!file.type.startsWith('image/'))     // pictures are small: no progress bar over the Size / Duration card
+  if (!file.type.startsWith('image/')) {   // pictures are small: no progress bar over the Size / Duration card
     parkSize(); $('clipBox').innerHTML = `<div class="clip uploading">uploading ${file.name}…<i id="upBar"></i></div>`;
+  }
   const xhr = new XMLHttpRequest();
   xhr.open('POST', `/api/upload?${qs({ filename: file.name })}`);
   xhr.upload.onprogress = e => { if (e.lengthComputable && $('upBar')) $('upBar').style.width = (e.loaded / e.total * 100) + '%'; };
@@ -2831,10 +2851,11 @@ function paintHelp() {
   if (!HELP[helpTab]) helpTab = 'basics';
   $('helpPanel').innerHTML = `<button class="logbtn close" id="helpClose">✕</button>
     <div class="htabs">${Object.entries(HELP).map(([k, [label]]) =>
-      `<button data-h="${k}" class="${k === helpTab ? 'on' : ''}">${label}</button>`).join('')}</div>
+      `<button data-h="${k}" class="${k === helpTab ? 'on' : ''}">${label}</button>`).join('')}<button data-tour="1" title="A quick walk through the screen, area by area">Tour ▸</button></div>
     ${HELP[helpTab][1]()}`;
   $('helpClose').onclick = () => toggleHelp(false);
   $('helpPanel').querySelector('.htabs').onclick = e => {
+    if (e.target.dataset.tour) return startTour();
     if (!e.target.dataset.h) return;
     helpTab = e.target.dataset.h; paintHelp(); $('helpPanel').scrollTop = 0;
   };
@@ -2843,6 +2864,122 @@ function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
   if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; paintHelp(); }
 }
+
+// ---------------------------------------------------------------- get-started tour
+// Once on the first visit (and from Help): each stop dims everything but one area and says what it's for.
+// Stops whose area is hidden in the current mode are skipped; collapsed cards open for their stop only.
+var TOUR_KEY = 'dwarp.tourSeen';
+var TOUR = [
+  { at: () => [$('srcMode')], title: 'Start here', text: () =>
+    `Pick what you start from: <b>Video</b> restyles a clip, <b>Image</b> animates a picture, <b>Text</b> paints from the prompt alone.` },
+  { at: () => [$('clipBox')], title: () => srcKind() === 'v2v' ? 'Your clip' : srcKind() === 'i2v' ? 'Your picture' : 'Size / Duration', text: () =>
+    (srcKind() === 'v2v' ? `Drop a video here (or anywhere on the page) and drag the strip's ends to pick the part to render. `
+      : srcKind() === 'i2v' ? `Drop a picture here: it becomes frame 1. The slider sets how long the video runs. `
+      : `How long the video runs, and its <b>Aspect</b>. `) +
+    `<b>Size</b> is the long side in pixels: bigger is sharper and slower. <b>FPS</b> paints every frame, or every 2nd / 3rd and holds it, like animation on twos.` },
+  { at: () => [$('camBox')], title: 'Camera', text: () =>
+    `How each frame moves on from the last. <b>Zoom</b>, <b>Rotate</b> and <b>Pan</b> are per frame, so small values go a long way.
+     <b>3D</b> reads the depth and adds <b>Turn</b> / <b>Tilt</b> with parallax. The sliders steer a running render live.` },
+  { at: () => [document.querySelector('[data-card="prompt"]')], title: 'Prompt', text: () =>
+    `What to paint; <b>random</b> gives you one to try. The lane under the box is a timeline: click it to add a <b>keyframe</b>
+     with its own prompt, and <b>blend</b> sets how many frames it takes to morph in. <b>negative</b> is what to keep out.` },
+  { at: () => [document.querySelector('[data-card="model"]')], title: 'Model', text: () =>
+    `The Stable Diffusion family (<b>SD 1.5</b>, <b>2.1</b>, <b>SDXL</b>) and the checkpoint. <b>Steps</b> trade time for detail,
+     <b>CFG</b> is how literally it follows the prompt. <b>Seed</b>: lock it to compare one change at a time, 🎲 for a new one,
+     drag the number to step through nearby seeds.` },
+  { at: () => [document.querySelector('[data-card="render"]')], title: 'Render', text: () =>
+    `<b>Denoise</b>: how much of each frame is repainted, from keeping the source to repainting it all. Then how frames connect:
+     <b>Warp</b> carries the paint along the motion so strokes stick to things, <b>Boil</b> repaints every frame fresh
+     (a hand-painted shimmer), <b>Motion</b> (SD 1.5) animates 16 frames at a time for smooth movement.
+     <b>Frame Lock</b> and <b>Source mix</b> fine-tune Warp.` },
+  { at: () => [document.querySelector('[data-card="style"]')], title: 'Style', text: () =>
+    `Optional extras for the look: a <b>LoRA</b>, an <b>Embedding</b>, a <b>Style ref</b> picture to borrow colours and strokes from,
+     and a <b>Look</b> preset that adds its style words to your prompt.` },
+  { at: () => [$('guideBox')], title: 'Guidance', text: () =>
+    `How much of the source's structure survives. <b>ControlNet</b> holds shapes (<b>depth</b> the 3-D layout, <b>edge</b> the
+     outlines) and <b>Hold</b> sets how tightly. <b>DepthDiff</b> is DWARP's own: the source's brightness or depth decides
+     <i>where</i> it repaints and how much, say the background more than the subject.` },
+  { at: () => [$('shapeBox')], title: 'Shape', text: () =>
+    `Optional: a black-and-white mask, still or moving, that steers where things are. White repaints, black holds.
+     <b>library</b> has ready-made shapes to try; <b>QR Code Monster</b> hides the shape in the scene's light and dark.` },
+  { at: () => [$('view'), document.querySelector('.stage-wrap'), $('scrub')], title: 'The stage', text: () =>
+    `Your source and your results. <b>Source</b> shows what goes in, <b>Output</b> the run you picked, <b>Split</b> compares the two;
+     other tabs show the maps the guidance reads. Scrub with the bar underneath; hover the top-right corner to save what's shown.` },
+  { at: () => [document.querySelector('.stage-foot .actions')], title: 'Make something', text: () =>
+    `Work up in steps: <b>Frame</b> paints one frame to dial in the look, <b>Preview</b> a few frames to check the motion,
+     <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
+  { at: () => [document.querySelector('footer')], title: 'Runs', text: () =>
+    `Every Frame, Preview and Render lands here. Click one to view it; then <b>use settings</b> puts its settings back in the panel,
+     <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it. The grid icon at the right opens every run on disk.` },
+  { at: () => [document.querySelector('.barbtns')], title: 'Status & help', text: () =>
+    `The status opens the renderer log, the GPU meter shows memory in use, <b>?</b> has the full guide (and this tour again),
+     <b>⚙</b> sets your model folders. That's it: pick a source and press <b>Frame</b>.` },
+];
+var tour = null;   // { i, stops, el }
+const tourEls = st => st.at().filter(el => el && el.getClientRects().length);
+function startTour() {
+  try { localStorage.setItem(TOUR_KEY, '1'); } catch {}
+  toggleHelp(false); toggleSettings(false);
+  if (!$('runsPanel').hidden) toggleRunsPanel(false);
+  if (!$('shapeLib').hidden) toggleShapeLib(false);
+  $('enh').hidden = true; document.activeElement?.blur();
+  document.querySelectorAll('.card.collapsed').forEach(c => c.classList.remove('collapsed'));   // open, so the stop shows its controls
+  const stops = TOUR.filter(st => tourEls(st).length);
+  const el = document.createElement('div');
+  el.className = 'tour';
+  el.innerHTML = `<div class="tour-hole"></div><div class="tour-card"></div>`;
+  document.body.appendChild(el);
+  tour = { i: 0, stops, el };
+  el.querySelector('.tour-card').onclick = e => {
+    const a = e.target.dataset.go; if (!a) return;
+    a === 'skip' ? endTour() : stepTour(a === 'next' ? 1 : -1);
+  };
+  paintTour();
+}
+function endTour() {
+  if (!tour) return;
+  tour.el.remove(); tour = null; applyCards();
+}
+function stepTour(d) {
+  const i = tour.i + d;
+  if (i >= tour.stops.length) return endTour();
+  tour.i = Math.max(0, i); paintTour();
+}
+function paintTour() {
+  const st = tour.stops[tour.i], n = tour.stops.length, last = tour.i === n - 1, val = v => typeof v === 'function' ? v() : v;
+  tour.el.querySelector('.tour-card').innerHTML = `<div class="tc-n">${tour.i + 1} / ${n}</div><h3>${val(st.title)}</h3><p>${val(st.text)}</p>
+    <div class="tc-foot"><a class="tc-skip" data-go="skip">${last ? '' : 'skip tour'}</a>
+      ${tour.i ? '<button data-go="back">Back</button>' : ''}<button class="next" data-go="next">${last ? 'Done' : 'Next'}</button></div>`;
+  tourEls(st)[0].scrollIntoView({ block: 'nearest' });
+  placeTour();
+}
+function placeTour() {
+  if (!tour) return;
+  const els = tourEls(tour.stops[tour.i]); if (!els.length) return endTour();
+  const rs = els.map(el => el.getBoundingClientRect()), pad = 6, vw = innerWidth, vh = innerHeight;
+  const r = { left: Math.max(2, Math.min(...rs.map(x => x.left)) - pad), top: Math.max(2, Math.min(...rs.map(x => x.top)) - pad),
+              right: Math.min(vw - 2, Math.max(...rs.map(x => x.right)) + pad), bottom: Math.min(vh - 2, Math.max(...rs.map(x => x.bottom)) + pad) };
+  Object.assign(tour.el.querySelector('.tour-hole').style, { left: r.left + 'px', top: r.top + 'px',
+    width: r.right - r.left + 'px', height: r.bottom - r.top + 'px' });
+  // the card: beside the area if there's room (right, then left), else under or over it, kept on screen
+  const card = tour.el.querySelector('.tour-card'), W = card.offsetWidth, H = card.offsetHeight, m = 14;
+  let x, y;
+  if (r.right + m + W <= vw - 8) { x = r.right + m; y = r.top; }
+  else if (r.left - m - W >= 8) { x = r.left - m - W; y = r.top; }
+  else if (r.bottom + m + H <= vh - 8) { x = r.left; y = r.bottom + m; }
+  else { x = r.left; y = r.top - m - H; }
+  card.style.left = Math.max(8, Math.min(x, vw - W - 8)) + 'px';
+  card.style.top = Math.max(8, Math.min(y, vh - H - 8)) + 'px';
+}
+addEventListener('resize', placeTour);
+document.querySelector('aside').addEventListener('scroll', placeTour);
+addEventListener('keydown', e => {   // while the tour is up, keys drive it and nothing else
+  if (!tour) return;
+  e.stopPropagation();
+  if (e.key === 'Escape') { e.preventDefault(); endTour(); }
+  else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stepTour(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); stepTour(-1); }
+}, true);
 
 // ---------------------------------------------------------------- settings
 // Machine settings live in config.json (the server re-reads it every request): the models folder, and
@@ -4049,6 +4186,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   }
   try { if (localStorage.getItem(LOG_OPEN_KEY)) toggleLog(true); } catch {}
   if (POST_OPTS.active) { postJob = POST_OPTS.active; followPost(postJob.run_id); }
+  try { if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => tour || startTour(), 2600); } catch {}   // first visit: after the intro
 })();
 </script>
 </body>

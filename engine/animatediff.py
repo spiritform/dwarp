@@ -264,7 +264,7 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
         g = torch.Generator(device="cpu").manual_seed(int(job.seed))
         frame_noise: dict[int, torch.Tensor] = {}
         with torch.inference_mode(), FrameNoise(pipe, job.seed, 0, frame_noise), (vd if vd else torch.no_grad()):
-            res = pipe(video=[Image.fromarray(x) for x in src_np], **cn_kw, prompt=prompts,
+            res = pipe(video=[Image.fromarray(x) for x in src_np], **cn_kw, prompt=prompts, height=job.height, width=job.width,
                        negative_prompt=job.negative or "", strength=job.style, num_inference_steps=steps,
                        guidance_scale=cfg, generator=g, output_type="np",
                        **({"ip_adapter_image_embeds": ip_embeds} if ip_embeds is not None else {}),
@@ -465,7 +465,7 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
         vd = VideoDiff(pipe, amount) if amount is not None else None
         g = torch.Generator(device="cpu").manual_seed(int(job.seed) + s)   # step noise (LCM / ancestral): per window
         with torch.inference_mode(), FrameNoise(pipe, job.seed, s, frame_noise), (vd if vd else torch.no_grad()):
-            res = pipe(video=[Image.fromarray(x) for x in src_np[s:e]], **cn_kw,
+            res = pipe(video=[Image.fromarray(x) for x in src_np[s:e]], **cn_kw, height=job.height, width=job.width,
                        prompt_embeds=text["prompt_embeds"], negative_prompt_embeds=text["negative_prompt_embeds"],
                        strength=job.style, num_inference_steps=steps, guidance_scale=cfg,
                        generator=g, output_type="np",
