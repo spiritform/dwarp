@@ -20,10 +20,13 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-from engine.warp import (_CACHE, Annotators, RenderJob, diff_mask, encode_prompts, extract_frames, load_lora, load_rgb,
+from engine.warp import (_CACHE, Annotators, RenderJob, camera_move, diff_mask, encode_prompts, extract_frames, load_lora, load_rgb,
                          match_color, style_embeds, to_image, to_tensor, travel)
 
-WINDOW, OVERLAP = 16, 4                   # AnimateDiff's trained context; frames shared by neighbours
+# AnimateDiff's trained context, and the frames neighbouring windows share. Each window paints its own take on the
+# motion, slightly ahead of or behind the last: a 4-frame overlap made a steady zoom stall, then jump, every 12
+# frames (measured on run 39). 8 frames with an eased crossfade spreads that over the handover (~40% more windows).
+WINDOW, OVERLAP = 16, 8
 
 
 def is_lightning(path: str) -> bool:
@@ -145,6 +148,7 @@ class VideoDiff:
 
     def __enter__(self):
         sch, real = self.pipe.scheduler, self.pipe.scheduler.add_noise
+        self.prev = sch.__dict__.get("add_noise")
 
         def catch(orig, noise, t):
             if self.orig is None:              # the start latents, B,F,C,H,W
@@ -154,7 +158,10 @@ class VideoDiff:
         return self
 
     def __exit__(self, *exc):
-        del self.pipe.scheduler.add_noise
+        if self.prev is not None:
+            self.pipe.scheduler.add_noise = self.prev
+        else:
+            self.pipe.scheduler.__dict__.pop("add_noise", None)
 
     def __call__(self, pipe, i, t, kw):
         k, total = i + 1, pipe.num_timesteps
@@ -169,6 +176,37 @@ class VideoDiff:
             ref = pipe.scheduler.add_noise(o, nz, nxt.repeat(o.shape[0]))[None].permute(0, 2, 1, 3, 4)
             kw["latents"] = torch.where(held, ref.to(kw["latents"].dtype), kw["latents"])
         return kw
+
+
+class FrameNoise:
+    """Start noise tied to each frame of the clip, not to the window: frame 37 always gets the same noise, every
+    frame different. Neighbouring windows agree on the frames they share (calm seams), but the clip keeps evolving.
+    With one seed per window instead, every window of a still (Image mode) started from the same noise and the
+    same frames, so it painted the same 16 frames again: a short loop, repeating."""
+
+    def __init__(self, pipe, seed: int, start: int, cache: dict):
+        self.pipe, self.seed, self.start, self.cache = pipe, int(seed), start, cache
+
+    def frames(self, like: torch.Tensor) -> torch.Tensor:
+        five = like.dim() == 5                  # B,F,C,H,W (start latents) or F,C,H,W (DepthDiff's re-noise)
+        n, shape = (like.shape[1], like.shape[2:]) if five else (like.shape[0], like.shape[1:])
+        out = []
+        for k in range(n):
+            f = self.start + k
+            if f not in self.cache:
+                g = torch.Generator(device="cpu").manual_seed(self.seed * 1000003 + f)
+                self.cache[f] = torch.randn(tuple(shape), generator=g)
+            out.append(self.cache[f])
+        x = torch.stack(out)
+        return (x[None].expand(like.shape[0], *x.shape) if five else x).to(like.device, like.dtype)
+
+    def __enter__(self):
+        sch, real = self.pipe.scheduler, self.pipe.scheduler.add_noise
+        sch.add_noise = lambda orig, noise, t: real(orig, self.frames(noise), t)
+        return self
+
+    def __exit__(self, *exc):
+        self.pipe.scheduler.__dict__.pop("add_noise", None)
 
 
 def windows(total: int) -> list[tuple[int, int]]:
@@ -193,16 +231,26 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
 
     t0 = time.time()
     progress("extracting", 0, 0, "extracting frames")
-    i2v = bool(job.init_image)                # Image mode: the picture, repeated; the motion module moves it
+    i2v = bool(job.init_image)                # Image mode: the picture over the clip's length; the motion module moves it
     if i2v:
         import shutil
+        from dataclasses import replace
         pic = Image.open(job.init_image).convert("RGB").resize((job.width, job.height), Image.LANCZOS)
         n = max(1, job.t2v_frames)
         src_paths = [out / "src" / f"{i:06d}.jpg" for i in range(n)]
-        pic.save(src_paths[0], quality=95)
-        for pth in src_paths[1:]:
-            shutil.copyfile(src_paths[0], pth)
-        log(f"image -> video: animating {Path(job.init_image).name} for {n} frames")
+        moving = abs(job.cam_zoom - 1) > 1e-4 or job.cam_rotate or job.cam_x or job.cam_y
+        if moving:                             # the Camera card's move, baked into the source: frame k is the picture
+            still = to_tensor(np.asarray(pic), torch.device("cuda"))   # moved k frames' worth, straight from it (no
+            for k, pth in enumerate(src_paths):                         # re-sampling blur building up)
+                to_image(camera_move(still, replace(job, nth=k * max(1, job.nth))) if k else still).save(pth, quality=95)
+            log(f"image -> video: {Path(job.init_image).name} for {n} frames, the camera moving it (zoom {job.cam_zoom}, "
+                f"rotate {job.cam_rotate}°, pan {job.cam_x}/{job.cam_y} per frame); the motion module paints the motion"
+                + (" — 3D turn / tilt isn't used with Motion" if job.cam_3d and (job.cam_yaw or job.cam_pitch) else ""))
+        else:
+            pic.save(src_paths[0], quality=95)
+            for pth in src_paths[1:]:
+                shutil.copyfile(src_paths[0], pth)
+            log(f"image -> video: animating {Path(job.init_image).name} for {n} frames (camera still: the motion module and prompt move it)")
     else:
         src_paths = extract_frames(job, out / "src")
     if job.shape:
@@ -273,6 +321,7 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
     nets = len(dict.fromkeys(c.path for c in job.controlnets))
     kinds = [c.kind for c in job.controlnets]
     first = None
+    frame_noise: dict[int, torch.Tensor] = {}  # each frame's start noise, shared by the windows that cover it
     done: dict[int, np.ndarray] = {}           # rendered frames waiting for the next window's crossfade
     written = []
     for w, (s, e) in enumerate(wins):
@@ -316,8 +365,8 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
         if amount is not None and amount.min() >= 1:
             amount = None
         vd = VideoDiff(pipe, amount) if amount is not None else None
-        g = torch.Generator(device="cpu").manual_seed(int(job.seed))     # same noise per window: calmer seams
-        with torch.inference_mode(), (vd if vd else torch.no_grad()):
+        g = torch.Generator(device="cpu").manual_seed(int(job.seed) + s)   # step noise (LCM / ancestral): per window
+        with torch.inference_mode(), FrameNoise(pipe, job.seed, s, frame_noise), (vd if vd else torch.no_grad()):
             res = pipe(video=[Image.fromarray(x) for x in src_np[s:e]], **cn_kw,
                        prompt_embeds=text["prompt_embeds"], negative_prompt_embeds=text["negative_prompt_embeds"],
                        strength=job.style, num_inference_steps=steps, guidance_scale=cfg,
@@ -330,8 +379,9 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
         prev_end = max(done) + 1 if done else s   # frames s..prev_end-1 overlap the previous window
         for j, f in enumerate(frames):
             i = s + j
-            if i in done:                       # crossfade from the previous window into this one
+            if i in done:                       # crossfade from the previous window into this one, eased in and out
                 a = (i - s + 1) / (prev_end - s + 1)
+                a = a * a * (3 - 2 * a)
                 f = done[i] * (1 - a) + f * a
             done[i] = f
         last = w == len(wins) - 1
