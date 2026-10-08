@@ -129,6 +129,7 @@ Based on the work of **Alex Spirin ([Sxela](https://github.com/Sxela))**, who pi
 - [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter) (Tencent AI Lab) and [InstantStyle](https://github.com/instantX-research/InstantStyle) (InstantX) for the style ref
 - Refine's tiling follows [Ultimate SD Upscale](https://github.com/Coyote-A/ultimate-upscale-for-automatic1111); tile ControlNets by Lvmin Zhang (SD 1.5) and xinsir (SDXL Union ProMax)
 - [RAFT](https://github.com/princeton-vl/RAFT) (Teed & Deng) via torchvision
+- [ZipDepth](https://github.com/fabiotosi92/ZipDepth) (Fabio Tosi et al.), the light depth option; inference code as packaged by [ComfyUI-ZipDepth](https://github.com/Hullabalo/ComfyUI-ZipDepth) (Hullabalo)
 - Motion: [AnimateDiff](https://github.com/guoyww/AnimateDiff) (Guo et al.) and its v2 camera LoRAs, [TemporalDiff](https://huggingface.co/CiaraRowles/TemporalDiff) (Ciara Rowles), [AnimateLCM](https://github.com/G-U-N/AnimateLCM) (Fu-Yun Wang et al.); smooth long clips: [FreeNoise](http://haonanqiu.com/projects/FreeNoise.html) (Haonan Qiu et al.), via diffusers
 - [RIFE](https://github.com/hzwer/Practical-RIFE) (hzwer); model code vendored from [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) (MIT, see `vendor/LICENSE-rife`)
 - [FILM](https://github.com/google-research/frame-interpolation) (Google Research, Reda et al., Apache-2.0); TorchScript port by [dajes](https://github.com/dajes/frame-interpolation-pytorch)

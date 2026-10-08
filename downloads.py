@@ -15,7 +15,7 @@ from pathlib import Path
 
 GB = 1e9
 
-# file name DWARP looks for -> (repo, file in the repo, bytes, sha256)
+# file name DWARP looks for -> (repo, file in the repo, bytes, sha256); a repo that's an https:// URL is the file itself
 KNOWN: dict[str, tuple[str, str, int, str]] = {
     # SD 1.5 checkpoints (the Looks' default)
     "dreamshaper_8.safetensors": ("Lykon/DreamShaper", "DreamShaper_8_pruned.safetensors", 2132625894,
@@ -50,6 +50,9 @@ KNOWN: dict[str, tuple[str, str, int, str]] = {
                                  1813041929, "b46c3de62e5696af72c4056e3cdcbea12fbc19581c0aad7b6f2b027851148f5f"),
     "AnimateLCM_sd15_t2v_lora.safetensors": ("wangfuyun/AnimateLCM", "AnimateLCM_sd15_t2v_lora.safetensors",
                                              134621556, "8f90d840e075ff588a58e22c6586e2ae9a6f7922996ee6649a7f01072333afe4"),
+    # ZipDepth (the light depth model), from the author's GitHub: a direct URL in place of a repo
+    "zipdepth_base.pth": ("https://github.com/fabiotosi92/ZipDepth/raw/main/checkpoints/zipdepth_base.pth", "",
+                          27298978, "a55910bb0b99c8c5e641cb9206e810b269690ad94e8a2ef08c827c4679391a65"),
 }
 
 
@@ -76,8 +79,8 @@ def fetch(path: str | Path, log=print, progress=None) -> bool:
     repo, rfile, total, sha = known(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     part = p.with_name(p.name + ".part")
-    url = f"https://huggingface.co/{repo}/resolve/main/{rfile}"
-    log(f"downloading {p.name} ({total / GB:.1f} GB) from {repo} — first use, once…")
+    url = repo if repo.startswith("https://") else f"https://huggingface.co/{repo}/resolve/main/{rfile}"
+    log(f"downloading {p.name} ({total / GB:.2f} GB) from {repo.split('/')[2] if '://' in repo else repo} — first use, once…")
     t, h, done, said = time.time(), hashlib.sha256(), 0, -1
     req = urllib.request.Request(url, headers={"User-Agent": "dwarp"})
     try:

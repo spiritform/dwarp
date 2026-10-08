@@ -20,6 +20,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass, field, asdict
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -137,7 +138,8 @@ class RenderJob:
     motion_lora: str = ""
     motion_lora_weight: float = 1.0
     lcm_lora_weight: float = 0.8         # AnimateLCM's spatial LoRA on the checkpoint (AnimateLCM modules only)
-    motion_context: bool = False         # smooth long clips: one pass, the motion model's 16-frame windows blended at every step
+    depth_model: str = "midas"           # depth for the depth ControlNet, DepthDiff and the 3D camera: midas | zip (ZipDepth, ~20x lighter)
+    motion_context: bool = False        # smooth long clips: one pass, the motion model's 16-frame windows blended at every step
     shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5
@@ -349,6 +351,9 @@ class Annotators:
         self._cache: dict = {}
 
     def _get(self, kind):
+        if kind == "depth:zip" and kind not in self._cache:
+            from engine.zipdepth import ZipDepthDetector
+            self._cache[kind] = ZipDepthDetector(self.device)
         if kind not in self._cache:
             import controlnet_aux as ca
             if kind == "depth":
@@ -368,10 +373,12 @@ class Annotators:
             self._cache[kind] = det
         return self._cache[kind]
 
-    def __call__(self, kind: str, img: np.ndarray) -> Image.Image:
+    def __call__(self, kind: str, img: np.ndarray, depth_model: str = "midas") -> Image.Image:
         h, w = img.shape[:2]
         if kind == "tile":                       # no detector: the tile net reads the frame as it is
             return Image.fromarray(img)
+        if kind == "depth" and depth_model == "zip":   # runs at its own fixed size, returns h x w
+            return self._get("depth:zip")(img)
         det = self._get(kind)
         res = min(h, w)
         if kind == "canny":
@@ -1005,9 +1012,9 @@ class DiffDiffusion:
         return kw
 
 
-def depth_map(img: np.ndarray) -> Image.Image:
+def depth_map(img: np.ndarray, depth_model: str = "midas") -> Image.Image:
     """The depth hint for one RGB frame, with the cached annotator (DepthDiff preview)."""
-    return _CACHE.setdefault("ann", Annotators(torch.device("cuda")))("depth", img)
+    return _CACHE.setdefault("ann", Annotators(torch.device("cuda")))("depth", img, depth_model)
 
 
 def free_models():
@@ -1090,7 +1097,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if total > 1 and not job.fresh and not t2v and "flow" not in _CACHE:
         _CACHE["flow"] = Flow(device)
     flow = _CACHE.get("flow")
-    ann = _CACHE.setdefault("ann", Annotators(device))
+    ann = partial(_CACHE.setdefault("ann", Annotators(device)), depth_model=job.depth_model)   # this job's depth model
 
     keys = sorted([int(f), str(p)] for f, p in job.prompt_keys) or [[0, job.prompt]]
     blend = job.prompt_blend

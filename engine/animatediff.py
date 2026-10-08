@@ -12,6 +12,7 @@ import json
 import re
 import time
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -349,7 +350,7 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
 
     progress("loading", 0, total, "loading models")
     pipe = cached_ad_pipeline(job, device, log)
-    ann = _CACHE.setdefault("ann", Annotators(device))
+    ann = partial(_CACHE.setdefault("ann", Annotators(device)), depth_model=job.depth_model)   # this job's depth model
 
     # hints and DepthDiff masks for every frame up front (the viewer shows them per frame too)
     progress("hints", 0, total, "ControlNet hints")

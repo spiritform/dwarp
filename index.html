@@ -1185,6 +1185,9 @@ function t2vDims(size) {                    // long side = size, the picked aspe
                : (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
   return [Math.round(a * k / 8) * 8, Math.round(b * k / 8) * 8];
 }
+// The depth model (Settings): MiDaS, or ZipDepth (~20x lighter) — for the depth ControlNet, DepthDiff and the 3D camera
+function depthModel() { return state.depthModel === 'zip' ? 'zip' : 'midas'; }
+function depthQ(kind) { return kind === 'depth' ? { depth_model: depthModel() } : {}; }   // the live Depth / Diff views follow it
 function imageCard() {
   const im = state.image;
   if (!im) return `<div class="clip-empty pic-empty" id="pick" style="margin-bottom:12px">Drop an image here<small>or click to choose</small></div>`;
@@ -2250,7 +2253,7 @@ function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view ===
 // Image -> Video with no run on show: the picture is the source (Source / live Diff), at render size
 function picMode() { return state.t2v && state.i2v && !!state.image && !viewRun; }
 function picFrameUrl(kind) {
-  return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind })}`;
+  return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind, ...depthQ(kind) })}`;
 }
 function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
 function toSource() {                      // e.g. scrubbing away from a Frame result
@@ -2277,7 +2280,7 @@ function setupTransport() {
 }
 function clipFrameUrl(kind) {
   const [w, h] = renderSize();
-  return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind })}`;
+  return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind, ...depthQ(kind) })}`;
 }
 function showClip() {
   if (!state.clip || state.t2v) return clearStage();
@@ -2305,7 +2308,7 @@ function paintMask() {
     : picMode()
     ? { key: ['pic', state.image.path, ...t2vDims(state.size), kind].join('|'), url: picFrameUrl(kind) }
     : { key: ['run', viewRun, frames[frameIdx], kind].join('|'),
-        url: `/api/diff/base?${qs({ run: viewRun, frame: frames[frameIdx], kind })}` };
+        url: `/api/diff/base?${qs({ run: viewRun, frame: frames[frameIdx], kind, ...depthQ(kind) })}` };
   if (maskBase.key !== src.key) {         // new frame / source: fetch (debounced for scrubs), keep the old one meanwhile
     clearTimeout(maskFetch);
     maskFetch = setTimeout(async () => {
@@ -2469,6 +2472,7 @@ async function buildConfig(kind) {
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets: t2v && !state.i2v ? [] : adOn() && adI2V() ? [] : controlnets,     // Text -> Video: nothing to follow; Motion on a still: the module moves it
     ...(adOn() ? { motion: motionPath(), motion_lora: motionLora(), motion_lora_weight: state.ad.loraW, motion_context: !!state.ad.context } : {}),
+    depth_model: depthModel(),
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
@@ -2832,6 +2836,8 @@ const HELP = {
       <li><a href="https://huggingface.co/thibaud/controlnet-sd21" target="_blank">SD 2.1 ControlNets</a> (thibaud) — depth and HED edges</li>
       <li>Text → Video follows the 2D animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a></li>
       <li><a href="https://github.com/princeton-vl/RAFT" target="_blank">RAFT</a> optical flow (Teed &amp; Deng), via torchvision</li>
+      <li><a href="https://github.com/fabiotosi92/ZipDepth" target="_blank">ZipDepth</a> (Fabio Tosi et al.), the light depth option; inference code as packaged by
+          <a href="https://github.com/Hullabalo/ComfyUI-ZipDepth" target="_blank">ComfyUI-ZipDepth</a> (Hullabalo)</li>
       <li>Motion: <a href="https://github.com/guoyww/AnimateDiff" target="_blank">AnimateDiff</a> (Guo et al.) and its v2 camera LoRAs,
           <a href="https://huggingface.co/CiaraRowles/TemporalDiff" target="_blank">TemporalDiff</a> (Ciara Rowles),
           <a href="https://github.com/G-U-N/AnimateLCM" target="_blank">AnimateLCM</a> (Fu-Yun Wang et al.);
@@ -3019,7 +3025,21 @@ async function paintSettings() {
         ComfyUI's context options): smoother, one motion all the way through. <b>Needs more VRAM</b> — fine on 16 GB+;
         on 12 GB keep the size at 512 or below, and it runs without a Style ref (with one it falls back to window by
         window). Live edits don't apply while it renders.</div>
+    </div>
+    <div class="setrow">
+      <h4>Depth</h4>
+      <div class="seg" id="setDepth" style="grid-template-columns:1fr 1fr;max-width:320px">
+        <button data-d="midas" class="${depthModel() === 'midas' ? 'on' : ''}">MiDaS</button>
+        <button data-d="zip" class="${depthModel() === 'zip' ? 'on' : ''}">ZipDepth</button></div>
+      <div class="note">The depth map behind the depth ControlNet, DepthDiff's depth and the 3D camera. <b>MiDaS</b> (DPT-Hybrid,
+        123M parameters) works at the render's size; <b>ZipDepth</b> (6M) is about 20× lighter and always works at 384 px.
+        ZipDepth downloads on first use (27 MB).</div>
     </div>`;
+  $('setDepth').onclick = e => {
+    const d = e.target.dataset.d; if (!d) return;
+    state.depthModel = d; save(); paintSettings(); applyView();
+    setStatus(`depth: ${d === 'zip' ? 'ZipDepth' : 'MiDaS'}`, 'done');
+  };
   $('setClose').onclick = () => toggleSettings(false);
   $('setMotionCtx').onchange = e => { state.ad.context = e.target.checked; save(); setStatus(`smooth long clips ${state.ad.context ? 'on' : 'off'}`, 'done'); };
   const post = async body => {

@@ -398,7 +398,7 @@ def build_app() -> FastAPI:
 
     @app.get("/api/diff/base")
     def diff_base(path: str = "", frame: int = 0, width: int = 512, height: int = 512, kind: str = "luma",
-                  run: str = ""):
+                  run: str = "", depth_model: str = "midas"):
         """One source frame, as the DepthDiff mask starts from it: the frame itself (luma) or its
         depth map. Either a clip frame at render size (path + frame + size; also the stage's clip
         view), or the frame a run started from (run + that run's frame number). JPEG like the
@@ -426,7 +426,7 @@ def build_app() -> FastAPI:
             from PIL import Image
             from engine.warp import depth_map
             buf = io.BytesIO()
-            depth_map(np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))).convert("RGB").save(buf, "PNG")
+            depth_map(np.asarray(Image.open(io.BytesIO(data)).convert("RGB")), depth_model).convert("RGB").save(buf, "PNG")
             data = buf.getvalue()
         return StreamingResponse(iter([data]), media_type="image/png", headers={"Cache-Control": "max-age=600"})
 
