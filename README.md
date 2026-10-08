@@ -15,6 +15,8 @@ One screen: drop a clip, pick a model and a style, write what's in the shot, hit
 
 ![DWARP: the panel on the left, the stage with a run, the runs strip below](docs/screenshot.png)
 
+What's new: [CHANGELOG.md](CHANGELOG.md).
+
 ## How it works
 
 For every frame:
