@@ -73,6 +73,33 @@ def motion_lora_to_diffusers(sd: dict) -> dict:
     return out
 
 
+def split_inference(pipe, spatial: int = 256, temporal: int = WINDOW) -> None:
+    """FreeNoise's split inference, minus a mid block that carries no motion module.
+
+    diffusers' own enable_free_noise_split_inference() wraps every block, the mid one included. Motion
+    modules with no mid block (TemporalDiff, v1) leave a plain UNetMidBlock2DCrossAttn there, and that
+    block calls its resnets positionally — SplitInferenceModule only splits keyword arguments, so it
+    finds nothing to split, runs the layer zero times and trips over its own empty result list
+    ("IndexError: list index out of range"). The mid block is the smallest feature map in the UNet, so
+    leaving it whole costs almost no VRAM.
+    """
+    unet = pipe.unet
+    blocks = [*unet.down_blocks, *unet.up_blocks]
+    if hasattr(unet.mid_block, "motion_modules"):
+        blocks.insert(len(unet.down_blocks), unet.mid_block)
+    for block in blocks:
+        if getattr(block, "motion_modules", None) is not None:
+            pipe._enable_split_inference_motion_modules_(block.motion_modules, spatial)
+        if getattr(block, "attentions", None) is not None:
+            pipe._enable_split_inference_attentions_(block.attentions, temporal)
+        if getattr(block, "resnets", None) is not None:
+            pipe._enable_split_inference_resnets_(block.resnets, temporal)
+        if getattr(block, "downsamplers", None) is not None:
+            pipe._enable_split_inference_samplers_(block.downsamplers, temporal)
+        if getattr(block, "upsamplers", None) is not None:
+            pipe._enable_split_inference_samplers_(block.upsamplers, temporal)
+
+
 def load_ad_pipeline(job: RenderJob, device, dtype=torch.float16):
     import safetensors.torch
     from diffusers import (AnimateDiffVideoToVideoControlNetPipeline, AnimateDiffVideoToVideoPipeline, ControlNetModel,
@@ -229,7 +256,7 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
             log(f"smooth long clip: LoRAs baked in for this render ({', '.join(adapters)})")
         pipe.enable_free_noise(context_length=WINDOW, context_stride=4, weighting_scheme="pyramid")
         if ip_embeds is None:                       # split inference cuts the spatial blocks' batch into chunks, but a Style
-            pipe.enable_free_noise_split_inference(spatial_split_size=256, temporal_split_size=WINDOW)   # ref's image
+            split_inference(pipe, spatial=256, temporal=WINDOW)                                         # ref's image
         else:                                       # tokens ride along uncut ("shape '[96, -1, 8, 40]' is invalid"): off
             log("smooth long clip with a Style ref: split inference off (they don't mix) — uses more VRAM")
         # FreeNoise takes text prompts by output frame and interpolates between them (prompt travel); embeddings named
@@ -274,10 +301,11 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
         del res
         torch.cuda.empty_cache()
     finally:
-        pipe.disable_free_noise()
-        # disable_free_noise() doesn't undo split inference's wrappers around the motion blocks, and the next
-        # enable_free_noise() then fails its own check (AssertionError: ... BasicTransformerBlock). The pipeline is
-        # dropped instead, so the next render loads it clean (~15 s).
+        # No disable_free_noise() here: it doesn't undo split inference's wrappers around the motion blocks (the
+        # next enable_free_noise() then fails its own check, "AssertionError: ... BasicTransformerBlock"), and with
+        # a motion module that has no mid block it raises on the way out ("'UNetMidBlock2DCrossAttn' object has no
+        # attribute 'motion_modules'"), hiding whatever really went wrong. The pipeline is dropped instead, so the
+        # next render loads it clean (~15 s).
         _CACHE.pop("pipe", None)
         _CACHE.pop("pipe_key", None)
         torch.cuda.empty_cache()

@@ -143,6 +143,8 @@ class RenderJob:
     shape_black: float = 0.0             # 3-point levels on the mask (0..255): black / white points, and the
     shape_white: float = 255.0           # midtone as a share of the way between them (0.5 = linear)
     shape_mid: float = 0.5
+    shape_fit: str = "stretch"           # the mask into a frame of another shape: stretch (fill it, distorted) |
+                                         # fit (whole, inside black bars) | fill (fills it, edges cropped)
     shape_blur: int = 0                  # px of softening on the mask's edges (0 = hard, as drawn)
     shape_opacity: float = 1.0           # fades the whole effect: black areas become grey (partly held); 0 = no mask
     shape_illusion: float = 0.0          # QR Code Monster at this weight: the scene's light and dark bend into the
@@ -193,6 +195,32 @@ def extract_frames(job: RenderJob, dest: Path) -> list[Path]:
     return frames
 
 
+def scale_vf(w: int, h: int, fit: str = "stretch") -> str:
+    """An ffmpeg -vf chain that brings a frame to w x h. stretch distorts it to fit (the default, and what
+    footage shot for this clip wants); fit keeps its shape whole inside black bars; fill keeps its shape and
+    crops what sticks out. A circle drawn square stays a circle under fit and fill."""
+    if fit == "fit":
+        return (f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black")
+    if fit == "fill":
+        return f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}"
+    return f"scale={w}:{h}:flags=lanczos"
+
+
+def fit_image(im: Image.Image, w: int, h: int, fit: str = "stretch") -> Image.Image:
+    """scale_vf for a still: the mask at w x h, stretched, fitted (black bars) or filled (cropped)."""
+    if fit not in ("fit", "fill") or im.width * h == im.height * w:
+        return im.resize((w, h), Image.LANCZOS)
+    k = (min if fit == "fit" else max)(w / im.width, h / im.height)
+    im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+    if fit == "fill":
+        x, y = (im.width - w) // 2, (im.height - h) // 2
+        return im.crop((x, y, x + w, y + h))
+    out = Image.new(im.mode, (w, h), 0)                 # black = background, as it is everywhere else
+    out.paste(im, ((w - im.width) // 2, (h - im.height) // 2))
+    return out
+
+
 def shape_frames(job: RenderJob, dest: Path) -> list[Path]:
     """The Shape mask's frames: a picture (one frame), a folder of images, or a video (every nth frame from
     its start, at render size)."""
@@ -202,7 +230,7 @@ def shape_frames(job: RenderJob, dest: Path) -> list[Path]:
     if src.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
         return [src]
     dest.mkdir(parents=True, exist_ok=True)
-    vf = f"select=not(mod(n\\,{max(1, job.nth)})),scale={job.width}:{job.height}:flags=lanczos"
+    vf = f"select=not(mod(n\\,{max(1, job.nth)}))," + scale_vf(job.width, job.height, job.shape_fit)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", vf, "-vsync", "vfr",
                     "-q:v", "2", "-start_number", "0", str(dest / "%06d.jpg")], check=True)
     frames = sorted(dest.glob("*.jpg"))
@@ -1170,7 +1198,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             last = len(shapes) - 1 if job.shape_end < 0 else min(len(shapes) - 1, job.shape_end // nth)
             first = min(job.shape_start // nth, last)
             k = first + i % (last - first + 1) if job.shape_loop else min(first + i, last)   # loop: In..Out again
-            sm = Image.open(shapes[k]).convert("L").resize((job.width, job.height), Image.LANCZOS)
+            sm = fit_image(Image.open(shapes[k]).convert("L"), job.width, job.height, job.shape_fit)
             smask = torch.from_numpy(np.asarray(sm, dtype=np.float32) / 255).to(device)[None, None]
             b, wp = job.shape_black / 255, job.shape_white / 255      # levels: footage -> a crisp mask
             if b > 0 or wp < 1 or job.shape_mid != 0.5:

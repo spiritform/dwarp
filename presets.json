@@ -237,6 +237,13 @@
       "negative": "photo, realistic, blurry"
     },
     {
+      "id": "collage",
+      "name": "Collage",
+      "checkpoint": "dreamshaper_8.safetensors",
+      "prompt": "paper collage, torn magazine cutouts, layered scraps of printed paper, hard cut edges, visible glue and tape, mixed media, halftone print texture",
+      "negative": "photo, realistic, smooth gradients, soft focus"
+    },
+    {
       "id": "raw",
       "name": "Raw",
       "checkpoint": "dreamshaper_8.safetensors",

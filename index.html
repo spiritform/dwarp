@@ -766,7 +766,7 @@
       </div>
     </div>
     <div class="slider" id="nextBox">
-      <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look. High keeps it and just follows the motion (only what the motion uncovers is painted fresh); low repaints every frame more. Double-click: the old default (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
+      <div class="slider-head"><b title="Warp: how tightly later frames hold frame 1's look, as a share of Denoise. 0 = later frames repaint at the full Denoise; 1 = they only follow the motion, and just what it uncovers is painted fresh. Denoise is the ceiling either way. Double-click for the default, 0.35 (later frames at 0.65 × Denoise)">Frame Lock</b><span id="styleNextV"></span></div>
       <input type="range" id="styleNext" min="0" max="1" step="0.01">
       <div class="ends"><span>repaint</span><span>lock to frame 1</span></div>
     </div>
@@ -894,6 +894,10 @@
       <div class="slider" style="margin-top:10px">
         <div class="slider-head"><b title="3-point levels: drag black / midtone / white to turn footage into a crisp mask. Double-click to reset">Levels</b><span id="shapeLvV"></span></div>
         <div class="levels" id="shapeLv"><div class="bar"></div><b class="pt b" data-p="b"></b><b class="pt m" data-p="m"></b><b class="pt w" data-p="w"></b></div>
+      </div>
+      <div class="slider">
+        <div class="slider-head"><b title="The mask into a frame of a different shape. stretch: squashed to fit (right for footage shot for this clip). fit: its own shape kept, whole, with black to the sides. fill: its own shape kept, filling the frame, edges cropped. A circle stays a circle under fit and fill">Aspect</b></div>
+        <div class="seg" id="shapeFit" style="grid-template-columns:1fr 1fr 1fr"><button data-v="stretch">stretch</button><button data-v="fit">fit</button><button data-v="fill">fill</button></div>
       </div>
       <div class="slider">
         <div class="slider-head"><b title="White repaints, black holds. Where the mask newly spreads (a wipe's edge, a growing shape) is drawn fresh. Works with any shape or animation">Repaint</b><span id="shapeRepaintV"></span></div>
@@ -1105,7 +1109,7 @@ let state = {
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
-  shape: null, shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false, shapeLoop: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
+  shape: null, shapeFit: 'stretch', shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false, shapeLoop: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
   keys: [], keySel: -1, blend: 12,     // prompt travel: [{f: source frame, prompt}]; -1 = the base prompt (frame 0)
   live: false,                         // Live: Enter in the prompt sends it into the running render
   spf: {},                             // learned seconds/frame at each mode's ref_size
@@ -1415,7 +1419,7 @@ function singleShape() {
 function shapeDims() { return state.t2v ? t2vDims(state.size) : state.clip ? renderSize() : [state.size, state.size]; }
 function shapeFrameUrl() {
   const [w, h] = shapeDims();
-  return `/api/diff/base?${qs({ path: state.shape.path, frame: state.shape.video ? shapeFrame : 0, width: w, height: h, kind: 'luma' })}`;
+  return `/api/diff/base?${qs({ path: state.shape.path, frame: state.shape.video ? shapeFrame : 0, width: w, height: h, kind: 'luma', fit: state.shapeFit || 'stretch' })}`;
 }
 function shapeLook() {                     // invert + blur on the shown mask, blur scaled to the size on screen
   const im = $('imgOut'); if (!im) return;
@@ -1471,10 +1475,16 @@ function shapeJob(kind) {                        // the job's Shape fields (none
   if (!sh) return {};
   const [inF, outF] = sh.video ? shapeInOut() : [0, -1], lv = state.shapeLv || [0, 0.5, 255];
   return { shape: sh.path, shape_start: kind === 'frame' && sh.video ? shapeFrame : inF, shape_end: kind === 'frame' ? -1 : outF,
-           shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_loop: !!(state.shapeLoop && sh.video), shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
+           shape_black: lv[0], shape_mid: +(+lv[1]).toFixed(3), shape_white: lv[2], shape_invert: !!state.shapeInvert, shape_fit: state.shapeFit || 'stretch', shape_loop: !!(state.shapeLoop && sh.video), shape_cn: d?.path || '', shape_cn_repo: d?.repo || '',
            shape_pull: +(0.45 * shapeBg()).toFixed(2), shape_repaint: state.shapeRepaint ?? 1, shape_follow: 0, shape_nudge: state.t2v ? 1 - shapeBg() : 0, shape_blur: state.shapeBlur || 0, shape_opacity: +(state.shapeOpacity ?? 1),
            ...((modeCfg().illusion?.have || modeCfg().illusion?.fetch) && state.shapeIllu > 0 ? { shape_illusion: +state.shapeIllu, shape_qr_cn: modeCfg().illusion.path } : {}) };
 }
+// Frame Lock (0..1) -> the engine's absolute strength for frames after the first. Denoise is the ceiling:
+// at Denoise 0 nothing is repainted anywhere, which is what the slider looks like it promises.
+function nextStyle() { return +((state.style ?? 0.75) * (1 - (state.frameLock ?? 0.35))).toFixed(3); }
+// An older save / run stored that absolute strength: back to a share of its Denoise
+function lockShare(next, style) { return Math.min(1, Math.max(0, +(1 - (+next) / (+style || 0.75)).toFixed(2))); }
+
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
   $('negative').hidden = !state.negOpen;
@@ -1508,9 +1518,9 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
+  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
-    (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(1 - state.styleNext).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(1 - state.styleNext).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+    (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -2089,11 +2099,12 @@ function renderControls() {
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   renderStyleRef(); renderShape(); paintNeg();
-  $('styleNext').value = 1 - state.styleNext; $('styleNextV').textContent = (1 - state.styleNext).toFixed(2);   // Frame Lock
+  $('styleNext').value = state.frameLock; $('styleNextV').textContent = (+state.frameLock).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   const ad = adOn();
   [...$('frameMode').children].forEach(b => b.classList.toggle('on', ad ? b.dataset.f === 'motion' : b.dataset.f !== 'motion' && (b.dataset.f === 'fresh') === !!state.fresh));
   [...$('edgePad').children].forEach(b => b.classList.toggle('on', +b.dataset.v === (state.edgePad ? 1 : 0)));
+  [...$('shapeFit').children].forEach(b => b.classList.toggle('on', b.dataset.v === (state.shapeFit || 'stretch')));
   $('srcMixBox').hidden = $('nextBox').hidden = !!state.fresh;    // nothing is carried, so nothing to mix
   $('hold').value = state.hold; $('holdV').textContent = state.hold;
   [...$('size').children].forEach(b => b.classList.toggle('on', +b.dataset.s === state.size));
@@ -2209,8 +2220,8 @@ $('prompt').oninput = e => {
   paintKeys(); save();
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
-$('styleNext').oninput = e => { state.styleNext = +(1 - e.target.value).toFixed(2); $('styleNextV').textContent = (+e.target.value).toFixed(2); save(); };
-$('styleNext').ondblclick = () => { state.styleNext = +(state.style * 0.65).toFixed(2); renderControls(); save(); };
+$('styleNext').oninput = e => { state.frameLock = +(+e.target.value).toFixed(2); $('styleNextV').textContent = state.frameLock.toFixed(2); save(); };
+$('styleNext').ondblclick = () => { state.frameLock = 0.35; renderControls(); save(); };
 $('srcMode').onclick = e => {
   const m = e.target.dataset.s; if (!m || m === srcKind()) return;
   state.t2v = m !== 'v2v'; state.i2v = m === 'i2v'; state.keySel = -1;
@@ -2219,6 +2230,7 @@ $('srcMode').onclick = e => {
   save();
 };
 $('edgePad').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.edgePad = +v; renderControls(); save(); };
+$('shapeFit').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.shapeFit = v; renderControls(); save(); if (shapeMode()) paintFrame(); };
 $('frameMode').onclick = e => {
   const f = e.target.dataset.f; if (!f) return;
   if (f === 'motion') { if (!state.ad.on) { state.ad.on = true; applyAdProfile(true); } }
@@ -2459,8 +2471,8 @@ async function buildConfig(kind) {
     width: W, height: H,
     frame_start: start, frame_end: end, nth,
     style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
-    style_next: !t2v && state.fresh ? -1 : state.styleNext,   // Frame Lock (Text / Image too: later frames)
-    diff: !t2v && !state.fresh && state.styleNext < state.style,   // Warp: uncovered pixels repaint at Denoise
+    style_next: !t2v && state.fresh ? -1 : nextStyle(),      // Frame Lock (Text / Image too: later frames)
+    diff: !t2v && !state.fresh && (state.frameLock ?? 0) > 0,      // Warp: uncovered pixels repaint at Denoise
     flow_blend: t2v ? 1 : +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     fresh: !t2v && !!state.fresh,            // Boil: no warp, full Denoise on every frame
     edge_pad: state.edgePad ? 0.08 : 0,      // Edges: padded = a mirrored margin, cropped after (no dark / smeared edges)
@@ -3705,9 +3717,11 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'styleNext', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
-                   'shape', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'frameLock', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
+                   'shape', 'shapeFit', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
+  // a run from before Frame Lock became a share of Denoise: its absolute strength back to a share
+  if (!('frameLock' in ui)) state.frameLock = ui.styleNext != null ? lockShare(ui.styleNext, ui.style) : 0.35;
   let gone = '';
   if (state.shape?.path && !(await api(`/api/fs/exists?${qs({ path: state.shape.path })}`).catch(() => ({})))?.exists) { state.shape = null; gone = ' (its shape file is gone)'; }
   state.keySel = -1;
@@ -4145,11 +4159,16 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
   state.gtab ||= 'cn';
+  state.shapeFit ||= 'stretch';          // older saves: the mask was always stretched to the frame
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;
   state.srcMix ??= 0.15;
   state.fresh ??= false;
   state.ad = { on: false, speed: 'quality', lora: '', loraW: 1, ...(state.ad || {}) };   // Motion (AnimateDiff)
-  state.styleNext ??= +((state.style ?? 0.75) * 0.65).toFixed(2);   // older saves: what the engine used to pick
+  // Frame Lock used to be its own absolute denoise for later frames, so lowering Denoise left it stranded
+  // (Denoise 0.07 with lock 0.17 still repainted every frame after the first at 0.83). It's a share of
+  // Denoise now: later frames = Denoise x (1 - lock), so Denoise alone rules the whole render.
+  state.frameLock ??= state.styleNext != null ? lockShare(state.styleNext, state.style) : 0.35;
+  delete state.styleNext;
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
   state.styleRef ??= null; state.styleRefW ??= 0.6; state.styleOnly ??= true;

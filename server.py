@@ -398,7 +398,7 @@ def build_app() -> FastAPI:
 
     @app.get("/api/diff/base")
     def diff_base(path: str = "", frame: int = 0, width: int = 512, height: int = 512, kind: str = "luma",
-                  run: str = "", depth_model: str = "midas"):
+                  run: str = "", depth_model: str = "midas", fit: str = "stretch"):
         """One source frame, as the DepthDiff mask starts from it: the frame itself (luma) or its
         depth map. Either a clip frame at render size (path + frame + size; also the stage's clip
         view), or the frame a run started from (run + that run's frame number). JPEG like the
@@ -412,7 +412,8 @@ def build_app() -> FastAPI:
         else:
             if not path or not os.path.isfile(path):
                 raise HTTPException(404, detail="No video at that path")
-            vf = f"select=eq(n\\,{max(0, frame)}),scale={max(8, width)}:{max(8, height)}:flags=lanczos"
+            from engine.warp import scale_vf
+            vf = f"select=eq(n\\,{max(0, frame)})," + scale_vf(max(8, width), max(8, height), fit)
             out = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", vf, "-frames:v", "1",
                                   "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "2", "-"], capture_output=True)
             if out.returncode != 0 or not out.stdout:

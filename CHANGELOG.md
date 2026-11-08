@@ -2,6 +2,21 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-08
+
+- **Denoise rules the whole render.** Frame Lock is a share of Denoise now, not its own separate amount:
+  later frames paint at Denoise x (1 - lock), so turning Denoise down turns the whole clip down. Before
+  this, Denoise 0.07 with Frame Lock 0.17 still repainted every frame after the first at 0.83. Saved
+  settings and older runs carry over to the same strengths.
+- **Shape: Aspect** (stretch / fit / fill). A mask whose shape doesn't match the frame no longer has to be
+  squashed into it — fit keeps it whole inside black bars, fill crops it to the frame. A circle stays a circle.
+- **Shape library: circle, expanding** replaces "circle, pulsing" — white opens from nothing until it fills
+  the frame, then black does the same over it, and it loops.
+- **Collage look.** Torn paper cutouts, hard cut edges, halftone print texture — in the Look drop-down next
+  to Comic.
+- **Motion renders again** with motion modules that have no mid block (TemporalDiff, v1): FreeNoise's memory
+  split skips that block instead of crashing on it, and a render's clean-up no longer swallows the real error.
+
 ## 2026-10-07
 
 - **Depth: ZipDepth option.** Settings → Depth picks the depth model behind the depth ControlNet, DepthDiff's

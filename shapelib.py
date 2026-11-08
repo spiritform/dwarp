@@ -59,6 +59,14 @@ STILLS = {
 }
 
 
+def iris(r, p):
+    """A circle opening from nothing until it fills the frame in white, then a black one doing the same
+    over it: all black at the start of the loop, all white half way, all black again at the end. 1.5 is
+    past the corner of the square the presets are drawn in, so it really does fill."""
+    disc = _bw(1.5 * (p % 0.5) * 2 - r, 0.04)
+    return disc if p < 0.5 else 1 - disc
+
+
 def _blocks(seed: int, n: int = 21) -> np.ndarray:
     """QR-like random squares (n x n cells), upscaled to the frame later."""
     rng = np.random.default_rng(seed)
@@ -79,7 +87,7 @@ VIDEOS = {
     "sunburst, turning": lambda x, y, r, t, p: _bw(np.sin(12 * t + 2 * np.pi * p), 0.25),
     "stripes, sliding": lambda x, y, r, t, p: _bw(np.sin(2 * np.pi * (5 * (x + y) / 2 ** 0.5 - p)), 0.3),
     "waves, flowing": lambda x, y, r, t, p: _bw(np.sin(2 * np.pi * 4 * y + 1.6 * np.sin(2 * np.pi * (1.5 * x - p))), 0.3),
-    "circle, pulsing": lambda x, y, r, t, p: _bw(0.45 + 0.15 * np.sin(2 * np.pi * p) - r, 0.04),
+    "circle, expanding": lambda x, y, r, t, p: iris(r, p),
     "tunnel": lambda x, y, r, t, p: _bw(np.sin(3 * t + 2 * np.pi * (4 * np.log(r + 0.05) / np.log(20) * 3 + p)), 0.3),
     "blocks, shuffling": None,                  # drawn below: a new QR-like grid every 8 frames, 12 grids per loop
 }
@@ -105,9 +113,17 @@ def _file(name: str, ext: str) -> Path:
     return PRESETS / (name.replace(", ", "-").replace(" ", "-") + ext)
 
 
+def wanted() -> list[Path]:
+    return [_file(n, ".png") for n in STILLS] + [_file("blocks", ".png")] + [_file(n, ".mp4") for n in VIDEOS]
+
+
 def make_presets() -> None:
     PRESETS.mkdir(parents=True, exist_ok=True)
     YOURS.mkdir(parents=True, exist_ok=True)
+    keep = {p.name for p in wanted()}            # a renamed or dropped preset: the old drawing goes, or the
+    for f in PRESETS.glob("*"):                  # library would keep listing it (it lists the folder).
+        if f.is_file() and f.name not in keep:   # Only ever drawings this file made; your own live in shapes/yours.
+            f.unlink(missing_ok=True)
     g = _grid(SIZE)
     for name, f in STILLS.items():
         p = _file(name, ".png")
@@ -133,8 +149,8 @@ _MAKER: threading.Thread | None = None
 def presets_ready() -> bool:
     """True once every preset is on disk; otherwise starts drawing them (in the background)."""
     global _MAKER
-    want = [_file(n, ".png") for n in STILLS] + [_file("blocks", ".png")] + [_file(n, ".mp4") for n in VIDEOS]
-    if all(p.exists() for p in want):
+    want = wanted()
+    if all(p.exists() for p in want) and not any(f.is_file() and f.name not in {p.name for p in want} for f in PRESETS.glob("*")):
         return True
     if _MAKER is None or not _MAKER.is_alive():
         _MAKER = threading.Thread(target=make_presets, daemon=True)
