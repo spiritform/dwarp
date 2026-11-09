@@ -1424,9 +1424,12 @@ function fitBox(aw, ah) {
   return [fit(aw), fit(ah)];
 }
 function sizeFrom() {                        // what decides the box: 'motion' | 'clip' | 'aspect'
-  // Only measured motion sets the shape, because its coordinates came off a video of that shape. A
-  // drawn field has no shape of its own: it is drawn to fit whatever is already decided.
-  if (wf().tracks && measured()) return 'motion';
+  // Path coordinates are pixels in the output frame, so something has to decide the shape. A drawn
+  // field has none of its own. A measurement whose chase was saved has none either any more: it can
+  // be fitted into whatever box is picked, which is the only way to render a landscape clip's motion
+  // in a tall frame. Only a measurement from before that was saved still dictates the box, because
+  // its numbers are all that is left of it.
+  if (wf().tracks && measured() && !measured().chase) return 'motion';
   return wf().video && state.clip ? 'clip' : 'aspect';
 }
 function comfySize() {
@@ -1631,6 +1634,12 @@ function renderTracks() {
   // switching from H3's 124 to WanMove's 81 would hand the model the wrong shape, and you would only
   // find out after paying for it. Say so here instead.
   const want = h3Frames(h3Seconds()), box = comfySize();
+  // A measurement whose chase was saved can be fitted to a new Length, box or path count out of the
+  // array \u2014 arithmetic, no GPU \u2014 so it follows the panel the way a drawn field does. Only a
+  // measurement from before that was saved (or one whose refit failed) still asks to be redone.
+  if (t && !t.field && t.chase && wf().tracks && !refitBusy && !refitFits() && refitKey() !== refitWant) {
+    refitTracks(); return;
+  }
   // A field costs milliseconds of numpy and nothing on the GPU, so a changed Length or box redraws it
   // rather than telling you to do it again. Nothing is retried after a failure: fieldWant still holds
   // the key that failed, so this only fires once per change.
@@ -1641,12 +1650,14 @@ function renderTracks() {
             : (t.width !== box[0] || t.height !== box[1])
               ? `measured for ${t.width}\u00d7${t.height}, but this renders at ${box[0]}\u00d7${box[1]}` : '';
   $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
+    : refitBusy ? 'fitting the measurement to this render \u2014 no GPU, no tracking again'
     : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
     : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows these ${t.paths} paths`
     : t ? `these go up with the render \u2014 ${wf().label} follows them`
     : way === 'field' ? 'paths from a formula \u2014 click to draw them'
         : 'optical flow, measured off the clip you drop here';
-  if (why) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
+  // the link is only in the note when the note is showing it: a refit in flight replaces that line
+  if ($('tkRedo')) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
 }
 async function copyTracks() {
   try {
@@ -1660,12 +1671,10 @@ async function startTracks(path, name, trim) {
   if (trackJob) return setStatus('already tracking', 'bad');
   if (isField()) { state.tracksOther = state.tracks; state.tracks = null; stopField(); }
   state.motionWay = 'measure';                 // a video was dropped: that is the side you are on
-  let box = comfySize();                     // the box this very video implies, so nothing mismatches
-  try {
-    const pr = await api(`/api/video/probe?${qs({ path })}`);
-    if (pr.source?.width) box = fitBox(pr.source.width, pr.source.height);
-  } catch {}
-  const [width, height] = box;
+  // Measured into the box the panel is asking for. It used to take the clip's own shape instead,
+  // which was the right call when that shape was then forced on the render; now Aspect decides and
+  // the paths are refit into it, so starting there is one less thing that can disagree.
+  const [width, height] = comfySize();
   const length = h3Frames(h3Seconds());        // one point per frame of what you are about to make
   try {
     trackJob = await api('/api/tracks', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -1694,13 +1703,47 @@ function watchTracks() {
     if (['done', 'failed', 'cancelled'].includes(j.state)) {
       clearInterval(trackPoll); trackPoll = null;
       const ok = j.state === 'done' && j.result;
-      if (ok) { state.tracks = { ...j.result, trim: lastTrim }; state.motionWay = 'measure'; save(); }
+      if (ok) {
+        state.tracks = { ...j.result, trim: lastTrim }; state.motionWay = 'measure';
+        refitWant = refitKey(); save();        // this IS the fit: nothing to follow up
+      }
       trackJob = null; renderTracks();
       setStatus(ok ? `${j.result.paths} paths · ${j.result.held} held all the way`
                    : `tracking ${j.state}: ${j.error || ''}`, ok ? 'done' : 'bad');
     }
   }, 1000);
 }
+// ---- Refit: the same measurement, fitted to what the panel now asks for
+// All of tracking's cost is the chase \u2014 RAFT, both ways, over every frame. Length, output box and
+// even how many paths to keep are decided out of that array afterwards, so engine/tracks.py saves it
+// and those three stop being reasons to measure again. Only a different clip or trim is a new chase.
+var refitWant = '', refitBusy = false;                // var: read by renderTracks above
+function refitBody() {
+  const [width, height] = comfySize(), t = measured();
+  return { chase: t?.chase || '', points: trackPts(), length: h3Frames(h3Seconds()), width, height };
+}
+function refitKey() { return JSON.stringify(refitBody()); }
+function refitFits() {                                 // what is in hand, against what is being asked
+  const b = refitBody(), t = measured();
+  return !!t && t.frames === b.length && t.width === b.width && t.height === b.height
+    && (t.points ?? t.paths) === b.points;
+}
+async function refitTracks() {
+  const t = measured();
+  if (!t?.chase || refitBusy) return;
+  const body = refitKey();
+  refitWant = body; refitBusy = true;
+  renderTracks();                                      // say what is happening; it can take a second
+  try {
+    const r = await api('/api/tracks/refit', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    if (refitWant !== body) return;                    // a newer change won while this was in flight
+    state.tracks = { ...r, trim: t.trim };
+  } catch (e) {
+    setStatus('could not refit the motion: ' + e.message, 'bad');
+  } finally { refitBusy = false; }
+  renderH3(); paintSums(); save();
+}
+
 // ---- Fields: the same path data, drawn instead of measured
 // Measured tracks turned out to be a motion *signature* rather than a match for what is in the picture
 // — the paths land where the clip's features were, which in another picture is usually nothing, and the
@@ -1850,6 +1893,7 @@ $('tkPaths').onclick = e => {
   const n = +e.target.dataset.n; if (!n) return;
   state.trackPts = n; renderH3(); save();
   if (isField()) drawField();                  // drawn: it just redraws with that many
+  else if (measured()?.chase) refitTracks();   // measured: re-picked out of the saved chase, no GPU
   else if (state.tracks) setStatus(`${n} paths next time \u2014 measure again to use it`, 'done');
 };
 $('tkPull').oninput = e => {
@@ -3574,7 +3618,11 @@ const HELP = {
        two ways to fill it.</p>
     <p><b>Measure a video.</b> Drop in footage, or one of your own warp renders, and DWARP tracks it with the same
        optical flow the warp runs on, then hands back the path data plus a preview with the dots drawn on your
-       frames. It holds the GPU for a moment, like an enhance. What comes out is a motion <i>signature</i>, not a
+       frames. It holds the GPU for a moment, like an enhance — once. Everything expensive about it is
+       the <i>chase</i>: the optical flow, both ways, over every frame. The Length, the output shape and
+       even how many paths to keep are all decided out of that afterwards, so DWARP keeps it and fits the
+       same measurement to whatever you change later, in a blink and without the card. Only a different
+       clip, or a different trim of it, is a new measurement. What comes out is a motion <i>signature</i>, not a
        match for what is in your picture: the paths sit where the clip's features were, which in another picture
        is often nothing at all, and the model still moves. Clips with a few big coherent movements — a slow pan,
        a figure crossing, smoke — read far better than busy ones.</p>
@@ -3593,10 +3641,12 @@ const HELP = {
       <tr><td><b>Wave</b></td><td>Travel with a sway across it, each path a little behind the last.</td></tr>
       <tr><td><b>Drift</b></td><td>No common direction — every path wanders its own way. The <b>seed</b> changes it.</td></tr>
     </table>
-    <p>Measured paths set the render's shape, because their coordinates are pixels in the frame they were
-       measured against. A drawn field has no shape of its own, so it follows the size you have picked and is
-       redrawn whenever the Length or the box changes. <b>copy</b> on the slot puts the JSON on the clipboard,
-       for pasting into a ComfyUI path widget by hand; a render here does not need that.</p>
+    <p>Either way, the paths follow the render rather than the other way round: <b>Aspect</b> and
+       <b>Length</b> decide the box, and the motion is fitted into it — which is how a landscape clip's
+       movement can drive a tall frame. Fitting a measurement into a shape it was not measured in stretches
+       it, and that is the point: these are motion signatures, not a map of what is in your picture.
+       <b>copy</b> on the slot puts the JSON on the clipboard, for pasting into a ComfyUI path widget by
+       hand; a render here does not need that.</p>
     <h3>H3 · Pika Flex — a clip with sound</h3>
     <p>The workflow DWARP ships with: <b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. H3 is also why this
        mode exists:

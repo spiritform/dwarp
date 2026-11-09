@@ -755,6 +755,27 @@ def build_app() -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc)) from None
 
+    @app.post("/api/tracks/refit")
+    async def refit_tracks(request: Request):
+        """The same measurement at a different Length, output box or path count. All of the cost of
+        tracking is in the chase, which was saved beside the JSON, so this is arithmetic — no GPU, and
+        it runs happily while a render has the card."""
+        from engine import tracks as tk
+        body = await request.json()
+        folder = (INPUTS / "tracks").resolve()
+        chase = Path(str(body.get("chase") or "")).resolve()
+        if folder not in chase.parents or not chase.is_file():
+            raise HTTPException(422, detail="no saved measurement to refit — measure it again")
+        try:
+            return tk.refit(
+                chase,
+                points=max(1, min(128, int(body.get("points", 24)))),
+                length=max(2, min(1024, int(body.get("length", 81)))),
+                width=max(16, min(4096, int(body.get("width", 720)))),
+                height=max(16, min(4096, int(body.get("height", 720)))))
+        except tk.TrackError as exc:
+            raise HTTPException(422, detail=str(exc)) from None
+
     @app.get("/api/fields")
     def field_kinds():
         """The authored motion fields this install offers, with the dials each one reads. The panel

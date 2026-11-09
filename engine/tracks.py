@@ -246,8 +246,70 @@ def make(src: str, dest_dir: Path, *, points: int = 24, length: int = 81,
     out = dest_dir / f"{stem}.json"
     out.write_text(json.dumps(data), encoding="utf-8")
     shown = preview(frames, positions, chosen, dest_dir / f"{stem}.mp4", rate)
-    log(f"wrote {out.name} and {shown.name} in {time.time() - t0:.0f}s")
+    seconds = round(len(frames) / max(0.01, rate), 2)
+    # Everything that was expensive lives in `positions`: the flow, the round trips, the GPU. Length,
+    # output size and even how many paths to keep are decided afterwards, out of that same array — so
+    # it is kept beside the JSON and refit() can answer those without touching the card again.
+    keep = dest_dir / f"{stem}.chase.npz"
+    np.savez_compressed(
+        keep, positions=positions.astype(np.float32), alive=alive, moved=moved,
+        chosen=np.asarray(chosen, dtype=np.int32),
+        meta=json.dumps({"track_size": list(track_size), "source": src, "trim": list(trim or []),
+                         "rate": rate, "seconds": seconds, "stem": stem}))
+    log(f"wrote {out.name} and {shown.name} in {time.time() - t0:.0f}s"
+        f" · kept the chase ({keep.stat().st_size / 2**20:.1f} MB) so Length, size and Paths can be"
+        f" refit without the GPU")
     return {"path": str(out), "name": out.name, "preview": str(shown), "paths": len(chosen),
             "frames": length, "width": width, "height": height, "held": held, "source": src,
+            "chase": str(keep), "points": int(points),
             # how long the tracked span actually ran: what "auto" on the panel matches
-            "seconds": round(len(frames) / max(0.01, rate), 2)}
+            "seconds": seconds}
+
+
+def refit(chase: str | Path, *, points: int, length: int, width: int, height: int,
+          log: Callable[[str], None] = print) -> dict:
+    """The same measurement, fitted to a different Length, output box or number of paths.
+
+    The chase is where the cost was; resampling it in time and scaling it into the output box is
+    arithmetic. So changing the Length of a render, or its shape, should not mean waiting on RAFT
+    again — it rewrites the JSON out of the saved array and keeps the preview you already checked.
+
+    Asking for a different number of paths does change which tracks are chosen, and then the preview
+    would be showing dots that are no longer the ones going up; that case redraws it from the clip,
+    which is ffmpeg and PIL on the CPU, no card involved."""
+    t0 = time.time()
+    chase = Path(chase)
+    try:
+        z = np.load(chase, allow_pickle=False)
+        meta = json.loads(str(z["meta"]))
+    except Exception as exc:                            # a half-written or hand-edited sidecar
+        raise TrackError(f"could not read the saved measurement: {exc}") from None
+    positions, alive, moved = z["positions"], z["alive"], z["moved"]
+    was = [int(i) for i in z["chosen"]]
+    track_size = tuple(meta["track_size"])
+    length, width, height = max(2, int(length)), int(width), int(height)
+
+    chosen = pick(positions, alive, moved, max(1, int(points)), track_size)
+    data = to_json(resample(positions, length), chosen, track_size, (width, height))
+    assert all(len(t) == length for t in data), "the node needs every track the same length"
+    stem = f"{meta.get('stem', chase.stem)}-{uuid.uuid4().hex[:4]}"
+    out = chase.parent / f"{stem}.json"
+    out.write_text(json.dumps(data), encoding="utf-8")
+
+    shown = chase.parent / f"{meta.get('stem', chase.stem)}.mp4"
+    if chosen != was:                                   # different tracks: the old preview is a lie
+        try:
+            frames, _, _, rate = read_frames(meta["source"], meta.get("trim") or None)
+            shown = preview(frames, positions, chosen, chase.parent / f"{stem}.mp4", rate)
+            np.savez_compressed(chase, positions=positions, alive=alive, moved=moved,
+                                chosen=np.asarray(chosen, dtype=np.int32),
+                                meta=json.dumps({**meta, "stem": stem}))
+        except TrackError as exc:                       # the clip has moved or gone
+            raise TrackError(f"the paths can be refit, but the preview cannot be redrawn: {exc}") from None
+    held = sum(1 for i in chosen if alive[i] >= (len(positions) - 1) * 0.9)
+    log(f"refit {out.name}: {len(chosen)} paths · {length} frames · {width}x{height}"
+        f" in {time.time() - t0:.1f}s, no GPU")
+    return {"path": str(out), "name": out.name, "preview": str(shown), "paths": len(chosen),
+            "frames": length, "width": width, "height": height, "held": held,
+            "source": meta.get("source", ""), "chase": str(chase), "points": int(points),
+            "seconds": meta.get("seconds", 0)}

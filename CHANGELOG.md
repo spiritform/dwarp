@@ -12,6 +12,16 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   **Push / pull**, **Orbit**, **Swirl**, **Wave**, **Drift** — set **Amount**, **Direction** and
   **Paths**, and the same path JSON comes out of a formula in milliseconds, with no clip and no GPU.
   It is the identical format through the identical slot, so WanMove cannot tell the difference.
+- **A measurement follows the panel now, instead of asking to be redone.** All the cost of tracking is
+  the chase — RAFT, both ways, over every frame — and Length, output shape and how many paths to keep
+  were only ever decided out of that array afterwards. So the chase is saved beside the JSON (about a
+  megabyte), and changing any of those three refits the same measurement in a blink, on the CPU, while
+  a render has the card. Change **Paths** and the preview is redrawn too, since it would otherwise be
+  showing dots that are no longer the ones going up. Only a different clip or trim measures again.
+- **Measured motion no longer dictates the render's shape.** It used to, because path coordinates are
+  pixels in the output frame and a measurement had nothing but its numbers. Now that it can be refit,
+  **Aspect** is yours again with a track loaded — so a landscape clip's movement can drive a tall
+  frame. It stretches the motion into that shape, which is exactly what a motion *signature* is for.
 - **Speed: quality or fast, for a workflow that carries both.** WanMove's graph has one switch that
   moves model, steps and CFG together — 20 steps at CFG 6 on the full model, or 6 steps at CFG 1 with
   the lightx2v step-distill LoRA, about 3× quicker. DWARP was always running the quality side (and the
