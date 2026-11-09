@@ -200,7 +200,7 @@
       }
     },
     "h3": {
-      "label": "H3",
+      "label": "Comfy",
       "cloud": "Comfy Cloud",
       "sizes": [
         768,
@@ -219,7 +219,8 @@
         7,
         10,
         15
-      ]
+      ],
+      "workflows": true
     }
   },
   "presets": [

@@ -13,7 +13,7 @@ paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repain
 
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Frame** or **Preview**.
 
-Everything runs on your own machine, with one opt-in exception: the **H3** mode, which needs a model far too
+Everything runs on your own machine, with one opt-in exception: the **Comfy** mode, which runs models far too
 big for a desktop card and renders on Comfy Cloud instead. [More below](#h3-a-clip-with-sound-in-the-cloud).
 
 ![DWARP: the panel on the left, the stage with a run, the runs strip below](docs/screenshot.png)
@@ -77,17 +77,31 @@ the same differential diffusion underneath:
 
 **Shape library**: the *library* link on the Shape card opens ready-made black / white masks to try, drawn by DWARP itself (no downloads): spirals for the classic QR Code Monster "spiral illusion", rings, sunburst, checker, stripes, waves, halftone and simple shapes, plus seamless loops (turning spirals, rings moving out, a tunnel, shuffling QR-like blocks). Your own masks go in *Yours* (`shapes/yours`).
 
-## H3: a clip with sound, in the cloud
+## Comfy: the one mode that renders somewhere else
 
-Every other mode repaints *your* frames. H3 doesn't: it reads what you give it and generates a **new** 5–15 s
-clip that follows what it saw — **with its own soundtrack**, picture and audio in a single pass. It is the only
-mode that makes audio, and the only one that doesn't run locally.
+Every other mode paints on your own card. The **Comfy** tab sends the job to
+[Comfy Cloud](https://www.comfy.org/) instead and brings back the file, which is how DWARP reaches models far
+past a 12 GB card. **This is optional and off by default**: without an API key the mode simply says so. With
+one, each clip spends Comfy credits and takes a few minutes.
+
+What runs up there is whichever **Workflow** is picked at the top of the Model card. The controls below it
+follow that choice — a graph with no reference slots shows no References card, one that writes no audio shows
+no Sound switch — because the panel is built from the workflow's own manifest.
+
+**Adding a workflow**: build the graph in ComfyUI, *Workflow → Export (API)*, drop the file in `engine/comfy/`
+and add an entry to [`engine/comfy/workflows.json`](engine/comfy/workflows.json) naming which node takes the
+prompt, which takes the seed, which carries the size and length, and which node's output *is* the render. The
+file documents the full list at the top. No Python.
+
+### H3 · Pika Flex — a clip with sound
+
+The workflow DWARP ships with, and the reason the mode exists. Every other mode repaints *your* frames; H3
+doesn't: it reads what you give it and generates a **new** 5–15 s clip that follows what it saw — **with its own
+soundtrack**, picture and audio in a single pass. It is the only thing in DWARP that makes audio.
 
 It is [MiniMax-H3](https://huggingface.co/MiniMaxAI) through Pika's
-[H3 Flex](https://huggingface.co/Pika-Labs) adapter. The model is a 61 GB transformer plus a 32-billion-parameter
-text encoder — far past a 12 GB card — so DWARP sends the job to [Comfy Cloud](https://www.comfy.org/) and brings
-back the mp4. **This is optional and off by default**: without an API key the mode simply says so. With one, each
-clip spends Comfy credits and takes a few minutes.
+[H3 Flex](https://huggingface.co/Pika-Labs) adapter: a 61 GB transformer plus a 32-billion-parameter text
+encoder, which is what puts it out of reach locally.
 
 What goes in:
 
@@ -98,8 +112,10 @@ What goes in:
 
 Either is enough on its own. Those tags are how H3 was trained to read references, and it wants a *sectioned
 brief* rather than style words — `subject_definitions`, `summary`, `retention_analysis`, `detailed_description`,
-`overall_soundscape`, `non_diegetic_music`. The **template** link in the Prompt card lays that out for you,
-filled in from the clip and references you have loaded. Help → **H3** explains the rest.
+`overall_soundscape`, `non_diegetic_music`. **Start from** above the prompt box lays that out for you, filled in
+from the clip and references you have loaded, in one of three shapes: a character swap, a full restyle, or a new
+scene. With no reference loaded the same briefs leave you a line to describe the style in words instead.
+Help → **Comfy** explains the rest.
 
 **Setting it up**: Settings → **Comfy Cloud**, paste a key from
 [platform.comfy.org](https://platform.comfy.org/profile/api-keys). It is kept in `config.json`, which is
@@ -129,7 +145,7 @@ empty field. A render needs an active Comfy subscription.
 - **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **use settings** puts a run's settings back in the panel
 - **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first)
 - A built-in guide: the **?** button explains every control
-- **[H3](#h3-a-clip-with-sound-in-the-cloud)** (optional, cloud): a 5–15 s clip **with sound** from your footage and reference pictures, via MiniMax-H3 / Pika H3 Flex on Comfy Cloud. Needs an API key; everything else in DWARP stays on your own GPU
+- **[Comfy](#comfy-the-one-mode-that-renders-somewhere-else)** (optional, cloud): runs a ComfyUI graph on Comfy Cloud, picked from a Workflow list you can add to. It ships with MiniMax-H3 / Pika H3 Flex: a 5–15 s clip **with sound** from your footage and reference pictures. Needs an API key; everything else in DWARP stays on your own GPU
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
 - **Refine**: a diffusion upscale — render a finished run again (1× for a second pass, or 1.5× / 2× bigger) with a low Denoise and your prompt, held to its frames by a tile ControlNet and carried along by the warp. Big frames are painted in overlapping tiles, so detail comes out at the scale the model was trained at and VRAM stays flat
 

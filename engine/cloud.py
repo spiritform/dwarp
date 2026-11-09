@@ -1,4 +1,4 @@
-"""H3: a clip with sound from reference pictures, rendered on Comfy Cloud.
+"""Comfy Cloud: DWARP's one mode that renders somewhere else.
 
 MiniMax-H3 is open weights, but the parts that matter are a 61 GB transformer and a 32 B conditioner, and
 the small quantised ones on the Hub are pruned in a way diffusers refuses. Running it here would mean ~20 GB
@@ -6,16 +6,20 @@ of RAM before the card is even touched. So this mode doesn't run it here: DWARP 
 and brings back the mp4. The only thing it needs is an API key (Settings -> Comfy Cloud), and the only thing
 it costs is Comfy credits.
 
-The model is Pika H3 Flex, a Pika adapter on MiniMax-H3 that lands a finished 1344x768 clip in six sampling
-steps. `comfy/pika_h3_ref2va.json` is Comfy's own `video_pika_h3_flex_ref2va` template in API form, with the
-resolution and duration helper nodes taken out — this file computes both and writes them straight onto the
-H3 node, so there is less graph to get wrong.
+What runs is whichever workflow is picked on the panel. `comfy/workflows.json` lists them: each entry is a
+ComfyUI graph in API format plus a short map of where DWARP's values go — which node takes the prompt, which
+takes the seed, which carries the size, the length and the reference slots. Nothing in this file knows what
+any particular graph is made of, so adding a workflow is a JSON file and no Python.
+
+The first one is Pika H3 Flex, a Pika adapter on MiniMax-H3 that lands a finished 1344x768 clip in six
+sampling steps. Its graph is Comfy's own `video_pika_h3_flex_ref2va` with the resolution and duration helper
+nodes taken out — this file computes both and writes them straight onto the model node.
 
 Reference to video: up to nine pictures go in, and whatever is in them — a face, a costume, a painted DWARP
 frame's whole look — carries into a new clip that the prompt describes. Refer to them in the prompt as
 <Picture 1>, <Picture 2> ... in the order they were added; that tagging is how H3 was trained to read them.
 
-Unlike every other DWARP mode this one generates sound as well, so the mp4 it writes is kept as it arrives
+Unlike every other DWARP mode this one can generate sound as well, so the mp4 it writes is kept as it arrives
 (frames are extracted alongside it only so the stage can scrub). Nothing here is reassembled, which would
 throw the audio away.
 """
@@ -33,20 +37,55 @@ from pathlib import Path
 from typing import Callable
 
 HERE = Path(__file__).resolve().parent
-GRAPH = HERE / "comfy" / "pika_h3_ref2va.json"
+COMFY = HERE / "comfy"
+REGISTRY = COMFY / "workflows.json"
 CLOUD = "https://cloud.comfy.org"
 
-FPS = 24                       # H3 is fixed at 24 fps
-SNAP = 17                      # and at 17n + 5 frames: 124 (~5.2 s) is the shortest it will make
-MIN_FRAMES = 124
-MAX_REFS = 9
-SAVER = "92"                   # the graph's SaveVideo: the one node whose output is the render
 TIMEOUT = 45                   # per request; a render takes minutes, but each poll is small
 POLL = 3.0
 
 
 class CloudError(RuntimeError):
     """Anything Comfy Cloud said no to, phrased for the page's log."""
+
+
+# ------------------------------------------------------------------ the workflows
+def workflows() -> list[dict]:
+    """Every installed workflow, in panel order. A manifest entry whose graph is missing is skipped
+    rather than offered and then failed on."""
+    try:
+        data = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise CloudError(f"could not read {REGISTRY.name}: {e}") from None
+    return [w for w in (data.get("workflows") or [])
+            if w.get("id") and w.get("graph") and (COMFY / w["graph"]).is_file()]
+
+
+def workflow(wid: str = "") -> dict:
+    """The one asked for, or the first installed. An id that is no longer there falls back rather than
+    failing the job: the graph is what matters and the panel can be out of date."""
+    found = workflows()
+    if not found:
+        raise CloudError("no Comfy Cloud workflows are installed (engine/comfy/workflows.json)")
+    return next((w for w in found if w["id"] == wid), found[0])
+
+
+def graph_of(w: dict) -> dict:
+    return json.loads((COMFY / w["graph"]).read_text(encoding="utf-8"))
+
+
+def caps(w: dict) -> dict:
+    """What the panel should offer for this workflow, read off its manifest: no refs key, no References
+    card; no length key, no Length chips. The page asks for this, so a new graph needs no page edit."""
+    length = w.get("length") or {}
+    return {"id": w["id"], "label": w.get("label") or w["id"], "model": w.get("model", ""),
+            "short": w.get("short") or w["id"],
+            "note": w.get("note", ""), "refs": int((w.get("refs") or {}).get("max", 0)),
+            "video": bool(w.get("video")), "audio_in": bool((w.get("video") or {}).get("audio")),
+            "sound": bool(w.get("sound")), "seconds": length.get("seconds") or [],
+            "fps": float(length.get("fps", 24)), "snap": int(length.get("snap", 1)),
+            "min_frames": int(length.get("min_frames", 1)),
+            "max_seconds": float(length.get("max_seconds", 0))}
 
 
 # ------------------------------------------------------------------ the account
@@ -189,54 +228,71 @@ def clip_segment(src: str, trim: list, dest: Path, limit: float = 15.0) -> Path:
     return dest
 
 
-def frame_count(seconds: float) -> int:
-    """H3 takes 17n + 5 frames at 24 fps and nothing shorter than 124 (~5.2 s)."""
-    n = max(MIN_FRAMES, round(max(0.0, seconds) * FPS))
-    return n + (5 - n % SNAP) % SNAP
+def frame_count(seconds: float, length: dict | None = None) -> int:
+    """Seconds as the model's own frame count. H3, for one, takes 17n + 5 frames at 24 fps and nothing
+    shorter than 124 (~5.2 s), so asking it for five seconds gets 5.2."""
+    length = length or {}
+    fps, snap = float(length.get("fps", 24)), max(1, int(length.get("snap", 1)))
+    floor = max(1, int(length.get("min_frames", 1)))
+    n = max(floor, round(max(0.0, seconds) * fps))
+    return n + (floor % snap - n % snap) % snap
 
 
-def fit_size(width: int, height: int, megapixels: float = 1.03, multiple: int = 32) -> tuple[int, int]:
-    """The asked-for shape at H3's working area, on the multiple of 32 it needs. 1.03 MP is what puts
-    16:9 on exactly the 1344x768 Pika Flex is tuned for."""
+def fit_size(width: int, height: int, size: dict | None = None) -> tuple[int, int]:
+    """The asked-for shape at the model's working area, on the multiple it needs. H3's 1.03 MP is what
+    puts 16:9 on exactly the 1344x768 Pika Flex is tuned for."""
+    size = size or {}
+    megapixels, multiple = float(size.get("megapixels", 1.03)), max(1, int(size.get("multiple", 32)))
     w, h = max(1, int(width)), max(1, int(height))
     k = (megapixels * 1_000_000 / (w * h)) ** 0.5
     fit = lambda v: max(multiple, int(round(v * k / multiple)) * multiple)        # noqa: E731
     return fit(w), fit(h)
 
 
-def build(graph: dict, prompt: str, refs: list[str], width: int, height: int,
+def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height: int,
           frames: int, seed: int, video: str = "", video_audio: bool = False) -> dict:
-    """The shipped template with this job's values on it. The reference pictures replace the two the
-    template carries: one LoadImage per picture, wired into ref_image_0, ref_image_1, ...
+    """The shipped graph with this job's values on it, placed where the manifest says they go.
 
-    A source clip joins them as <Video 1>: LoadVideo -> GetVideoComponents gives the frames (and the
-    sound, as <Audio 1>) that the H3 node's ref_videos / ref_video_audios slots take."""
+    The reference pictures replace whatever the graph carries: one LoadImage per picture, wired into the
+    auto-growing slots (ref_image_0, ref_image_1 ...). A source clip joins them as <Video 1>, through
+    LoadVideo -> GetVideoComponents, which gives the frames and — if the slot exists — the sound."""
     g = {k: {**v, "inputs": dict(v["inputs"])} for k, v in graph.items()}
-    g["138"]["inputs"]["value"] = prompt
-    g["129"]["inputs"]["noise_seed"] = int(seed) % (2 ** 63)
-    h3 = g["136"]["inputs"]
-    h3["width"], h3["height"], h3["length"] = int(width), int(height), int(frames)
+    at = lambda spec: g[str(spec[0])]["inputs"]                                  # noqa: E731
+    if w.get("prompt"):
+        at(w["prompt"])[w["prompt"][1]] = prompt
+    if w.get("seed"):
+        at(w["seed"])[w["seed"][1]] = int(seed) % (2 ** 63)
 
-    for node_id, node in list(g.items()):                       # the template's own two pictures
-        if node["class_type"] == "LoadImage":
-            del g[node_id]
-    for slot in [k for k in h3 if k.startswith("ref_images.")]:
-        del h3[slot]
-    if not refs and not video:
-        raise CloudError("H3 needs a source clip or at least one reference picture")
-    for i, name in enumerate(refs[:MAX_REFS]):
-        node_id = str(900 + i)
-        g[node_id] = {"class_type": "LoadImage", "inputs": {"image": name},
-                      "_meta": {"title": f"Picture {i + 1}"}}
-        h3[f"ref_images.ref_image_{i}"] = [node_id, 0]
+    main = g[str(w["node"])]["inputs"]
+    size = w.get("size") or {}
+    main[size.get("width", "width")] = int(width)
+    main[size.get("height", "height")] = int(height)
+    if w.get("length"):
+        unit = (w["length"].get("unit") or "frames")
+        main[w["length"].get("input", "length")] = (
+            round(frames / float(w["length"].get("fps", 24)), 2) if unit == "seconds" else int(frames))
 
-    if video:
+    spec = w.get("refs") or {}
+    if spec:
+        for node_id, node in list(g.items()):          # the graph's own example pictures go
+            if node.get("class_type") in (w.get("drop") or ["LoadImage"]):
+                del g[node_id]
+        for slot in [k for k in main if k.startswith(spec.get("clear", "ref_images."))]:
+            del main[slot]
+        for i, name in enumerate(refs[:int(spec.get("max", 0))]):
+            node_id = str(900 + i)
+            g[node_id] = {"class_type": "LoadImage", "inputs": {"image": name},
+                          "_meta": {"title": f"Picture {i + 1}"}}
+            main[spec["slot"].replace("{i}", str(i))] = [node_id, 0]
+
+    vspec = w.get("video") or {}
+    if video and vspec:
         g["910"] = {"class_type": "LoadVideo", "inputs": {"file": video}, "_meta": {"title": "Video 1"}}
         g["911"] = {"class_type": "GetVideoComponents", "inputs": {"video": ["910", 0]},
                     "_meta": {"title": "Video 1 frames"}}
-        h3["ref_videos.ref_video_0"] = ["911", 0]             # IMAGE: the frames
-        if video_audio:
-            h3["ref_video_audios.ref_video_audio_0"] = ["911", 1]   # AUDIO: what it sounded like
+        main[vspec["slot"]] = ["911", 0]                      # IMAGE: the frames
+        if video_audio and vspec.get("audio"):
+            main[vspec["audio"]] = ["911", 1]                 # AUDIO: what it sounded like
     return g
 
 
@@ -251,7 +307,7 @@ def submit(key: str, base: str, graph: dict) -> str:
     return r["prompt_id"]
 
 
-def outputs(detail: dict, saver: str = SAVER, skip: str = "") -> list[dict]:
+def outputs(detail: dict, saver: str = "", skip: str = "") -> list[dict]:
     """What the finished job wrote.
 
     The saving node is asked first and on its own. Scanning every node instead gets the clip we sent
@@ -311,30 +367,38 @@ def extract(video: Path, frames_dir: Path) -> list[Path]:
 
 
 # ------------------------------------------------------------------ the mode
-def render_h3(job, progress: Callable = lambda *a: None, cancelled: Callable[[], bool] = lambda: False,
-              log: Callable[[str], None] = print) -> list[Path]:
-    """Called by engine.warp.render for family "h3". Returns [] so the caller doesn't reassemble the mp4
-    (that would lose the audio); the file is already written."""
+def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[[], bool] = lambda: False,
+                 log: Callable[[str], None] = print) -> list[Path]:
+    """Called by engine.warp.render for the Comfy family. Returns [] so the caller doesn't reassemble the
+    mp4 (that would lose any audio); the file is already written."""
     key, base = api_key(), base_url()
     if not key:
         raise CloudError("no Comfy Cloud API key — add one in Settings. "
                          "Keys come from platform.comfy.org/profile/api-keys.")
 
+    w = workflow(getattr(job, "comfy_workflow", "") or "")
+    name = w.get("label") or w["id"]
+    length, limit = w.get("length") or {}, float((w.get("length") or {}).get("max_seconds", 15.1))
+    max_refs = int((w.get("refs") or {}).get("max", 0))
+
     out = Path(job.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     refs = [Path(p) for p in (getattr(job, "h3_refs", None) or []) if p and Path(p).is_file()]
-    source = getattr(job, "h3_video", "") or ""
+    source = (getattr(job, "h3_video", "") or "") if w.get("video") else ""
     if not refs and not source:
-        raise CloudError("H3 needs a source clip, or a picture in a Reference slot.")
+        raise CloudError(f"{name} needs a source clip, or a picture in a Reference slot.")
 
-    frames = frame_count(getattr(job, "h3_seconds", 5.0))
-    width, height = fit_size(job.width, job.height)
-    parts = ([f"{len(refs)} reference{'s' if len(refs) > 1 else ''}"] if refs else []) +             (["the source clip"] if source else [])
-    log(f"H3 on Comfy Cloud · {width}x{height} · {frames} frames ({frames / FPS:.1f}s) · {' + '.join(parts)}")
+    frames = frame_count(getattr(job, "h3_seconds", 5.0), length)
+    width, height = fit_size(job.width, job.height, w.get("size"))
+    fps = float(length.get("fps", 24))
+    parts = ([f"{len(refs)} reference{'s' if len(refs) > 1 else ''}"] if refs else []) + \
+            (["the source clip"] if source else [])
+    log(f"{name} on Comfy Cloud · {width}x{height} · {frames} frames "
+        f"({frames / fps:.1f}s) · {' + '.join(parts)}")
 
     progress("uploading", 0, frames, "sending the references")
     names = []
-    for i, p in enumerate(refs[:MAX_REFS], 1):
+    for i, p in enumerate(refs[:max_refs], 1):
         names.append(upload(key, base, p))
         log(f"  <Picture {i}> {p.name}")
 
@@ -342,19 +406,20 @@ def render_h3(job, progress: Callable = lambda *a: None, cancelled: Callable[[],
     if source and not cancelled():
         progress("uploading", 0, frames, "sending the clip")
         trim = getattr(job, "h3_trim", None) or []
-        a, span, clipped = trim_span(trim)
-        seg = clip_segment(source, trim, out / "h3_reference.mp4")
-        sound = has_audio(seg)
+        a, span, clipped = trim_span(trim, limit)
+        seg = clip_segment(source, trim, out / "comfy_reference.mp4", limit)
+        sound = has_audio(seg) and bool((w.get("video") or {}).get("audio"))
         video = upload_video(key, base, seg)
         log(f"  <Video 1> {Path(source).name} · {a:.1f}s to {a + span:.1f}s"
-            f"{' (cut to the 15 s H3 looks at)' if clipped else ''} · {seg.stat().st_size / 2**20:.1f} MB"
+            f"{f' (cut to the {limit:.0f} s it looks at)' if clipped else ''} "
+            f"· {seg.stat().st_size / 2**20:.1f} MB"
             f"{', with its sound as <Audio 1>' if sound else ', no sound track'}")
         log(f"     stored as {video}")      # the content name the graph asks LoadVideo for
         seg.unlink(missing_ok=True)
     if cancelled():
         return []
 
-    graph = build(json.loads(GRAPH.read_text(encoding="utf-8")), job.prompt, names,
+    graph = build(w, graph_of(w), job.prompt, names,
                   width, height, frames, job.seed, video, sound)
     prompt_id = submit(key, base, graph)
     log(f"queued on Comfy Cloud ({prompt_id})")
@@ -389,14 +454,15 @@ def render_h3(job, progress: Callable = lambda *a: None, cancelled: Callable[[],
             raise CloudError(f"the cloud render {state}: {why}")
         time.sleep(POLL)
 
-    files = outputs(detail, skip=video)       # `skip`: never hand back the clip we just sent up
+    files = outputs(detail, w.get("saver", ""), skip=video)   # `skip`: never hand back the clip we sent up
     if not files:
         raise CloudError("the cloud render finished but wrote no file")
     progress("downloading", 0, frames, "downloading the clip")
     log(f"downloading {files[0]['filename']}")
     got = fetch(key, base, files[0], out / "video.mp4")
-    keep = getattr(job, "h3_sound", True)
-    log(f"downloaded video.mp4 ({got.stat().st_size / 2**20:.1f} MB, with sound)")
+    keep = getattr(job, "h3_sound", True) or not w.get("sound")
+    log(f"downloaded video.mp4 ({got.stat().st_size / 2**20:.1f} MB"
+        f"{', with sound' if w.get('sound') else ''})")
     if not keep:
         mute(got)
         log("dropped the audio track (Sound: silent)")

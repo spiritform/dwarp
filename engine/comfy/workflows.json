@@ -1,0 +1,45 @@
+{
+  "_readme": [
+    "Comfy Cloud workflows DWARP can run. One entry per graph; the graph itself is a ComfyUI workflow",
+    "saved in API format (Workflow -> Export (API)) sitting next to this file.",
+    "",
+    "An entry says where DWARP's own values go, by node id and input name, so the engine never has to",
+    "know what the graph is made of:",
+    "  graph   the API-format file in this folder",
+    "  short   one word for run labels, as in \"h3 · render\"",
+    "  saver   the node whose output IS the render. Read outputs from this one only: a LoadVideo node",
+    "          reports the file it read in the same shape as a real output and would otherwise win.",
+    "  prompt  [node, input] the text goes on",
+    "  seed    [node, input] the seed goes on (optional)",
+    "  node    the model node that carries size, length and the reference slots",
+    "  size    megapixels + multiple the width/height are fitted to, and the input names",
+    "  length  frame count: the model's fps, its frame-count step (snap) and floor, and the lengths to",
+    "          offer on the panel. A model that takes seconds instead can set \"unit\": \"seconds\".",
+    "  refs    the auto-growing picture slots: a {i} template, the prefix to clear first, and how many",
+    "  video   the slot a source clip goes in, and the one its sound goes in",
+    "  sound   whether the file it writes has audio at all",
+    "Leave a key out and that control disappears from the panel."
+  ],
+  "version": 1,
+  "workflows": [
+    {
+      "id": "pika_h3_flex",
+      "label": "H3 · Pika Flex",
+      "short": "h3",
+      "model": "MiniMax-H3 + Pika H3 Flex adapter",
+      "note": "Reference to video, with sound. Up to nine pictures and your clip go in; a new 5-15 s clip comes out, picture and audio made together. Six sampling steps, native 1344x768.",
+      "graph": "pika_h3_ref2va.json",
+      "saver": "92",
+      "prompt": ["138", "value"],
+      "seed": ["129", "noise_seed"],
+      "node": "136",
+      "drop": ["LoadImage"],
+      "size": {"megapixels": 1.03, "multiple": 32, "width": "width", "height": "height"},
+      "length": {"input": "length", "fps": 24, "snap": 17, "min_frames": 124, "max_seconds": 15.1,
+                 "seconds": [5, 7, 10, 15]},
+      "refs": {"slot": "ref_images.ref_image_{i}", "clear": "ref_images.", "max": 9},
+      "video": {"slot": "ref_videos.ref_video_0", "audio": "ref_video_audios.ref_video_audio_0"},
+      "sound": true
+    }
+  ]
+}

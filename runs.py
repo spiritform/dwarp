@@ -162,13 +162,13 @@ def timing(run_id: str) -> dict | None:
 
 
 def has_sound(run_id: str) -> bool:
-    """Does the run's mp4 carry audio? Only H3 does: its soundtrack comes down from the cloud with the
+    """Does the run's mp4 carry audio? Only a cloud render can: its soundtrack comes down with the
     picture. Every other mode assembles the mp4 from frames, so there is nothing to hear."""
     try:
         job = json.loads((run_dir(run_id) / "job.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return job.get("family") == "h3" and job.get("h3_sound", True)
+    return job.get("family") in ("comfy", "h3") and job.get("h3_sound", True)
 
 
 def describe(run_id: str) -> dict:

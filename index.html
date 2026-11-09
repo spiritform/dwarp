@@ -763,14 +763,16 @@
     <div class="card-body">
     <div class="seg mode" id="mode"></div>
     <div id="h3Box" hidden>
+      <div class="sublabel" style="margin-top:10px">Workflow</div>
+      <select class="model" id="h3Wf" title="Which graph runs on Comfy Cloud. Each one takes its own inputs, so the controls below follow what you pick."></select>
       <div class="cloudnote" id="h3Note"></div>
-      <div class="sublabel">References</div>
+      <div class="sublabel" id="h3RefsLabel">References</div>
       <div id="h3Refs"></div>
       <input type="file" id="h3File" accept="image/*" hidden>
-      <div class="sublabel">Length</div>
+      <div class="sublabel" id="h3LenLabel">Length</div>
       <div class="seg" id="h3Secs"></div>
       <div class="adnote" id="h3Len" style="margin:6px 0 0"></div>
-      <div class="sublabel">Sound</div>
+      <div class="sublabel" id="h3SoundLabel">Sound</div>
       <div class="seg" id="h3Sound" style="grid-template-columns:1fr 1fr">
         <button data-v="1" title="Keep the soundtrack H3 generates — voices, effects and music, made with the picture">keep</button>
         <button data-v="0" title="Drop the audio track, for cutting your own over it. H3 still makes the sound; it is left out of the file">silent</button></div>
@@ -1310,7 +1312,7 @@ function h3Config(kind) {
   const dur = src?.duration || 0;
   return {
     job: {
-      video: '', checkpoint: '', family: 'h3',
+      video: '', checkpoint: '', family: 'comfy', comfy_workflow: wf().id,
       prompt: withLook(state.prompt), negative: '',    // one prompt: no travel, no keyframes
       width: Math.round(aw * k), height: Math.round(ah * k), seed: state.seed,
       h3_refs: h3Refs().map(r => r.path),
@@ -1319,7 +1321,7 @@ function h3Config(kind) {
       h3_video: state.clip?.path || '',
       h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
     },
-    total: h3Frames(seconds), size: state.size, fps: H3_FPS,
+    total: h3Frames(seconds), size: state.size, fps: wf().fps,
   };
 }
 // The Camera card as engine values (per frame): a job's start, or a Live edit to a running one
@@ -1351,58 +1353,87 @@ function renderStyleRef() {
   segPick($('styleOnly'), state.styleOnly ? 'style' : 'full');
 }
 // ---- H3 references: the same gestures as a style ref (click, drop a picture, drop a run off the stage)
-const H3_MAX_REFS = 9;
 function h3Refs() { return (state.h3refs ||= []); }
-const H3_SECS = [5, 7, 10, 15];
-// How long the trimmed clip runs, inside what H3 will make (its shortest is ~5.2 s, its longest 15).
+// Every Comfy Cloud graph this install has, from /api/comfy/workflows, with what each one takes. The
+// panel is built from that rather than from anything written here, so a new graph is a JSON file and no
+// page edit. WF_FALLBACK is only what the controls read before the list has arrived.
+var CLOUD_WF = [];                                    // var: read by functions above this line
+var WF_FALLBACK = { id: '', label: 'Comfy Cloud', short: 'comfy', note: '', refs: 9, video: true, sound: true,
+                      seconds: [5, 7, 10, 15], fps: 24, snap: 17, min_frames: 124, max_seconds: 15.1 };
+function wf() {
+  return CLOUD_WF.find(w => w.id === state.comfyWf) || CLOUD_WF[0] || WF_FALLBACK;
+}
+// How long the trimmed clip runs, inside what this workflow will make.
 function h3ClipSeconds() {
-  const d = state.clip?.source?.duration || 0;
+  const d = state.clip?.source?.duration || 0, w = wf();
   if (!d) return 0;
-  return Math.min(15, Math.max(5, (state.range[1] - state.range[0]) * d));
+  const floor = w.min_frames / w.fps, top = w.max_seconds || 15;
+  return Math.min(top, Math.max(floor, (state.range[1] - state.range[0]) * d));
 }
 // "auto" matches the clip, which is the only way to ask for a length the chips don't offer (6 s, say).
 function h3Seconds() {
-  if (state.h3secs === 'auto') return h3ClipSeconds() || 5;
-  return +state.h3secs || 5;
+  if (state.h3secs === 'auto') return h3ClipSeconds() || wf().min_frames / wf().fps;
+  return +state.h3secs || (wf().seconds[0] || 5);
 }
 function renderH3() {
-  const on = isH3();
+  const on = isH3(), w = wf(), many = CLOUD_WF.length > 1;
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
   $('tplRow').hidden = !on; $('promptRandom').hidden = on;      // H3 wants a brief, not five style words
   if (on && !$('promptTpl').options.length) renderTplPick();
   $('prompt').classList.toggle('brief', on);
   if (!on) return;
-  // The chips never give the length they name: H3 only makes 17n + 5 frames, so 5s is really 5.2s
-  // and 7s is 7.3s. The line under them says what you are actually going to get.
-  const picked = state.h3secs ?? 5, n = h3Frames(h3Seconds());
-  const chips = [...(state.clip ? ['auto'] : []), ...(modeCfg().seconds || H3_SECS)];
+  // The list, and then every control below it: a workflow with no refs slot has no References card, one
+  // that writes no audio has no Sound switch. All of it off the manifest.
+  $('h3Wf').innerHTML = CLOUD_WF.map(x =>
+    `<option value="${x.id}"${x.id === w.id ? ' selected' : ''}>${x.label}</option>`).join('')
+    || '<option>no workflows installed</option>';
+  $('h3Wf').parentElement && ($('h3Wf').previousElementSibling.hidden = !many);
+  $('h3Wf').hidden = !many;                 // one graph: nothing to choose, so no chooser
+  $('h3RefsLabel').hidden = $('h3Refs').hidden = $('h3File').hidden = !w.refs;
+  $('h3LenLabel').hidden = $('h3Secs').hidden = $('h3Len').hidden = !w.seconds.length;
+  $('h3SoundLabel').hidden = $('h3Sound').hidden = !w.sound;
+  // The chips never give the length they name: H3, for one, only makes 17n + 5 frames, so 5s is really
+  // 5.2s and 7s is 7.3s. The line under them says what you are actually going to get.
+  const picked = state.h3secs ?? (w.seconds[0] || 5), n = h3Frames(h3Seconds());
+  const chips = [...(state.clip && w.video ? ['auto'] : []), ...w.seconds];
   $('h3Secs').style.gridTemplateColumns = `repeat(${chips.length}, 1fr)`;
   $('h3Secs').innerHTML = chips.map(v => {
     const got = h3Frames(v === 'auto' ? h3ClipSeconds() || 5 : v);
     return `<button data-s="${v}" class="${v === picked ? 'on' : ''}" title="${v === 'auto'
-      ? 'Match the trimmed clip' : `${v} seconds asked`} — ${got} frames, ${(got / H3_FPS).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
+      ? 'Match the trimmed clip' : `${v} seconds asked`} — ${got} frames, ${(got / w.fps).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
   }).join('');
-  $('h3Len').textContent = `${n} frames · ${(n / H3_FPS).toFixed(1)}s at 24fps`
+  $('h3Len').textContent = `${n} frames · ${(n / w.fps).toFixed(1)}s at ${+w.fps.toFixed(2)}fps`
     + (picked === 'auto' ? ' · matching the clip' : '');
   // With a clip loaded the output takes its shape, so there is nothing to pick
-  $('h3AspectRow').hidden = !!state.clip;
+  $('h3AspectRow').hidden = !!(state.clip && w.video);
   [...$('h3Sound').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === (state.h3sound !== false)));
   [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.h3aspect || '16:9')));
   const refs = h3Refs();
   $('h3Refs').innerHTML = refs.map((r, i) =>
     `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
-    + (refs.length >= H3_MAX_REFS ? '' :
+    + (refs.length >= w.refs ? '' :
       `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
-  const key = CFG_HAS_KEY;
-  // One line, and the rest in Help -> H3. The clip, when there is one, is <Video 1>.
-  $('h3Note').innerHTML = key
-    ? `On <b>Comfy Cloud</b> · spends credits · comes back with sound. ${state.clip
-        ? 'The trimmed clip goes in as <b>&lt;Video 1&gt;</b>.' : 'Working from references alone.'}
+  // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
+  $('h3Note').innerHTML = CFG_HAS_KEY
+    ? `${many ? `<b>${w.label}</b> on Comfy Cloud` : 'On <b>Comfy Cloud</b>'} · spends credits${
+        w.sound ? ' · comes back with sound' : ''}. ${state.clip && w.video
+        ? 'The trimmed clip goes in as <b>&lt;Video 1&gt;</b>.'
+        : w.refs ? 'Working from references alone.' : ''}
        <a href="#" data-help="h3">how it works</a>`
-    : `<span class="bad">No API key.</span> H3 renders on Comfy's machines — add one in
+    : `<span class="bad">No API key.</span> This renders on Comfy's machines — add one in
        <b>Settings → Comfy Cloud</b>. <a href="#" data-help="h3">how it works</a>`;
+  $('h3Wf').title = w.note || $('h3Wf').title;
 }
+$('h3Wf').onchange = e => {
+  state.comfyWf = e.target.value;
+  const w = wf();
+  if (w.seconds.length && !w.seconds.includes(+state.h3secs) && state.h3secs !== 'auto')
+    state.h3secs = w.seconds[0];            // the old length may not be one this workflow offers
+  if (h3Refs().length > w.refs) h3Refs().length = w.refs;
+  renderH3(); paintSums(); updateEst(); save();
+  setStatus(`${w.label} — ${w.model || 'Comfy Cloud'}`, 'done');
+};
 // "how it works" opens the Help panel on the H3 topic
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-help]'); if (!a) return;
@@ -1563,7 +1594,7 @@ $('h3Aspect').onclick = e => {
 };
 const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
 function addH3Ref(res) {
-  if (h3Refs().length >= H3_MAX_REFS) return setStatus(`H3 takes up to ${H3_MAX_REFS} references`, 'bad');
+  if (h3Refs().length >= wf().refs) return setStatus(`${wf().label} takes up to ${wf().refs} references`, 'bad');
   h3Refs().push({ path: res.path, name: res.name });
   renderH3(); paintSums(); save(); setStatus(`<Picture ${h3Refs().length}> added`);
 }
@@ -2307,10 +2338,11 @@ function modeCfg() { return MODES[state.mode] || MODES.sd15; }
 // an mp4 with sound comes back. It needs no source clip, so it rides the Text -> Video paths (no clip, the
 // Size / Duration card for length and aspect) and switches them on and off with the tab.
 function isH3() { return state.mode === 'h3'; }
-const H3_FPS = 24, H3_SNAP = 17, H3_MIN = 124;        // 17n + 5 frames at 24 fps, 124 (~5.2 s) the shortest
+// Each workflow has its own clock and its own frame-count step: H3 takes 17n + 5 frames at 24 fps and
+// nothing shorter than 124 (~5.2 s), so asking it for five seconds gets 5.2. Same sums as the engine's.
 function h3Frames(seconds) {
-  const n = Math.max(H3_MIN, Math.round(Math.max(0, seconds) * H3_FPS));
-  return n + (5 - n % H3_SNAP) % H3_SNAP;
+  const w = wf(), n = Math.max(w.min_frames, Math.round(Math.max(0, seconds) * w.fps));
+  return n + ((w.min_frames % w.snap) - (n % w.snap) + w.snap) % w.snap;
 }
 function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|ckpt)$/, ''); }
 // The checkpoint a render will use: explicit pick, else the look's (SD1.5) / mode default (SDXL).
@@ -3033,11 +3065,24 @@ const HELP = {
     <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
        is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
 
-  h3: ['H3', () => `
-    <h3>H3 — a clip with sound, from Comfy Cloud</h3>
-    <p><b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. It is the one mode that doesn't run on your card:
-       the model is a 61 GB transformer and a 32-billion-parameter text encoder, far past 12 GB, so DWARP sends the
-       job to <b>Comfy Cloud</b> and brings back the mp4. That needs an API key
+  h3: ['Comfy', () => `
+    <h3>Comfy — the one mode that renders somewhere else</h3>
+    <p>Every other DWARP mode paints on your own card. This one sends the job to <b>Comfy Cloud</b> and brings
+       back the file. What runs there is whichever <b>Workflow</b> is picked at the top of the Model card; the
+       controls under it follow what that workflow takes, so a graph with no reference slots shows no
+       References card and one that writes no audio shows no Sound switch.</p>
+    <h4>Adding a workflow</h4>
+    <p>Build the graph in ComfyUI, <b>Workflow → Export (API)</b>, drop the file in <b>engine/comfy/</b> and add
+       an entry to <b>engine/comfy/workflows.json</b> naming it. The entry is a short map saying which node takes
+       the prompt, which takes the seed, which carries the size and length, and which node's output <i>is</i> the
+       render — that last one matters, because a LoadVideo node reports the file it read in exactly the shape of
+       a real output. The file has the full list at the top. No Python, and DWARP skips an entry whose graph is
+       missing rather than offering it and then failing.</p>
+    <h3>H3 · Pika Flex — a clip with sound</h3>
+    <p>The workflow DWARP ships with: <b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. H3 is also why this
+       mode exists:
+       a 61 GB transformer and a 32-billion-parameter text encoder is far past 12 GB. Running it in the cloud
+       needs an API key
        (<b>Settings → Comfy Cloud</b>, from <a href="https://platform.comfy.org/profile/api-keys" target="_blank">platform.comfy.org</a>),
        an active subscription, and it <b>spends credits per clip</b> — about three minutes for five seconds.
        It is also the only DWARP mode whose mp4 has <b>audio</b>: H3 generates picture and sound in one pass.
@@ -3748,7 +3793,7 @@ async function startJob(kind) {
                  ...(kind === 'refine' ? { source_run: built.source } : {}) };
     delete ui.spf;
     const label = kind === 'refine' ? `refine of run ${built.source}`
-                : `${isH3() ? 'h3' : currentPreset().name.toLowerCase()} · ${name}`;
+                : `${isH3() ? (wf().short || 'comfy') : currentPreset().name.toLowerCase()} · ${name}`;
     job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
                                    body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
     // unlocked: the box shows the seed this run rolled, so locking keeps the picture just made
@@ -4718,7 +4763,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
-  state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true;
+  state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true; state.comfyWf ??= '';
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
@@ -4727,6 +4772,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   LORAS = (await api('/api/loras').catch(() => ({ loras: [] }))).loras;
   MOTION = await api('/api/motion').catch(() => ({ modules: [], loras: [], lcm_lora: null }));
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
+  CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
+  if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
   bindKeys();                               // the lane is static markup: bound once
   api('/api/config').then(c => { CFG_HAS_KEY = !!c.comfy_key; renderH3(); }).catch(() => {});

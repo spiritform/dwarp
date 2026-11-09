@@ -4,6 +4,13 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-08
 
+- **The H3 tab is now **Comfy**, and H3 is one workflow inside it.** The mode is no longer one model: it runs
+  whichever ComfyUI graph is picked in the new **Workflow** dropdown, and the controls under it follow what that
+  graph takes — no reference slots in its manifest, no References card; no audio, no Sound switch. Adding one
+  means exporting a graph in API format into `engine/comfy/` and naming it in `engine/comfy/workflows.json`,
+  which says where the prompt, seed, size, length and reference slots go. No Python. `engine/h3.py` became
+  `engine/cloud.py`; runs made before this keep working.
+
 - **The H3 prompt templates moved below the Prompt header and work without a picture.** The picker was in
   the card header, where opening it collapsed the card; it is now a **Start from** dropdown above the prompt
   box. All three briefs — character swap, full restyle, new scene — now come in two cuts: with a reference

@@ -28,7 +28,8 @@ import shapelib  # noqa: E402
 import downloads  # noqa: E402
 from jobs import TERMINAL, JobManager  # noqa: E402
 from models import list_checkpoints  # noqa: E402
-from engine.h3 import api_key as h3_key  # noqa: E402
+from engine import cloud  # noqa: E402
+from engine.cloud import api_key as h3_key  # noqa: E402
 
 INPUTS = HERE / "inputs"
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".gif"}
@@ -161,6 +162,16 @@ def build_app() -> FastAPI:
         return [Path(config().get("loras_dir") or HERE / "models" / "loras")]
 
     # -------------------------------------------------------------- settings (config.json, re-read per request)
+    @app.get("/api/comfy/workflows")
+    def comfy_workflows():
+        """The Comfy Cloud graphs this install has, and what each one takes. The panel builds itself from
+        this — no references slot in a manifest means no References card — so dropping a graph into
+        engine/comfy/ and naming it in workflows.json is the whole job of adding one."""
+        try:
+            return {"workflows": [cloud.caps(w) for w in cloud.workflows()]}
+        except cloud.CloudError as e:
+            return {"workflows": [], "error": str(e)}
+
     @app.get("/api/config")
     def get_config():
         c, root = config(), settings()["models_root"]
@@ -449,7 +460,7 @@ def build_app() -> FastAPI:
         job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
         if job.get("lora") and not os.path.isfile(job["lora"]):
             raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
-        if job.get("family") == "h3":
+        if job.get("family") in ("comfy", "h3"):
             # H3 renders on Comfy Cloud: no local checkpoint, and the clip is a reference (h3_video),
             # not the thing being repainted. Either a clip or a picture is enough.
             for key in ("h3_video", *[f"h3_refs[{i}]" for i in range(len(job.get("h3_refs") or []))]):
@@ -457,7 +468,7 @@ def build_app() -> FastAPI:
                 if path and not os.path.isfile(path):
                     raise HTTPException(422, detail=[{"message": f"{'clip' if key == 'h3_video' else 'reference'} not found: {path!r}"}])
             if not job.get("h3_video") and not (job.get("h3_refs") or []):
-                raise HTTPException(422, detail=[{"message": "H3 needs a clip, or a reference picture"}])
+                raise HTTPException(422, detail=[{"message": "this workflow needs a clip, or a reference picture"}])
         else:
             for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
                         else ("video", "checkpoint")):   # text / image -> video: no clip
