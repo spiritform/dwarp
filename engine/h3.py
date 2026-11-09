@@ -171,12 +171,18 @@ def has_audio(path: Path) -> bool:
         return False
 
 
+def trim_span(trim: list, limit: float = 15.0) -> tuple[float, float, bool]:
+    """Where the reference starts and how long it runs, plus whether H3's own ceiling cut it short."""
+    a = max(0.0, float(trim[0]) if trim else 0.0)
+    want = (float(trim[1]) - a) if trim and len(trim) > 1 else limit
+    span = max(0.5, min(limit, want))
+    return a, span, want > limit + 0.05
+
+
 def clip_segment(src: str, trim: list, dest: Path, limit: float = 15.0) -> Path:
     """The trimmed range as its own small mp4, since the whole source may be minutes long and only the
     part under the trim is the reference. H3 looks at 15 s at most, so nothing longer is worth sending."""
-    a = max(0.0, float(trim[0]) if trim else 0.0)
-    span = (float(trim[1]) - a) if trim and len(trim) > 1 else limit
-    span = max(0.5, min(limit, span))
+    a, span, _ = trim_span(trim, limit)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{a:g}", "-t", f"{span:g}", "-i", str(src),
                     "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", str(dest)],
                    check=True)
@@ -323,11 +329,14 @@ def render_h3(job, progress: Callable = lambda *a: None, cancelled: Callable[[],
     video, sound = "", False
     if source and not cancelled():
         progress("uploading", 0, frames, "sending the clip")
-        seg = clip_segment(source, getattr(job, "h3_trim", None) or [], out / "h3_reference.mp4")
+        trim = getattr(job, "h3_trim", None) or []
+        a, span, clipped = trim_span(trim)
+        seg = clip_segment(source, trim, out / "h3_reference.mp4")
         sound = has_audio(seg)
         video = upload_video(key, base, seg)
-        log(f"  <Video 1> {Path(source).name} ({seg.stat().st_size / 2**20:.1f} MB"
-            f"{', with its sound as <Audio 1>' if sound else ', no sound track'})")
+        log(f"  <Video 1> {Path(source).name} · {a:.1f}s to {a + span:.1f}s"
+            f"{' (cut to the 15 s H3 looks at)' if clipped else ''} · {seg.stat().st_size / 2**20:.1f} MB"
+            f"{', with its sound as <Audio 1>' if sound else ', no sound track'}")
         log(f"     stored as {video}")      # the content name the graph asks LoadVideo for
         seg.unlink(missing_ok=True)
     if cancelled():

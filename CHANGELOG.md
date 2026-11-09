@@ -16,6 +16,8 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   Comfy Cloud and the mp4 comes back. Paste an API key in **Settings → Comfy Cloud** to switch it on; without one
   the mode just says so, and nothing else in DWARP changes. The key lives in `config.json` (gitignored) and is
   never shown back. A render spends Comfy credits and takes a few minutes.
+- **H3's log says which part of the clip it sent** — "2.1s to 14.0s" — and says so when a trim longer than
+  the 15 s H3 reads gets cut short, instead of quietly dropping the tail.
 - **Prompt template for H3.** H3 wants a sectioned brief, not style words — subjects, summary, how hard each
   reference binds, the shot, the soundscape, the music. The **template** link in the Prompt card lays one out,
   filled in from the clip and references you have loaded, keeping anything you had already written.
