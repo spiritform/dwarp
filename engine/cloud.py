@@ -101,6 +101,7 @@ def caps(w: dict) -> dict:
             "short": w.get("short") or w["id"],
             "note": w.get("note", ""), "refs": int((w.get("refs") or {}).get("max", 0)),
             "tracks": bool(w.get("tracks")), "strength": w.get("strength") or None,
+            "brief": bool(w.get("brief")),
             "megapixels": float((w.get("size") or {}).get("megapixels", 1.03)),
             "multiple": int((w.get("size") or {}).get("multiple", 32)),
             "video": bool(w.get("video")), "audio_in": bool((w.get("video") or {}).get("audio")),

@@ -1437,9 +1437,12 @@ function renderH3() {
   const on = isH3(), w = wf();
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
-  $('tplRow').hidden = !on; $('promptRandom').hidden = on;      // H3 wants a brief, not five style words
-  if (on && !$('promptTpl').options.length) renderTplPick();
-  $('prompt').classList.toggle('brief', on);
+  // The sectioned brief is H3's own vocabulary, not the mode's: a workflow with an ordinary text
+  // encoder (WanMove, say) does prompt, it just wants a line of description like everything else.
+  const brief = on && w.brief;
+  $('tplRow').hidden = !brief; $('promptRandom').hidden = brief;
+  if (brief && !$('promptTpl').options.length) renderTplPick();
+  $('prompt').classList.toggle('brief', brief);
   if (!on) return;
   // The list, and then every control below it: a workflow with no refs slot has no References card, one
   // that writes no audio has no Sound switch. All of it off the manifest.

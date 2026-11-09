@@ -11,6 +11,10 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   `tracks` chip under the stage, so the cloud's view of your paths and DWARP's can be compared.
 - **The Comfy tab opens a Workflow picker inside Model**, with only the controls that workflow actually
   takes under it. Model's own summary line names the workflow and what is loaded into it.
+- **The prompt box follows the workflow.** H3's sectioned brief — and the **Start from** template
+  picker that lays it out — is H3's own vocabulary, so it now appears only for a workflow that declares
+  `brief`. WanMove prompts like everything else: an ordinary description, the **random** link back, and
+  the normal-sized box.
 - **Two dials for driving a picture with motion.** **Paths** (8 / 16 / 24 / 48) is how many trajectories
   to measure — a few read as camera drift, a dense field churns the whole surface — and **Motion
   strength** is how hard they pull, from a drift to being dragged along the vectors. Strength is a
