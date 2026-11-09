@@ -5,7 +5,11 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 ## 2026-11-09
 
 - **Render in the shape of your picture.** Aspect gained a **ref** button: the box takes the first
-  reference's own proportions, so none of it is cropped away. The model fits a picture into the render
+  reference's own proportions, so none of it is cropped away — and until you click Aspect yourself,
+  that is what a loaded picture gets. Give a model one picture and the obvious output is that picture
+  moving, not a crop of it; the canvas you draw on *is* the box, so this is also what makes drawing
+  one to one with what gets rendered. The reference chip keeps the picture's shape too, instead of
+  showing a square crop that disagreed with the canvas below it. The model fits a picture into the render
   box with a centre crop — a 4:5 photo in a 16:9 box loses its top and bottom — and until now that was
   something to find out about rather than something to choose. 16:9, 1:1 and 9:16 still crop, and now
   that is a decision. The button appears once DWARP knows the picture's shape: new references record

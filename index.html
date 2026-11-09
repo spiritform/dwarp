@@ -283,7 +283,10 @@
   /* H3: the reference pictures, same slot as a style ref but a row of them */
   #h3Refs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   #h3Refs .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
-  #h3Refs .ref img { width: 38px; height: 38px; object-fit: cover; border-radius: 5px; flex: none; }
+  /* the picture's own shape, not a square crop of it: this chip and the Motion canvas below are two
+     views of the same reference, and they should not disagree about what you loaded */
+  #h3Refs .ref img { height: 38px; width: auto; max-width: 68px; object-fit: contain; background: #1b1a20;
+                     border-radius: 5px; flex: none; }
   #h3Refs .ref .tag { font-size: 10px; color: var(--faint); flex: none; }
   #h3Refs .ref span.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
   #h3Refs .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
@@ -1458,8 +1461,11 @@ function refShape() {
   const r = h3Refs()[0];
   return r && r.width > 0 && r.height > 0 ? [r.width, r.height] : null;
 }
-function h3Aspect() {                          // the chosen one, or 16:9 if it is no longer available
-  const a = state.h3aspect || '16:9';
+function h3Aspect() {
+  // Until Aspect is actually clicked, a loaded picture decides the box. Give a model one picture and
+  // the obvious output is that picture moving, not a crop of it - and the canvas you draw on is the
+  // box, so matching it to the reference is what makes drawing one to one with what gets rendered.
+  const a = state.h3aspectSet ? (state.h3aspect || '16:9') : (refShape() ? 'ref' : '16:9');
   return a === 'ref' && !refShape() ? '16:9' : a;
 }
 function comfySize() {
@@ -2291,7 +2297,8 @@ $('h3Sound').onclick = e => {
 };
 $('h3Aspect').onclick = e => {
   const a = e.target.dataset.a; if (!a) return;
-  state.h3aspect = a; renderH3(); paintSums(); save();
+  state.h3aspect = a; state.h3aspectSet = true;    // from here on it is your choice, not the picture's
+  renderH3(); paintSums(); save();
 };
 const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
 function addH3Ref(res) {
