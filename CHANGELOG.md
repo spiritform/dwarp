@@ -12,6 +12,11 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   **Push / pull**, **Orbit**, **Swirl**, **Wave**, **Drift** — set **Amount**, **Direction** and
   **Paths**, and the same path JSON comes out of a formula in milliseconds, with no clip and no GPU.
   It is the identical format through the identical slot, so WanMove cannot tell the difference.
+- **Speed: quality or fast, for a workflow that carries both.** WanMove's graph has one switch that
+  moves model, steps and CFG together — 20 steps at CFG 6 on the full model, or 6 steps at CFG 1 with
+  the lightx2v step-distill LoRA, about 3× quicker. DWARP was always running the quality side (and the
+  workflow list claimed a distill LoRA it wasn't using, which is fixed); now it is a **Speed** row in
+  Model, remembered per workflow. A graph that declares no `speed` switch shows no row.
 - **The field animates while you set it.** A measured track gets an mp4 because it has frames of its own
   to be checked against; a drawn one has none, so it is drawn on the panel over your first reference —
   dots and trails, live, following the dials as you drag them. Click it to pause.

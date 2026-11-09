@@ -101,6 +101,7 @@ def caps(w: dict) -> dict:
             "short": w.get("short") or w["id"],
             "note": w.get("note", ""), "refs": int((w.get("refs") or {}).get("max", 0)),
             "tracks": bool(w.get("tracks")), "strength": w.get("strength") or None,
+            "speed": w.get("speed") or None,
             "brief": bool(w.get("brief")),
             "megapixels": float((w.get("size") or {}).get("megapixels", 1.03)),
             "multiple": int((w.get("size") or {}).get("multiple", 32)),
@@ -274,7 +275,7 @@ def fit_size(width: int, height: int, size: dict | None = None) -> tuple[int, in
 
 def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height: int,
           frames: int, seed: int, video: str = "", video_audio: bool = False,
-          tracks: str = "", strength: float | None = None) -> dict:
+          tracks: str = "", strength: float | None = None, fast: bool = False) -> dict:
     """The shipped graph with this job's values on it, placed where the manifest says they go.
 
     The reference pictures replace whatever the graph carries: one LoadImage per picture, wired into the
@@ -323,6 +324,14 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
     sspec = w.get("strength") or {}
     if sspec and strength is not None:                 # how hard the conditioning pulls the picture
         main[sspec.get("input", "strength")] = float(strength)
+
+    pspec = w.get("speed") or {}
+    if pspec:
+        # One boolean in the graph that swaps model, steps and CFG together (WanMove's "Enable Turbo
+        # LoRA" switch feeds all three). The manifest says which value is the fast one, so a graph
+        # wired the other way round needs no code here.
+        yes = bool(pspec.get("fast", True))
+        g[str(pspec["node"])]["inputs"][pspec.get("input", "value")] = yes if fast else not yes
 
     tspec = w.get("tracks") or {}
     if tspec:                                          # measured motion, as the path JSON it reads
@@ -479,8 +488,12 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     pull = getattr(job, "comfy_strength", None)
     if tracks and pull is not None and w.get("strength"):
         log(f"  strength {float(pull):g}")
+    fast = bool(getattr(job, "comfy_fast", False))
+    if w.get("speed"):
+        note = w["speed"].get("fast_note" if fast else "note", "")
+        log(f"  {'fast' if fast else 'quality'}{f' · {note}' if note else ''}")
     graph = build(w, graph_of(w), job.prompt, names,
-                  width, height, frames, job.seed, video, sound, tracks, pull)
+                  width, height, frames, job.seed, video, sound, tracks, pull, fast)
     prompt_id = submit(key, base, graph)
     log(f"queued on Comfy Cloud ({prompt_id})")
 
