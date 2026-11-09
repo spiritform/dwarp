@@ -28,6 +28,7 @@ import shapelib  # noqa: E402
 import downloads  # noqa: E402
 from jobs import TERMINAL, JobManager  # noqa: E402
 from models import list_checkpoints  # noqa: E402
+from engine.h3 import api_key as h3_key  # noqa: E402
 
 INPUTS = HERE / "inputs"
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".gif"}
@@ -166,7 +167,10 @@ def build_app() -> FastAPI:
         ckpts = list_checkpoints(f"{root}/checkpoints")
         return {"models_root": root, "own_models": (HERE / "models").as_posix(),
                 "embeddings_dir": c.get("embeddings_dir", ""), "loras_dir": c.get("loras_dir", ""),
-                "checkpoints": len(ckpts), "root_ok": os.path.isdir(root)}
+                "checkpoints": len(ckpts), "root_ok": os.path.isdir(root),
+                # H3 renders on Comfy Cloud. Whether a key is set, never the key: it is a live
+                # credential, so it goes into config.json (gitignored) and is never read back out.
+                "comfy_key": bool(h3_key(c)), "comfy_key_env": bool(h3_key({}))}
 
     @app.post("/api/config")
     async def set_config(request: Request):
@@ -183,6 +187,12 @@ def build_app() -> FastAPI:
                 if d and not os.path.isdir(d):
                     raise HTTPException(422, detail=[{"message": f"No folder at {d!r}"}])
                 c[k] = d
+        if "comfy_api_key" in body:                 # blank clears it
+            key = str(body["comfy_api_key"]).strip().strip('"')
+            if key:
+                c["comfy_api_key"] = key
+            else:
+                c.pop("comfy_api_key", None)
         for k in ("extra_embeddings", "extra_loras"):   # the old "also use the models folder's" switches
             c.pop(k, None)
         (HERE / "config.json").write_text(json.dumps(c, indent=2), encoding="utf-8")
@@ -439,11 +449,21 @@ def build_app() -> FastAPI:
         job["embeddings_dir"] = embedding_dirs()   # names typed in a prompt load from here
         if job.get("lora") and not os.path.isfile(job["lora"]):
             raise HTTPException(422, detail=[{"message": f"LoRA not found: {job['lora']!r}"}])
-        for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
-                    else ("video", "checkpoint")):   # text / image -> video: no clip
-            if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])
-                                        or key == "checkpoint" and downloads.missing(job[key])):
-                raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
+        if job.get("family") == "h3":
+            # H3 renders on Comfy Cloud: no local checkpoint, and the clip is a reference (h3_video),
+            # not the thing being repainted. Either a clip or a picture is enough.
+            for key in ("h3_video", *[f"h3_refs[{i}]" for i in range(len(job.get("h3_refs") or []))]):
+                path = job.get("h3_video") if key == "h3_video" else job["h3_refs"][int(key[8:-1])]
+                if path and not os.path.isfile(path):
+                    raise HTTPException(422, detail=[{"message": f"{'clip' if key == 'h3_video' else 'reference'} not found: {path!r}"}])
+            if not job.get("h3_video") and not (job.get("h3_refs") or []):
+                raise HTTPException(422, detail=[{"message": "H3 needs a clip, or a reference picture"}])
+        else:
+            for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")
+                        else ("video", "checkpoint")):   # text / image -> video: no clip
+                if not job.get(key) or not (os.path.isfile(job[key]) or key == "video" and os.path.isdir(job[key])
+                                            or key == "checkpoint" and downloads.missing(job[key])):
+                    raise HTTPException(422, detail=[{"message": f"{key} not found: {job.get(key)!r}"}])
         for key in ("motion", "motion_lora", "shape_qr_cn"):    # Motion's module / LoRA, QR Code Monster
             if job.get(key) and not os.path.isfile(job[key]) and not downloads.missing(job[key]):
                 raise HTTPException(422, detail=[{"message": f"{key} not found: {job[key]!r}"}])

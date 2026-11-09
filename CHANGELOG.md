@@ -4,6 +4,22 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-08
 
+- **H3 ☁ — a new Model tab that makes a clip with sound.** [MiniMax-H3](https://huggingface.co/MiniMaxAI) through
+  Pika's H3 Flex adapter. Your loaded clip goes in as `<Video 1>` and its sound as `<Audio 1>`, alongside up to
+  nine reference pictures — a face, a costume, or a painted DWARP frame for its whole look — called `<Picture 1>`,
+  `<Picture 2>` … in the prompt; either input is enough on its own. Out comes a new 5–15 s clip **with its own
+  soundtrack**, the only DWARP mode that makes audio. H3 reads what you give it as *references* rather than
+  repainting frame by frame, so it follows your footage without tracking it shot for shot — for that, Warp and
+  Motion are still the modes.
+- **Comfy Cloud, optional and off by default.** H3 is the one thing in DWARP that doesn't run on your own GPU: the
+  model is a 61 GB transformer and a 32-billion-parameter text encoder, far past a 12 GB card, so the job goes to
+  Comfy Cloud and the mp4 comes back. Paste an API key in **Settings → Comfy Cloud** to switch it on; without one
+  the mode just says so, and nothing else in DWARP changes. The key lives in `config.json` (gitignored) and is
+  never shown back. A render spends Comfy credits and takes a few minutes.
+- **Prompt template for H3.** H3 wants a sectioned brief, not style words — subjects, summary, how hard each
+  reference binds, the shot, the soundscape, the music. The **template** link in the Prompt card lays one out,
+  filled in from the clip and references you have loaded, keeping anything you had already written.
+
 - **Denoise rules the whole render.** Frame Lock is a share of Denoise now, not its own separate amount:
   later frames paint at Denoise x (1 - lock), so turning Denoise down turns the whole clip down. Before
   this, Denoise 0.07 with Frame Lock 0.17 still repainted every frame after the first at 0.83. Saved

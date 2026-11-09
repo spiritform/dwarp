@@ -252,6 +252,24 @@
   .levels .pt.b { border-bottom-color: #111; filter: drop-shadow(0 0 1px #aaa); }
   .levels .pt.w { border-bottom-color: #fff; }
   #styleRefCtl[hidden] { display: none; }
+  /* H3: the reference pictures, same slot as a style ref but a row of them */
+  #h3Refs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #h3Refs .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
+  #h3Refs .ref img { width: 38px; height: 38px; object-fit: cover; border-radius: 5px; flex: none; }
+  #h3Refs .ref .tag { font-size: 10px; color: var(--faint); flex: none; }
+  #h3Refs .ref span.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
+  #h3Refs .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
+  #h3Refs .ref button:hover { color: #ff9a8a; }
+  #h3Refs .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
+    align-items: center; gap: 6px; border-radius: 8px; color: var(--faint); cursor: pointer; text-align: center; }
+  #h3Refs .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #h3Refs .clip-empty svg { width: 18px; height: 18px; }
+  body.runDrag #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
+  .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
+  .cloudnote b { color: #c9c7cf; font-weight: 500; }
+  .cloudnote .bad { color: #ff9a8a; }
+  .cloudnote a { color: var(--accent-2); text-decoration: none; white-space: nowrap; }
+  .cloudnote a:hover { text-decoration: underline; }
   /* the optional negative prompt: a small fold under the prompt box */
   .negtoggle { display: inline-block; margin-top: 0; font-size: 11px; color: var(--dim); cursor: pointer; }
   .negtoggle:hover { color: var(--text); }
@@ -433,6 +451,7 @@
   .stage-foot #liveBtn.on { color: var(--text); background: rgba(255,106,61,.2); }
   .stage-foot #liveBtn.on::before { color: var(--accent); }
   #prompt.sent { background: rgba(255,106,61,.16); }
+  #prompt.brief { min-height: 300px; font: 11.5px/1.6 ui-monospace, Consolas, monospace; }
   .stage-foot .spacer { flex: 1; }
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
@@ -512,8 +531,16 @@
   /* settings: rows of a label, a note and a control */
   .setrow { margin: 16px 0; max-width: 640px; }
   .setrow .note { color: var(--faint); font-size: 11.5px; margin: 2px 0 8px; }
-  .setrow input[type=text] { width: 100%; box-sizing: border-box; background: var(--panel-2); color: var(--text); border: 0;
+  #h3Box { margin-bottom: 14px; }       /* clear of the seed row below */
+  #h3Box .seg { margin-top: 8px; }
+  #h3Box .sublabel { margin-bottom: 0; }
+  #h3AspectRow { margin-top: 12px; }
+  #h3Refs { margin-bottom: 14px; }
+  .setrow input[type=text], .setrow input[type=password] { width: 100%; box-sizing: border-box; background: var(--panel-2); color: var(--text); border: 0;
                border-radius: 8px; padding: 8px 10px; font: 12px ui-monospace, Consolas, monospace; }
+  .setrow input:focus { outline: 0; background: #2d2c33; }
+  /* a key where the path rows have their folder button, so the fields line up */
+  .setrow .keyicon { color: var(--dim); padding: 4px; display: flex; flex: none; }
   .setrow .row { display: flex; gap: 8px; align-items: center; }
   .setrow input::placeholder { color: var(--faint); }
   /* the folder icon before a path opens that folder */
@@ -523,6 +550,10 @@
   .setrow .ok { color: #7fd68a; } .setrow .bad { color: var(--bad); }
   .setbtn { background: var(--panel-2); color: var(--text); border: 0; border-radius: 7px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
   .setbtn:hover { background: #2d2c33; }
+  .helppanel pre { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto;
+                   font: 11.5px/1.6 ui-monospace, Consolas, monospace; color: #c9c7cf; white-space: pre-wrap; }
+  .helppanel ul { margin: 6px 0; padding-left: 18px; }
+  .helppanel li { margin: 4px 0; }
   .helppanel a { color: var(--accent-2); text-decoration: none; }
   .helppanel a:hover { text-decoration: underline; }
   .logpanel .hot { color: var(--accent-2); }
@@ -691,7 +722,7 @@
 
   <section>
     <div class="card" data-card="prompt">
-    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
+    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><a id="promptTpl" class="randlink" hidden title="Lay out H3's sectioned brief, filled in from the clip and references you have loaded">template</a><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="hint" id="promptHint"></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
@@ -715,6 +746,17 @@
     <div class="card-head"><span class="title">Model</span><span class="sum" id="sum_model"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="seg mode" id="mode"></div>
+    <div id="h3Box" hidden>
+      <div class="cloudnote" id="h3Note"></div>
+      <div class="sublabel">References</div>
+      <div id="h3Refs"></div>
+      <input type="file" id="h3File" accept="image/*" hidden>
+      <div class="sublabel">Length</div>
+      <div class="seg" id="h3Secs"></div>
+      <div id="h3AspectRow"><div class="sublabel">Aspect</div>
+        <div class="seg" id="h3Aspect"><button data-a="16:9">16:9</button><button data-a="1:1">1:1</button><button data-a="9:16">9:16</button></div></div>
+    </div>
+    <div id="sdBox">
     <div class="sublabel">Checkpoint</div>
     <select class="model" id="model" title="Checkpoint"></select>
     <div class="adnote" id="ckptFetch" hidden style="margin:6px 0 0"></div>
@@ -731,6 +773,7 @@
         <div class="slider-head"><b>CFG</b><span id="cfgV"></span></div>
         <input type="range" id="cfg" min="1" max="12" step="0.5">
       </div>
+    </div>
     </div>
     <div class="seed" style="margin-bottom:14px">
       <span class="seed-tag">seed</span>
@@ -1066,6 +1109,7 @@ const LS_KEY = 'dwarp.state.v1', OLD_LS_KEY = 'warpbox.state.v1';
 const TEST = { frames: 5, nth: 2 };   // test size comes from the mode
 
 let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
+var CFG_HAS_KEY = false;                    // is a Comfy Cloud API key set? (never the key itself)
 var EMBEDS = [];                           // [{name, family}] from the embeddings folder
 var LORAS = [];                            // [{name, path, family}] from models/loras
 const loraOn = () => LORAS.some(l => l.path === state.lora && l.family === state.mode) ? state.lora : '';
@@ -1222,7 +1266,7 @@ function renderT2V() {
     state.image = null; renderClip(); renderControls(); if (!viewRun) clearStage(); save();
   });
   $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
-  applyCards(); paintT2V();
+  applyCards(); paintT2V(); renderH3();
 }
 function paintT2V() {
   if (!state.t2v || !$('t2vLen')) return;
@@ -1232,6 +1276,29 @@ function paintT2V() {
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
   paintKeys(); updateEst();
+}
+// H3's whole job: references, a prompt, a length and a seed. Everything else DWARP sends is about
+// painting frames here, which this mode doesn't do.
+function h3Config(kind) {
+  const seconds = h3Seconds();
+  // The output's shape: the clip's, or the picked aspect. Only the ratio matters — the engine
+  // puts it on H3's own ~1 MP grid (16:9 lands exactly on the 1344x768 Pika Flex is tuned for).
+  const src = state.clip?.source;
+  const [aw, ah] = src?.width ? [src.width, src.height] : (state.h3aspect || '16:9').split(':').map(Number);
+  const k = 1344 / Math.max(aw, ah);
+  const dur = src?.duration || 0;
+  return {
+    job: {
+      video: '', checkpoint: '', family: 'h3',
+      prompt: withLook(state.prompt), negative: '',    // one prompt: no travel, no keyframes
+      width: Math.round(aw * k), height: Math.round(ah * k), seed: state.seed,
+      h3_refs: h3Refs().map(r => r.path),
+      h3_seconds: seconds,
+      h3_video: state.clip?.path || '',
+      h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
+    },
+    total: h3Frames(seconds), size: state.size, fps: H3_FPS,
+  };
 }
 // The Camera card as engine values (per frame): a job's start, or a Live edit to a running one
 function camJob() {
@@ -1261,6 +1328,115 @@ function renderStyleRef() {
   $('styleRefW').value = state.styleRefW; $('styleRefWV').textContent = (+state.styleRefW).toFixed(2);
   segPick($('styleOnly'), state.styleOnly ? 'style' : 'full');
 }
+// ---- H3 references: the same gestures as a style ref (click, drop a picture, drop a run off the stage)
+const H3_MAX_REFS = 9;
+function h3Refs() { return (state.h3refs ||= []); }
+const H3_SECS = [5, 7, 10, 15];
+function h3Seconds() { return +state.h3secs || 5; }
+function renderH3() {
+  const on = isH3();
+  $('h3Box').hidden = !on; $('sdBox').hidden = on;
+  if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
+  $('promptTpl').hidden = !on; $('promptRandom').hidden = on;   // H3 wants a brief, not five style words
+  $('prompt').classList.toggle('brief', on);
+  if (!on) return;
+  const secs = modeCfg().seconds || H3_SECS, n = h3Frames(h3Seconds());
+  $('h3Secs').style.gridTemplateColumns = `repeat(${secs.length}, 1fr)`;
+  $('h3Secs').innerHTML = secs.map(v =>
+    `<button data-s="${v}" class="${v === h3Seconds() ? 'on' : ''}">${v}s</button>`).join('');
+  // With a clip loaded the output takes its shape, so there is nothing to pick
+  $('h3AspectRow').hidden = !!state.clip;
+  [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.h3aspect || '16:9')));
+  const refs = h3Refs();
+  $('h3Refs').innerHTML = refs.map((r, i) =>
+    `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
+    + (refs.length >= H3_MAX_REFS ? '' :
+      `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'add a reference picture'}</div>`);
+  const key = CFG_HAS_KEY;
+  // One line, and the rest in Help -> H3. The clip, when there is one, is <Video 1>.
+  $('h3Note').innerHTML = key
+    ? `On <b>Comfy Cloud</b> · spends credits · comes back with sound. ${state.clip
+        ? 'The trimmed clip goes in as <b>&lt;Video 1&gt;</b>.' : 'Working from references alone.'}
+       <a href="#" data-help="h3">how it works</a>`
+    : `<span class="bad">No API key.</span> H3 renders on Comfy's machines — add one in
+       <b>Settings → Comfy Cloud</b>. <a href="#" data-help="h3">how it works</a>`;
+}
+// "how it works" opens the Help panel on the H3 topic
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-help]'); if (!a) return;
+  e.preventDefault(); helpTab = a.dataset.help; toggleHelp(true);
+});
+// H3 reads a sectioned brief rather than a pile of style words, and nobody types that from memory.
+// The skeleton is built from what is actually loaded: a <Picture n> line per reference, <Video 1> only
+// when there is a clip, and the length that is selected. Whatever was already written is kept as the
+// look line, so pressing this never loses work.
+function h3Template() {
+  const refs = h3Refs(), secs = h3Seconds(), had = (state.prompt || '').trim();
+  const out = [];
+  if (refs.length) {
+    out.push('subject_definitions:', ...refs.map((r, i) =>
+      `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: identity anchor.\n` +
+      `Features to follow exactly: ...\n` +
+      `Do not carry over the background of <Picture ${i + 1}>.`), '');
+  }
+  const who = refs.length ? '<Subject 1>' : 'the subject';
+  out.push('summary:',
+    `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
+    'retention_analysis:',
+    ...refs.map((r, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
+    ...(state.clip ? ['<Video 1>: fully_preserved - the camera move, the blocking and the timing;'
+                     + ' attribute_transfer - everything else is restyled.'] : []),
+    '',
+    'detailed_description:',
+    had || '<the look: medium, palette, lens, grain>',
+    '[Shot 1] Wide frame, ... At about two seconds the camera pushes in ...', '',
+    'overall_soundscape:', '...', '',
+    'non_diegetic_music:', '...');
+  return out.join('\n');
+}
+$('promptTpl').onclick = e => {
+  e.preventDefault();
+  $('prompt').value = h3Template();          // same path the "random" link uses
+  $('prompt').dispatchEvent(new Event('input'));
+  $('prompt').focus();
+  setStatus('template laid out — fill in the ... parts', 'done');
+};
+$('h3Secs').onclick = e => {
+  const v = +e.target.dataset.s; if (!v) return;
+  state.h3secs = v; renderH3(); paintSums(); save();
+};
+$('h3Aspect').onclick = e => {
+  const a = e.target.dataset.a; if (!a) return;
+  state.h3aspect = a; renderH3(); paintSums(); save();
+};
+function addH3Ref(res) {
+  if (h3Refs().length >= H3_MAX_REFS) return setStatus(`H3 takes up to ${H3_MAX_REFS} references`, 'bad');
+  h3Refs().push({ path: res.path, name: res.name });
+  renderH3(); paintSums(); save(); setStatus(`<Picture ${h3Refs().length}> added`);
+}
+$('h3Refs').onclick = e => {
+  const row = e.target.closest('.ref');
+  if (row && e.target.closest('button')) { h3Refs().splice(+row.dataset.i, 1); renderH3(); paintSums(); save(); return; }
+  if (e.target.closest('.clip-empty')) $('h3File').click();
+};
+$('h3File').onchange = e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file || !/^image\//.test(file.type)) return setStatus('a reference needs an image', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(addH3Ref).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+};
+$('h3Refs').addEventListener('dragover', e => e.preventDefault());
+$('h3Refs').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run && !run.clip) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
+    .then(addH3Ref).catch(err => setStatus('could not use that frame: ' + err.message, 'bad'));
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return setStatus('drop a picture, or a frame off the stage', 'bad');
+  if (!/^image\//.test(file.type)) return setStatus('a reference needs an image', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(addH3Ref).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+});
 $('styleRef').onclick = e => {
   if (e.target.closest('button')) { state.styleRef = null; renderStyleRef(); save(); return; }
   if (e.target.closest('img, .clip-empty')) $('styleFile').click();
@@ -1513,7 +1689,7 @@ function paintCam() {
 // Each card's header summary: what's set inside, so a folded card still tells you
 function paintSums() {
   const set = (k, t) => { const el = $('sum_' + k); if (el) el.textContent = t; };
-  set('prompt', state.keys.length ? `${state.keys.length + 1} keyframes` : '');
+  set('prompt', state.keys.length && !isH3() ? `${state.keys.length + 1} keyframes` : '');
   set('model', `${modeCfg().label} · ${shortName(checkpointPath())}`);
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
@@ -1572,11 +1748,12 @@ function renderClip() {
       <div class="shade" id="shadeR" style="right:0"></div>
     </div>
     <div class="range-text"><span id="rangeA"></span><span id="rangeLen"></span><span id="rangeB"></span></div>
-    <div class="ons" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
-    <div class="ons" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
+    <div class="ons" id="clipSizeRow" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
+    <div class="ons" id="clipFpsRow" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
       <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
     </div>
   </div>`;
+  $('clipSizeRow').hidden = $('clipFpsRow').hidden = isH3();   // H3 picks its own size and runs at 24 fps
   $('swap').onclick = () => $('fileInput').click();
   bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
@@ -1642,7 +1819,8 @@ function bindRange() {
 var firstDrag = null;
 function keyAt(i) { return i < 0 ? { f: firstDrag ?? 0, prompt: state.prompt } : state.keys[i]; }
 function paintKeys() {
-  $('keys').hidden = $('keyBar').hidden = !(state.clip || state.t2v);   // no clip and not Text -> Video: no timeline yet
+  $('keys').hidden = $('keyBar').hidden = !(state.clip || state.t2v) || isH3();   // no clip and not Text -> Video: no timeline yet.
+  // H3 generates one clip from one prompt — there is nothing for a prompt to travel along.
   const lane = $('keyMarks'); if (!lane || !(state.clip || state.t2v)) return;
   const n = Math.max(1, laneFrames() - 1), fps = laneFps();
   lane.innerHTML = [-1, ...state.keys.keys()].map(i => {
@@ -1656,7 +1834,7 @@ function paintKeys() {
   });
   // the bar stays (no jump when keyframes come and go); with a single prompt there's nothing to blend or delete: dim
   const on = state.keys.length > 0;
-  $('keyBar').hidden = !(state.clip || state.t2v);
+  $('keyBar').hidden = !(state.clip || state.t2v) || isH3();   // H3: one prompt, nothing to travel along
   $('keyBar').classList.toggle('single', !on);
   $('keyDel').title = state.keySel >= 0 ? 'Delete this keyframe' : 'Delete prompt 1 — prompt 2 takes over from the start';
   if (!state.keys[state.keySel]) state.keySel = -1;
@@ -1954,11 +2132,20 @@ not: ${p.negative}` : ''}` : 'no style words — your prompt only';
 $('presets').onchange = e => { state.preset = e.target.value; renderControls(); save(); };
 
 function modeCfg() { return MODES[state.mode] || MODES.sd15; }
+// H3 (Pika H3 Flex on MiniMax-H3) doesn't render here at all: references and a prompt go to Comfy Cloud and
+// an mp4 with sound comes back. It needs no source clip, so it rides the Text -> Video paths (no clip, the
+// Size / Duration card for length and aspect) and switches them on and off with the tab.
+function isH3() { return state.mode === 'h3'; }
+const H3_FPS = 24, H3_SNAP = 17, H3_MIN = 124;        // 17n + 5 frames at 24 fps, 124 (~5.2 s) the shortest
+function h3Frames(seconds) {
+  const n = Math.max(H3_MIN, Math.round(Math.max(0, seconds) * H3_FPS));
+  return n + (5 - n % H3_SNAP) % H3_SNAP;
+}
 function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|ckpt)$/, ''); }
 // The checkpoint a render will use: explicit pick, else the look's (SD1.5) / mode default (SDXL).
 function checkpointPath() { return state.ckpt?.[state.mode] || defaultCheckpoint(); }
 function defaultCheckpoint() {
-  const want = state.mode === 'sd15' ? currentPreset().checkpoint : modeCfg().default_checkpoint;
+  const want = state.mode === 'sd15' ? currentPreset().checkpoint : (modeCfg().default_checkpoint || '');
   // Defaults are file names, found in any subfolder; if missing, fall back to the first of the family.
   const have = CHECKPOINTS.filter(c => c.family === state.mode);
   const base = want.split('/').pop().toLowerCase();
@@ -1969,7 +2156,7 @@ const isFast = path => /lightning|turbo|hyper|lcm|flash/i.test(path.split('/').p
 function renderMode() {
   $('mode').style.gridTemplateColumns = `repeat(${Object.keys(MODES).length}, 1fr)`;
   $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
-    `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}">${m.label}</button>`).join('');
+    `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}"${m.cloud ? ` title="Renders on ${m.cloud}, not on your card — it costs credits"` : ''}>${m.label}${m.cloud ? ' ☁' : ''}</button>`).join('');
   const list = CHECKPOINTS.filter(c => c.family === state.mode);
   const def = defaultCheckpoint();
   // the file name only (the folder is the family already picked), ⚡ first so a long name can't push it off the line
@@ -2007,10 +2194,10 @@ function applyModelDefaults(announce = false) {
                                           : 'regular model: 20 steps, CFG 5, DPM++ 2M Karras', 'done');
 }
 $('mode').onclick = e => {
-  const m = e.target.dataset.m; if (!m || m === state.mode) return;
+  const m = e.target.closest('button')?.dataset.m; if (!m || m === state.mode) return;
   state.mode = m;
   if (!modeCfg().sizes.includes(state.size)) state.size = modeCfg().default_size;
-  applyModelDefaults(true); renderControls(); save();
+  applyModelDefaults(true); renderClip(); renderControls(); save();
 };
 $('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModelDefaults(true); renderControls(); save(); };
 
@@ -2095,7 +2282,12 @@ $('adSpeed').onclick = e => { const sp = e.target.dataset.s; if (!sp || e.target
 $('mlora').onchange = e => { state.ad.lora = e.target.value; renderControls(); save(); };
 $('mloraW').oninput = e => { state.ad.loraW = +e.target.value; $('mloraWV').textContent = state.ad.loraW.toFixed(2); save(); };
 function renderControls() {
-  renderMode(); renderEmbed(); renderSampler(); renderLora();
+  renderMode(); renderEmbed(); renderSampler(); renderLora(); renderH3();
+  // H3 has none of DWARP's own controls: no denoise, no ControlNet, no mask, no camera.
+  for (const [card, off] of [['render', isH3()], ['guidance', isH3()], ['shape', isH3()], ['style', isH3()]])
+    document.querySelector(`[data-card="${card}"]`)?.closest('section')?.toggleAttribute('hidden', off);
+  // H3 makes nothing shorter than 124 frames, so Frame and Preview would cost a whole render. They step aside.
+  $('frameBtn').hidden = $('testBtn').hidden = isH3();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
   renderStyleRef(); renderShape(); paintNeg();
@@ -2133,8 +2325,9 @@ function renderControls() {
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
   [...$('srcMode').children].forEach(b => b.classList.toggle('on', b.dataset.s === srcKind()));
-  $('camBox').hidden = !state.t2v; if (state.t2v) paintCam();
-  $('guideBox').hidden = state.t2v && !state.i2v;   // Text -> Video: nothing to guide by
+  $('camBox').hidden = !state.t2v || isH3(); if (state.t2v && !isH3()) paintCam();
+  $('guideBox').hidden = (state.t2v && !state.i2v) || isH3();   // Text -> Video: nothing to guide by.
+  // H3: nothing is painted here, so there is no ControlNet or DepthDiff to steer it
   applyCards(); paintSums();
   if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
     $('frameMode').hidden = !(state.i2v && adAllowed());   // Image mode: Camera · Motion
@@ -2156,7 +2349,7 @@ function renderControls() {
     if (!adI2V()) $('camBox').hidden = true;   // Image mode keeps the Camera: its move is baked into the frames Motion paints
     $('shapeBox').hidden = true;
   } else {
-    $('edgeBox').hidden = false; $('shapeBox').hidden = false;
+    $('edgeBox').hidden = $('shapeBox').hidden = isH3();
   }
   renderMotion();
   [...$('ddSel').children].forEach(b => b.classList.toggle('on', b.dataset.d === dd.src));
@@ -2425,6 +2618,7 @@ function withLook(text) {
   return [text.trim(), emb, currentPreset().prompt].filter(Boolean).join(', ') || 'a painting';
 }
 async function buildConfig(kind) {
+  if (isH3()) return h3Config(kind);        // no frames are painted here: no probe, no ControlNets, no mask
   const p = currentPreset(), m = modeCfg();
   // kinds: frame (Frame) | test (Preview) | render. Frames 2s / 3s draw every 2nd / 3rd frame and hold it
   const on = state.onN || 1;
@@ -2667,6 +2861,77 @@ const HELP = {
     <h4>Steps, CFG, Size</h4>
     <p><b>Steps</b>: more is cleaner but slower (20 is plenty for normal models). <b>CFG</b>: how hard the prompt
        is pushed — too high burns colours. <b>Size</b> is the longer side; bigger = more detail and slower.</p>`],
+
+  h3: ['H3', () => `
+    <h3>H3 — a clip with sound, from Comfy Cloud</h3>
+    <p><b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. It is the one mode that doesn't run on your card:
+       the model is a 61 GB transformer and a 32-billion-parameter text encoder, far past 12 GB, so DWARP sends the
+       job to <b>Comfy Cloud</b> and brings back the mp4. That needs an API key
+       (<b>Settings → Comfy Cloud</b>, from <a href="https://platform.comfy.org/profile/api-keys" target="_blank">platform.comfy.org</a>),
+       an active subscription, and it <b>spends credits per clip</b> — about three minutes for five seconds.
+       It is also the only DWARP mode whose mp4 has <b>audio</b>: H3 generates picture and sound in one pass.</p>
+    <h4>It references, it doesn't repaint</h4>
+    <p>This is the important difference from the rest of DWARP. Warp and Motion take <i>your</i> frames and paint over
+       them, so the result tracks your footage shot for shot. H3 <b>looks at</b> what you give it and makes a
+       <i>new</i> clip that follows what it saw — the same character, the same look, the same kind of motion, but
+       not the same frames. If you want the motion locked to the source, use Warp or Motion instead.</p>
+    <h4>What you give it</h4>
+    <table>
+      <tr><th></th><th>Where it comes from</th><th>Call it</th></tr>
+      <tr><td><b>Clip</b></td><td>The video loaded on the <b>Video</b> tab — only the trimmed range, up to 15 s,
+          which is all H3 looks at. Its sound goes with it.</td><td><b>&lt;Video 1&gt;</b>, <b>&lt;Audio 1&gt;</b></td></tr>
+      <tr><td><b>Pictures</b></td><td>Up to nine, in the <b>References</b> slot: click, drop a file, or drag a frame
+          straight off the stage. A face, a costume, a product, or a painted DWARP frame for its whole look.</td>
+          <td><b>&lt;Picture 1&gt;</b>, <b>&lt;Picture 2&gt;</b> …</td></tr>
+    </table>
+    <p>Use those tags in the prompt — that is how H3 was trained to read references, and it is much more reliable
+       than describing them. <i>"&lt;Picture 1&gt; walks through the corridor in &lt;Picture 2&gt;, handheld 16mm"</i>.
+       Either input is enough on its own: a clip with no pictures works, and pictures with no clip work.</p>
+    <h4>The controls</h4>
+    <p><b>Length</b> 5–15 s (H3 rounds up to its own frame counts, at 24 fps). <b>Aspect</b> only appears with no
+       clip loaded — with one, the output takes the clip's shape. <b>Seed</b> works as everywhere else. There is no
+       Denoise, ControlNet, Shape or Camera here, because H3 paints nothing locally for them to steer; those cards
+       step aside. <b>Frame</b> and <b>Preview</b> are hidden too: H3 makes nothing shorter than about five seconds,
+       so a preview would cost exactly what a render costs.</p>
+    <h4>Prompting it</h4>
+    <p>H3 takes a much longer, more <b>structured</b> prompt than SD does — not a pile of style words but a
+       little brief, in labelled sections. This is the shape Pika's own example uses, and the model was trained
+       to read it. None of the sections are required; use the ones you need.</p>
+    <pre>subject_definitions:
+&lt;Subject 1&gt; is the man in &lt;Picture 1&gt;. Reference role: identity anchor.
+Features to follow exactly: round black eyes, white gloves, baggy dark suit.
+Do not carry over the white background of &lt;Picture 1&gt;.
+
+summary:
+A seven-second single continuous shot: &lt;Subject 1&gt; dances down a Paris street
+while fires burn and people run behind him. No cut.
+
+detailed_description:
+1940s rubberhose cartoon, heavy ink outlines, limited palette, film grain.
+[Shot 1] Wide frame, &lt;Subject 1&gt; centred, rubber-limbed dance on the beat.
+At about three seconds the camera pushes in as a crowd surges behind him.
+
+overall_soundscape:
+Street noise, distant shouting, crackling fire, footfalls on cobbles.
+
+non_diegetic_music:
+A fast 1940s big-band shuffle, brass stabs on the dance beats.</pre>
+    <h4>What each part buys you</h4>
+    <ul>
+      <li><b>Describe your references in words too.</b> The picture carries the look; the words tell H3 which
+          parts of it matter. "Features to follow exactly" is what keeps a face or a costume stable.</li>
+      <li><b>Say what to ignore.</b> "Do not carry over the background of &lt;Picture 1&gt;" works, and saves you
+          cropping the reference.</li>
+      <li><b>Time the beats.</b> "At about three seconds…" lands roughly where you ask.</li>
+      <li><b>Prompt the sound.</b> H3 makes the audio in the same pass, so <i>overall_soundscape</i> and
+          <i>non_diegetic_music</i> are real controls — leave them out and you get whatever it decides.</li>
+      <li><b>Style can come from the prompt alone.</b> A reference picture is for holding an <i>identity</i> —
+          a face, a costume, a product. For a look, words are often enough: the clip goes in as
+          &lt;Video 1&gt; and the prompt restyles it.</li>
+    </ul>
+    <h4>Your key</h4>
+    <p>It is kept in <b>config.json</b>, which is never committed, and DWARP never shows it back — Settings only
+       says whether one is set. Clear it by saving an empty field.</p>`],
 
   guide: ['Guidance', () => `
     <h3>Denoise, ControlNet, DepthDiff</h3>
@@ -3031,6 +3296,19 @@ async function paintSettings() {
       ${pathRow('setLora', 'loras', c.loras_dir ?? '', 'Default')}
     </div>
     <div class="setrow">
+      <h4>Comfy Cloud</h4>
+      <div class="note">An API key lets the <b>H3</b> mode render on Comfy's machines — MiniMax-H3 is open weights, but
+        it is far too big for a 12 GB card. The key is kept in <b>config.json</b>, which is never committed, and
+        DWARP never shows it again. Get one at
+        <a href="https://platform.comfy.org/profile/api-keys" target="_blank">platform.comfy.org</a>; a render needs
+        an active subscription and spends credits.</div>
+      <div class="row"><span class="keyicon" title="Comfy Cloud API key"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.3-8.3"/><path d="m17 6 2.5 2.5"/><path d="m14.5 8.5 2.5 2.5"/></svg></span><input type="password" id="setComfy" data-key="comfy" placeholder="${c.comfy_key ? 'A key is set — type a new one to replace it' : 'comfyui-…'}"
+        spellcheck="false" autocomplete="off"><button class="setbtn" data-save="setComfy">Save</button></div>
+      <div class="note" id="setComfyInfo">${c.comfy_key
+        ? `<span class="ok">✓</span> key set${c.comfy_key_env ? ' (from the environment)' : ''}`
+        : '<span class="bad">✗</span> no key — the H3 tab needs one to render'}</div>
+    </div>
+    <div class="setrow">
       <h4>Motion</h4>
       <label><input type="checkbox" id="setMotionCtx" ${state.ad?.context ? 'checked' : ''}> Smooth long clips <span class="note" style="margin:0">(experimental)</span></label>
       <div class="note">Clips longer than 16 frames render in one pass, the motion model's windows blended at every step (like
@@ -3060,7 +3338,7 @@ async function paintSettings() {
       save(); location.reload();              // every list (checkpoints, embeddings, LoRAs) from the new settings
     } catch (e) { $('setRootInfo').innerHTML = `<span class="bad">✗ ${esc(e.message)}</span>`; }
   };
-  const field = { root: 'models_root', embeddings: 'embeddings_dir', loras: 'loras_dir' };
+  const field = { root: 'models_root', embeddings: 'embeddings_dir', loras: 'loras_dir', comfy: 'comfy_api_key' };
   const send = inp => post({ [field[inp.dataset.key]]: inp.value });
   $('setPanel').querySelectorAll('[data-save]').forEach(b => b.onclick = () => send($(b.dataset.save)));
   $('setPanel').querySelectorAll('input[data-key]').forEach(inp => inp.onkeydown = e => { if (e.key === 'Enter') send(inp); });
@@ -3266,7 +3544,8 @@ addEventListener('keydown', e => {
 // ---------------------------------------------------------------- jobs
 async function startJob(kind) {
   const name = { frame: 'frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
-  if (kind !== 'refine' && !state.clip && !state.t2v) { setStatus('drop a video first', 'bad'); return; }
+  if (kind !== 'refine' && !state.clip && !state.t2v && !isH3()) { setStatus('drop a video first', 'bad'); return; }
+  if (isH3() && !state.clip && !h3Refs().length) { setStatus('H3 needs a clip, or a reference picture', 'bad'); return; }
   if (kind !== 'refine' && state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
@@ -3278,7 +3557,8 @@ async function startJob(kind) {
     const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed,
                  ...(kind === 'refine' ? { source_run: built.source } : {}) };
     delete ui.spf;
-    const label = kind === 'refine' ? `refine of run ${built.source}` : `${currentPreset().name.toLowerCase()} · ${name}`;
+    const label = kind === 'refine' ? `refine of run ${built.source}`
+                : `${isH3() ? 'h3' : currentPreset().name.toLowerCase()} · ${name}`;
     job = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' },
                                    body: JSON.stringify({ job: built.job, meta: { label, ui, fps: built.fps } }) });
     // unlocked: the box shows the seed this run rolled, so locking keeps the picture just made
@@ -3288,8 +3568,8 @@ async function startJob(kind) {
   }
   let labelled = false, jumped = false;
   const times = [];
-  if (kind === 'render' || kind === 'test') {
-    const pt = { prompt_keys: built.job.prompt_keys.length ? built.job.prompt_keys : [[0, built.job.prompt]],
+  if ((kind === 'render' || kind === 'test') && !isH3()) {
+    const pt = { prompt_keys: built.job.prompt_keys?.length ? built.job.prompt_keys : [[0, built.job.prompt]],
                  prompt_blend: built.job.prompt_blend };
     live = { id: job.id, video: built.job.video, sent: JSON.stringify(pt), fs: built.job.frame_start, nth: built.job.nth };
   }
@@ -3522,7 +3802,7 @@ function setControlTabs(layers = runLayers) {
   const hasSrc = state.t2v ? state.i2v && !!state.image : !!state.clip;
   const entries = dd ? (hasSrc && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
                      : (noRun ? [] : layers.filter(l => (l.id !== 'control_diff' || state.t2v) && l.id !== 'control_shape' && l.id !== 'control_qr').map(l => [l.id, l.label]));   // no live Diff without a clip
-  if (state.shape && !adOn()) entries.push(['shape', 'Shape']);   // Motion doesn't use the Shape: no tab for it
+  if (state.shape && !adOn() && !isH3()) entries.push(['shape', 'Shape']);   // Motion and H3 don't use the Shape: no tab for it
   controlTabs = Object.fromEntries(entries);
   $('view').querySelectorAll('[data-ctl]').forEach(b => b.remove());
   for (const [id, label] of [...entries].reverse())   // after Source: source, hints, output, split
@@ -4174,6 +4454,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.styleRef ??= null; state.styleRefW ??= 0.6; state.styleOnly ??= true;
   state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
+  state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
+  state.h3secs ??= 5; state.h3aspect ??= '16:9';
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
@@ -4184,6 +4466,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
   bindKeys();                               // the lane is static markup: bound once
+  api('/api/config').then(c => { CFG_HAS_KEY = !!c.comfy_key; renderH3(); }).catch(() => {});
   renderControls(); paintLive();
   // grey out presets whose checkpoint isn't on disk
   await Promise.all(PRESETS.map(async p => {

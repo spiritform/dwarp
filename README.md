@@ -13,6 +13,9 @@ paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repain
 
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Frame** or **Preview**.
 
+Everything runs on your own machine, with one opt-in exception: the **H3** mode, which needs a model far too
+big for a desktop card and renders on Comfy Cloud instead. [More below](#h3-a-clip-with-sound-in-the-cloud).
+
 ![DWARP: the panel on the left, the stage with a run, the runs strip below](docs/screenshot.png)
 
 What's new: [CHANGELOG.md](CHANGELOG.md).
@@ -74,6 +77,35 @@ the same differential diffusion underneath:
 
 **Shape library**: the *library* link on the Shape card opens ready-made black / white masks to try, drawn by DWARP itself (no downloads): spirals for the classic QR Code Monster "spiral illusion", rings, sunburst, checker, stripes, waves, halftone and simple shapes, plus seamless loops (turning spirals, rings moving out, a tunnel, shuffling QR-like blocks). Your own masks go in *Yours* (`shapes/yours`).
 
+## H3: a clip with sound, in the cloud
+
+Every other mode repaints *your* frames. H3 doesn't: it reads what you give it and generates a **new** 5–15 s
+clip that follows what it saw — **with its own soundtrack**, picture and audio in a single pass. It is the only
+mode that makes audio, and the only one that doesn't run locally.
+
+It is [MiniMax-H3](https://huggingface.co/MiniMaxAI) through Pika's
+[H3 Flex](https://huggingface.co/Pika-Labs) adapter. The model is a 61 GB transformer plus a 32-billion-parameter
+text encoder — far past a 12 GB card — so DWARP sends the job to [Comfy Cloud](https://www.comfy.org/) and brings
+back the mp4. **This is optional and off by default**: without an API key the mode simply says so. With one, each
+clip spends Comfy credits and takes a few minutes.
+
+What goes in:
+
+| | Where it comes from | Call it in the prompt |
+|---|---|---|
+| **Clip** | the video on the Video tab — the trimmed range, up to 15 s, sound included | `<Video 1>`, `<Audio 1>` |
+| **Pictures** | up to nine, in References: click, drop a file, or drag a frame off the stage | `<Picture 1>`, `<Picture 2>` … |
+
+Either is enough on its own. Those tags are how H3 was trained to read references, and it wants a *sectioned
+brief* rather than style words — `subject_definitions`, `summary`, `retention_analysis`, `detailed_description`,
+`overall_soundscape`, `non_diegetic_music`. The **template** link in the Prompt card lays that out for you,
+filled in from the clip and references you have loaded. Help → **H3** explains the rest.
+
+**Setting it up**: Settings → **Comfy Cloud**, paste a key from
+[platform.comfy.org](https://platform.comfy.org/profile/api-keys). It is kept in `config.json`, which is
+gitignored, and DWARP never shows it back — Settings only reports whether one is set. Clear it by saving an
+empty field. A render needs an active Comfy subscription.
+
 ## Features
 
 - SD 1.5, SD 2.1 and SDXL checkpoints — reads your ComfyUI models folder and sorts checkpoints by family from their headers. SD 2.1 reads the original 768-v / 512 `.ckpt` files (converted once, safely, to fp16 safetensors) and has depth + HED ControlNets
@@ -97,6 +129,7 @@ the same differential diffusion underneath:
 - **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **use settings** puts a run's settings back in the panel
 - **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first)
 - A built-in guide: the **?** button explains every control
+- **[H3](#h3-a-clip-with-sound-in-the-cloud)** (optional, cloud): a 5–15 s clip **with sound** from your footage and reference pictures, via MiniMax-H3 / Pika H3 Flex on Comfy Cloud. Needs an API key; everything else in DWARP stays on your own GPU
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)
 - **Refine**: a diffusion upscale — render a finished run again (1× for a second pass, or 1.5× / 2× bigger) with a low Denoise and your prompt, held to its frames by a tile ControlNet and carried along by the warp. Big frames are painted in overlapping tiles, so detail comes out at the scale the model was trained at and VRAM stays flat
 

@@ -49,7 +49,7 @@ class RenderJob:
     video: str
     out_dir: str
     checkpoint: str
-    family: str = "sd15"                 # sd15 | sd2 | sdxl
+    family: str = "sd15"                 # sd15 | sd2 | sdxl | h3 (Comfy Cloud)
     prompt: str = ""
     negative: str = ""
     width: int = 512
@@ -157,6 +157,11 @@ class RenderJob:
     shape_follow: float = 0.0            # Text / Image: the picture moves and scales with the mask (centre + size),
                                          # and the inside repaints enough to re-form there. One blob growing / moving
     shape_nudge: float = 0.0             # the outside of the mask darkened in each frame's start (Text -> Video frame 1 too)
+    # H3 (engine/h3.py): nothing renders here, the job goes to Comfy Cloud and an mp4 with sound comes back
+    h3_refs: list = field(default_factory=list)   # reference pictures, in <Picture 1>, <Picture 2> ... order
+    h3_seconds: float = 5.0                       # clip length; H3 rounds up to 17n + 5 frames at 24 fps
+    h3_video: str = ""                            # the source clip as a reference: <Video 1>, its sound <Audio 1>
+    h3_trim: list = field(default_factory=list)   # [start, end] of that clip in seconds; H3 looks at 15 s at most
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -1062,6 +1067,9 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     and/or "now": a prompt that becomes a keyframe at the frame about to render (Live mode), and/or
     "camera": new Text / Image -> Video camera values ({cam_zoom, cam_rotate, ...}), eased in over a few frames.
     `on_keys` hears the keyframes in use at the start and after every edit."""
+    if job.family == "h3":                     # H3: rendered on Comfy Cloud, so nothing loads here at all
+        from engine.h3 import render_h3
+        return render_h3(job, progress, cancelled, log)
     fetch_known(job, log, progress)            # first use: models DWARP can download, before anything loads
     if job.motion:                             # Motion: AnimateDiff instead of the frame-by-frame warp
         from engine.animatediff import render_ad

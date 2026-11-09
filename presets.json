@@ -198,6 +198,28 @@
           "control_v1p_sdxl_qrcode_monster.safetensors"
         ]
       }
+    },
+    "h3": {
+      "label": "H3",
+      "cloud": "Comfy Cloud",
+      "sizes": [
+        768,
+        1024,
+        1344
+      ],
+      "default_size": 1344,
+      "test_size": 1344,
+      "ref_size": 1344,
+      "spf": 1.5,
+      "fixed_size": true,
+      "no_checkpoint": true,
+      "sound": true,
+      "seconds": [
+        5,
+        7,
+        10,
+        15
+      ]
     }
   },
   "presets": [
