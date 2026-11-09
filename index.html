@@ -239,6 +239,7 @@
   #trackSlot .tk { background: #25242b; border-radius: 8px; overflow: hidden; }
   #trackSlot .tk video { display: block; width: 100%; background: #000; cursor: pointer; }
   #trackSlot .tk canvas { display: block; width: 100%; background: #0f0e13; cursor: pointer; }
+  #trackSlot .tk canvas.draw { cursor: crosshair; touch-action: none; }
   #trackSlot .meta { display: flex; align-items: center; gap: 8px; padding: 7px 8px; }
   #trackSlot .meta b { flex: 1; min-width: 0; font-size: 11px; font-weight: 400; color: #c9c7cf;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -804,7 +805,7 @@
       <input type="file" id="trackFile" accept="video/*" hidden>
       <div class="seg" id="tkWay" style="grid-template-columns:1fr 1fr">
         <button data-w="measure" title="Track a real video's movement — drop a clip, or one of your own runs, in the slot above">measure</button>
-        <button data-w="field" title="Draw the paths from a formula — instant, no clip needed">field</button>
+        <button data-w="field" title="Author the paths — a formula, or lines you draw yourself. Instant, no clip needed">field</button>
       </div>
       <div class="adnote" id="trackNote" style="margin:6px 0 0"></div>
       <div id="tkDials" hidden>
@@ -821,10 +822,10 @@
             <input type="range" id="fdAng" min="0" max="350" step="10">
           </div>
         </div>
-        <div class="sublabel">Paths</div>
+        <div class="sublabel" id="tkPathsLabel">Paths</div>
         <div class="seg" id="tkPaths" style="grid-template-columns:repeat(4,1fr)"></div>
         <div class="slider" id="tkPullRow" style="margin-top:12px">
-          <div class="slider-head"><b title="How hard the motion pulls the picture. Low is a drift, high drags it along the paths.">Motion strength</b><span id="tkPullV"></span></div>
+          <div class="slider-head"><b title="How hard the model is pulled along the paths. The graph&#39;s own dial, not the paths&#39; — Amount is how far they travel, this is how much the picture obeys them. Low is a drift, high drags it.">Motion strength</b><span id="tkPullV"></span></div>
           <input type="range" id="tkPull">
         </div>
       </div>
@@ -1502,20 +1503,27 @@ function renderH3() {
   $('tkDials').hidden = !w.tracks;
   // Drawn motion: the kind, and the one or two dials that kind reads. Both off the list the server
   // sends, so a new field is an entry in engine/fields.py and nothing here.
-  const fd = fieldCfg(), fk = fieldSpec();
-  $('fieldRow').hidden = !(w.tracks && isField() && fk);
-  if (w.tracks && isField() && fk) {
+  // Shown by which side of the switch you are on rather than by what is in hand: the Draw kind has
+  // nothing in hand until you have drawn a line, and the dropdown is how you get back off it.
+  const fd = fieldCfg(), fk = fieldSpec(), onField = w.tracks && motionWay() === 'field' && fk;
+  $('fieldRow').hidden = !onField;
+  if (onField) {
     $('fdKind').innerHTML = FIELD_KINDS.map(k =>
       `<option value="${k.id}"${k.id === fk.id ? ' selected' : ''}>${k.label}</option>`).join('');
     $('fdNote').textContent = fk.note || '';
+    $('fdNote').hidden = !fk.note;             // Draw says it on the canvas instead
     const a = fk.amount || { min: 0, max: 1, step: 0.05 };
     $('fdAmt').min = a.min; $('fdAmt').max = a.max; $('fdAmt').step = a.step;
     $('fdAmt').value = fieldAmount();
     $('fdAmtV').textContent = (+fieldAmount()).toFixed(2);
+    $('fdAmtLabel').title = fk.draw
+      ? 'How far along your lines it travels. 1.00 reaches the end of every line; lower stops short.'
+      : 'How far it goes. The whole field is fitted inside the frame, so a big Amount travels further and starts closer in.';
     $('fdAngRow').hidden = !fk.angle;
     $('fdAng').value = fd.angle || 0;
     $('fdAngV').textContent = `${Math.round(fd.angle || 0)}\u00b0`;
   }
+  $('tkPathsLabel').hidden = $('tkPaths').hidden = !!(onField && fk.draw);
   if (w.tracks) {
     $('tkPaths').innerHTML = TRACK_PTS.map(n =>
       `<button data-n="${n}" class="${n === trackPts() ? 'on' : ''}" title="${
@@ -1603,22 +1611,36 @@ function renderTracks() {
       trackPoll = null; trackJob = null; renderTracks();
       setStatus('stopped measuring', 'done');
     };
-  } else if (t && t.field && way === 'field') {
+  } else if (way === 'field' && (drawKind() || (t && t.field))) {
     // Drawn, so there are no frames of its own to draw it on: it animates over the picture it is about
-    // to move instead, live, which is also how the dials below get their feedback.
-    $('trackSlot').innerHTML = `<div class="tk"><canvas id="tkCanvas"
-        title="The field, animating over your first reference. Click to pause."></canvas>
-      <div class="meta"><b>${t.label || 'Field'} \u00b7 ${t.paths} paths \u00b7 ${t.frames} frames \u00b7 ${t.width}\u00d7${t.height}</b>
-      <a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>
+    // to move instead, live, which is also how the dials below get their feedback. The Draw kind uses
+    // the same canvas as its paper \u2014 the backdrop you are drawing over is the picture you are moving,
+    // which is the whole reason to draw the lines here rather than anywhere else.
+    const dr = drawKind(), has = !!(t && t.field);
+    $('trackSlot').innerHTML = `<div class="tk"><canvas id="tkCanvas" class="${dr ? 'draw' : ''}"
+        title="${dr ? 'Drag across the picture to draw a path. Each drag adds one.'
+                    : 'The field, animating over your first reference. Click to pause.'}"></canvas>
+      <div class="meta"><b title="${has ? `${t.width}\u00d7${t.height}` : ''}">${has
+        ? `${t.label || 'Field'} \u00b7 ${t.paths} path${t.paths === 1 ? '' : 's'} \u00b7 ${t.frames} frames`
+        : 'drag to draw a path'}</b>
+      ${dr && has ? '<a id="tkUndo" title="Take back the last line you drew">undo</a>' : ''}
+      ${has ? '<a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>' : ''}
       <button id="tkDel" title="Remove">\u2715</button></div></div>`;
     const ref = h3Refs()[0];
     if ((ref?.path || '') !== (fieldBg?.path || ''))     // the backdrop, when there is a reference
       fieldBg = ref ? { path: ref.path, img: Object.assign(new Image(),
         { src: `/api/image/file?${qs({ path: ref.path })}` }) } : null;
-    $('tkCanvas').onclick = () => { fieldPaused = !fieldPaused; };
-    $('tkCopy').onclick = copyTracks;
+    if (dr) armDrawing($('tkCanvas'));
+    else $('tkCanvas').onclick = () => { fieldPaused = !fieldPaused; };
+    if ($('tkUndo')) $('tkUndo').onclick = () => {
+      strokes().pop();
+      if (strokes().length) return void drawField(true);
+      state.tracks = null; fieldWant = ''; renderH3(); paintSums(); save();
+    };
+    if ($('tkCopy')) $('tkCopy').onclick = copyTracks;
     $('tkDel').onclick = () => {               // off the field, and back to the side that takes a video
       state.tracks = null; state.tracksOther = null; state.motionWay = 'measure';
+      fieldCfg().strokes = []; drawPts = [];
       fieldWant = ''; stopField(); renderH3(); paintSums(); save();
     };
     startField();
@@ -1663,9 +1685,11 @@ function renderTracks() {
   $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
     : refitBusy ? 'fitting the measurement to this render \u2014 no GPU, no tracking again'
     : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
-    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows these ${t.paths} paths`
+    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows ${t.paths === 1
+        ? 'this one path' : `these ${t.paths} paths`}`
     : t ? `these go up with the render \u2014 ${wf().label} follows them`
-    : way === 'field' ? 'paths from a formula \u2014 click to draw them'
+    : way === 'field' ? (drawKind() ? 'drag on the picture above \u2014 one drag is one path'
+                                    : 'paths from a formula \u2014 click to draw them')
         : 'optical flow, measured off the clip you drop here';
   // the link is only in the note when the note is showing it: a refit in flight replaces that line
   if ($('tkRedo')) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
@@ -1766,7 +1790,12 @@ const TK_COLOURS = ['#ff6a3d', '#ffb36b', '#78c8ff', '#a0ffa0',
                     '#ff8cc8', '#fff078', '#b4a0ff', '#78ffe6'];   // as engine/tracks.py draws them
 function measured() { return state.tracks && !state.tracks.field ? state.tracks : null; }
 function isField() { return !!state.tracks?.field; }
-function fieldCfg() { return (state.field ||= { kind: 'pan', amount: null, angle: 0 }); }
+function fieldCfg() { return (state.field ||= { kind: 'pan', amount: null, angle: 0, strokes: [] }); }
+// The lines drawn by hand, normalised 0..1 so they keep their meaning when the Aspect or Length moves.
+// They live in the panel's state rather than in the field that came back, so they survive a redraw at a
+// new size, a reload, and a trip through another kind and back.
+function strokes() { return (fieldCfg().strokes ||= []); }
+function drawKind() { return motionWay() === 'field' && !!fieldSpec()?.draw; }
 function fieldSpec(id) {
   return FIELD_KINDS.find(k => k.id === (id || fieldCfg().kind)) || FIELD_KINDS[0] || null;
 }
@@ -1779,9 +1808,11 @@ function fieldAmount() {                      // the dial, or this kind's own de
 // identical request, identical field, nothing to do.
 function fieldBody() {
   const k = fieldSpec(), c = fieldCfg(), [width, height] = comfySize();
-  return { kind: k ? k.id : 'pan', points: trackPts(), length: h3Frames(h3Seconds()),
-           width, height, amount: +(+fieldAmount()).toFixed(3),
-           angle: k && k.angle ? +(c.angle || 0) : 0, seed: k && k.seed ? state.seed : 0 };
+  const b = { kind: k ? k.id : 'pan', points: trackPts(), length: h3Frames(h3Seconds()),
+              width, height, amount: +(+fieldAmount()).toFixed(3),
+              angle: k && k.angle ? +(c.angle || 0) : 0, seed: k && k.seed ? state.seed : 0 };
+  if (k && k.draw) { b.strokes = strokes(); b.points = b.strokes.length; }   // the lines are the field
+  return b;
 }
 function fieldKey() { return JSON.stringify(fieldBody()); }
 // Is the field in hand the one the panel is now asking for? Compared against the result rather than
@@ -1789,6 +1820,9 @@ function fieldKey() { return JSON.stringify(fieldBody()); }
 // redrawn when it does not, which is also how a changed Length or box is picked up.
 function fieldMatches() {
   const b = fieldBody(), t = state.tracks;
+  // Drawn: there is no short list of numbers that says whether these are the lines in hand, so the
+  // request it came from is kept on it and compared whole.
+  if (b.strokes) return !!t && t.key === fieldKey();
   return !!t && t.field === b.kind && t.paths === b.points && t.frames === b.length
     && t.width === b.width && t.height === b.height && (t.seed || 0) === b.seed
     && Math.abs((t.amount ?? 0) - b.amount) < 1e-3 && Math.abs((t.angle ?? 0) - b.angle) < 1e-3;
@@ -1805,12 +1839,21 @@ async function drawField(fresh) {
     const r = await api('/api/fields', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
     if (fieldWant !== body) return;            // a newer drag landed while this was in flight
     if (!state.tracks?.field && state.tracks) state.tracksOther = state.tracks;   // keep what was measured
-    state.tracks = r; state.motionWay = 'field';
+    state.tracks = { ...r, key: body }; state.motionWay = 'field';
   } catch (e) {
     if (!isField()) state.motionWay = 'measure';          // nothing drawn: do not strand the slot
     setStatus('could not draw the field: ' + e.message, 'bad');
   } finally { fieldBusy = false; }
   renderH3(); paintSums(); save();
+}
+// The Draw kind is the one field that cannot be asked for out of nowhere: with no lines yet there is
+// nothing to send, so the slot shows its empty drawing surface instead of an error from the server.
+function wantField(fresh) {
+  if (drawKind() && !strokes().length) {
+    state.tracks = null; fieldWant = ''; renderH3(); paintSums(); save();
+    return;
+  }
+  drawField(fresh);
 }
 function fieldSoon() {                         // dragging a slider: one request when it settles
   clearTimeout(fieldTimer);
@@ -1824,26 +1867,31 @@ function stopField() { if (fieldRaf) cancelAnimationFrame(fieldRaf); fieldRaf = 
 function fieldLoop() {
   fieldRaf = 0;
   const cv = $('tkCanvas');
-  if (!cv || !isField() || $('trackSlot').hidden) return;     // the slot moved on: stop the loop
+  if (!cv || $('trackSlot').hidden) return;     // the slot moved on: stop the loop
   paintField();
   fieldRaf = requestAnimationFrame(fieldLoop);
 }
 function paintField() {
-  const cv = $('tkCanvas'), t = state.tracks;
-  if (!cv || !t?.tracks?.length || !cv.clientWidth) return;
+  const cv = $('tkCanvas');
+  if (!cv || !cv.clientWidth) return;
+  const t = isField() ? state.tracks : null, box = comfySize();
+  // With nothing drawn yet the canvas still takes the shape of what is about to be rendered, so a line
+  // drawn on it lands where it looks like it will.
+  const tw = Math.max(1, t?.width || box[0]), th = Math.max(1, t?.height || box[1]);
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.round(cv.clientWidth * dpr), h = Math.round(w * t.height / Math.max(1, t.width));
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(w * th / tw);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   cv.style.height = Math.round(h / dpr) + 'px';
-  const g = cv.getContext('2d'), k = w / Math.max(1, t.width);
-  if (!fieldPaused) fieldFrame = Math.floor(performance.now() / 1000 * Math.max(1, wf().fps || 16)) % t.frames;
-  const i = Math.min(t.frames - 1, Math.max(0, fieldFrame)), from = Math.max(0, i - 12);
+  const g = cv.getContext('2d'), k = w / tw;
+  const frames = Math.max(1, t?.frames || 1);
+  if (!fieldPaused) fieldFrame = Math.floor(performance.now() / 1000 * Math.max(1, wf().fps || 16)) % frames;
+  const i = Math.min(frames - 1, Math.max(0, fieldFrame)), from = Math.max(0, i - 12);
   g.fillStyle = '#0f0e13'; g.fillRect(0, 0, w, h);
   if (fieldBg?.img?.complete && fieldBg.img.naturalWidth) {
     g.globalAlpha = 0.5; g.drawImage(fieldBg.img, 0, 0, w, h); g.globalAlpha = 1;
   }
   g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.lineCap = 'round';
-  t.tracks.forEach((p, idx) => {
+  (t?.tracks || []).forEach((p, idx) => {
     const c = TK_COLOURS[idx % TK_COLOURS.length];
     g.strokeStyle = c; g.fillStyle = c;
     g.beginPath();
@@ -1855,6 +1903,52 @@ function paintField() {
     const q = p[i] || p[0];
     g.beginPath(); g.arc(q.x * k, q.y * k, 3 * dpr, 0, 6.2832); g.fill();
   });
+  if (drawKind() && !t?.tracks?.length && !drawPts?.length) {
+    g.setLineDash([6 * dpr, 6 * dpr]); g.strokeStyle = '#3a3942';
+    g.strokeRect(6 * dpr, 6 * dpr, w - 12 * dpr, h - 12 * dpr);
+    g.setLineDash([]);
+  }
+  if (drawPts?.length > 1) {                   // the line under the hand, before it is a path
+    g.strokeStyle = '#ffffff'; g.beginPath();
+    drawPts.forEach((p, idx) => idx ? g.lineTo(p[0] * w, p[1] * h) : g.moveTo(p[0] * w, p[1] * h));
+    g.stroke();
+  }
+}
+// ---- Drawing: a drag is a path
+// The line is kept as the shape it was drawn as and nothing else. How fast it was dragged is not part
+// of it \u2014 the engine resamples by arc length \u2014 because a hand slowing down to aim is not an
+// instruction to the picture to slow down there.
+var drawPts = [];                              // var: paintField above reads it
+function armDrawing(cv) {
+  const at = e => {
+    const r = cv.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width))),
+            Math.min(1, Math.max(0, (e.clientY - r.top) / Math.max(1, r.height)))];
+  };
+  cv.onpointerdown = e => {
+    if (e.button) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    drawPts = [at(e)];
+  };
+  cv.onpointermove = e => {
+    if (!drawPts.length) return;
+    const p = at(e), q = drawPts[drawPts.length - 1];
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.004) drawPts.push(p);   // thinned as it is collected
+  };
+  cv.onpointercancel = () => { drawPts = []; };
+  cv.onpointerup = () => {
+    const line = drawPts; drawPts = [];
+    if (line.length < 2) return;                                 // a tap, not a line
+    const [bw, bh] = comfySize();
+    let travel = 0;
+    for (let idx = 1; idx < line.length; idx++)
+      travel += Math.hypot((line[idx][0] - line[idx - 1][0]) * bw, (line[idx][1] - line[idx - 1][1]) * bh);
+    if (travel < 0.012 * Math.min(bw, bh))     // the same floor the engine keeps, said here instead
+      return setStatus('that line went nowhere \u2014 drag further', 'bad');
+    strokes().push(line.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]));
+    drawField(true);
+  };
 }
 // Measure or draw: one switch under the slot, and the one you are not using is kept rather than
 // thrown away \u2014 measuring costs GPU time, so going back to it should not mean doing it again.
@@ -1868,7 +1962,7 @@ function setMotionWay(way) {
   state.tracks = stash && !!stash.field === (way === 'field') ? stash : null;
   state.tracksOther = keep;
   state.motionWay = way;
-  if (way === 'field' && !state.tracks) { save(); return void drawField(true); }
+  if (way === 'field' && !state.tracks) { save(); return void wantField(true); }
   renderH3(); paintSums(); save();
   setStatus(state.tracks
     ? (way === 'field' ? `back to the ${state.tracks.label} field you drew` : 'back to the motion you measured')
@@ -1878,7 +1972,10 @@ $('tkWay').onclick = e => {
   const w = e.target.dataset.w;
   if (w) setMotionWay(w);
 };
-$('fdKind').onchange = e => { fieldCfg().kind = e.target.value; fieldCfg().amount = null; drawField(true); };
+$('fdKind').onchange = e => {
+  fieldCfg().kind = e.target.value; fieldCfg().amount = null; drawPts = [];
+  wantField(true);
+};
 $('fdAmt').oninput = e => {
   fieldCfg().amount = +e.target.value;
   $('fdAmtV').textContent = (+e.target.value).toFixed(2);
@@ -1914,7 +2011,7 @@ $('tkPull').oninput = e => {
 };
 $('trackSlot').onclick = e => {
   if (!e.target.closest('.clip-empty')) return;
-  if (motionWay() === 'field') return void drawField(true);
+  if (motionWay() === 'field') return void wantField(true);
   $('trackFile').click();
 };
 $('trackFile').onchange = e => {
@@ -3640,8 +3737,8 @@ const HELP = {
        match for what is in your picture: the paths sit where the clip's features were, which in another picture
        is often nothing at all, and the model still moves. Clips with a few big coherent movements — a slow pan,
        a figure crossing, smoke — read far better than busy ones.</p>
-    <p><b>Or draw a field.</b> If a signature is what it is, no video is needed: pick a <b>Field</b> and the paths
-       come from a formula, instantly, with no GPU at all. The preview animates over your first reference while
+    <p><b>Or author a field.</b> If a signature is what it is, no video is needed: pick a <b>Field</b> and the paths
+       come from a formula — or from your own hand — instantly, with no GPU at all. The preview animates over your first reference while
        you move the dials, so you can see what the model is going to be told. <b>Amount</b> is how far it goes,
        <b>Direction</b> which way (where the field has one), and <b>Paths</b> how many — a few read as camera
        drift, a dense field churns the whole surface. The motion eases in and out rather than starting at full
@@ -3654,13 +3751,28 @@ const HELP = {
       <tr><td><b>Swirl</b></td><td>A turn strongest at the centre and dying off outwards: a vortex.</td></tr>
       <tr><td><b>Wave</b></td><td>Travel with a sway across it, each path a little behind the last.</td></tr>
       <tr><td><b>Drift</b></td><td>No common direction — every path wanders its own way. The <b>seed</b> changes it.</td></tr>
+      <tr><td><b>Draw</b></td><td>Your own lines, dragged straight onto the picture. One drag is one path.</td></tr>
     </table>
+    <p><b>Draw</b> turns the preview into the paper. Drag across it and that line becomes a path, from where you
+       started to where you let go; drag again for another. The picture you are drawing over is the picture about
+       to move, which is the whole reason the lines are drawn here and not on a blank square — you aim them at
+       what is in the frame. How <i>fast</i> you drag is not part of it: a line is resampled by its length, so a hand
+       slowing down to aim is never read as the picture slowing down there, and the travel eases in and out like
+       every other field. Here <b>Amount</b> is how far along your lines it goes — 1.00 reaches the end of each,
+       lower stops short — and <b>Paths</b> is gone, because you decided that by drawing. <b>undo</b> takes back
+       the last line, <b>✕</b> clears them all.</p>
     <p>Either way, the paths follow the render rather than the other way round: <b>Aspect</b> and
        <b>Length</b> decide the box, and the motion is fitted into it — which is how a landscape clip's
        movement can drive a tall frame. Fitting a measurement into a shape it was not measured in stretches
        it, and that is the point: these are motion signatures, not a map of what is in your picture.
        <b>copy</b> on the slot puts the JSON on the clipboard, for pasting into a ComfyUI path widget by
        hand; a render here does not need that.</p>
+    <p><b>Amount and Motion strength are not the same dial.</b> Amount belongs to the paths: it decides how far
+       they travel across the frame, and you can see it in the preview. <b>Motion strength</b> belongs to the
+       graph: it is handed to the model with the paths and decides how much the picture <i>obeys</i> them. Low is a
+       drift in roughly the right direction, high drags the picture along the lines and will tear it if the paths
+       ask for more than the content can give. A long path at low strength and a short one at high strength look
+       nothing alike — the first moves a little and stays whole, the second fights.</p>
     <h3>H3 · Pika Flex — a clip with sound</h3>
     <p>The workflow DWARP ships with: <b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. H3 is also why this
        mode exists:

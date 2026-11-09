@@ -4,6 +4,19 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **Draw the motion yourself.** The Field dropdown gained a **Draw** kind: drag across the preview and
+  that line becomes a path, from where you started to where you let go, one drag per path. The picture
+  underneath is the picture about to move, which is the point of drawing there rather than on a blank
+  square — you aim the lines at what is in the frame. How fast you drag is not part of it: a line is
+  resampled by its length, so a hand slowing down to aim is never read as the picture slowing down.
+  **Amount** becomes how far along your lines it travels, **Paths** goes away because you decided that
+  by drawing, and **undo** takes back the last line. The lines are kept normalised, so they survive a
+  change of Aspect, Length or seconds, and a reload. A tap, or a line that goes nowhere, is refused
+  rather than becoming a path that never moves.
+- **Amount and Motion strength said apart.** They are two different dials and read like one: Amount
+  belongs to the paths and decides how far they travel; Motion strength is the graph's own, handed to
+  the model with the paths, and decides how much the picture obeys them. Both tooltips and the help
+  now say so.
 - **Videos DWARP makes are runs now, not chips.** An upscale, a smooth, or the track visualiser a
   motion graph writes used to land as a file in the button row, where none of them could be scrubbed,
   compared or thumbnailed — but it is a video you want to

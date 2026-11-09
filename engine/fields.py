@@ -51,6 +51,9 @@ KINDS = [
     {"id": "drift", "label": "Drift", "angle": False, "seed": True,
      "note": "No common direction: every path wanders its own smooth way. The seed changes it.",
      "amount": {"min": 0.05, "max": 1.0, "step": 0.05, "default": 0.5}},
+    {"id": "draw", "label": "Draw", "angle": False, "draw": True,
+     "note": "",                 # the canvas above says it better than a line of prose can
+     "amount": {"min": 0.1, "max": 1.0, "step": 0.05, "default": 1.0}},
 ]
 BY_ID = {k["id"]: k for k in KINDS}
 
@@ -166,16 +169,81 @@ def fit(pos: np.ndarray, width: int, height: int) -> np.ndarray:
     return pos
 
 
+# ------------------------------------------------------------------ lines you drew yourself
+MAX_STROKES, MAX_POINTS = 64, 512
+MIN_TRAVEL = 0.012        # of the short side: shorter than this was a tap, not a line
+
+
+def clean_strokes(strokes) -> list[np.ndarray]:
+    """The page's normalised polylines, checked and turned into arrays of (x, y) in 0..1.
+
+    Anything that arrives here was drawn by hand, so it is bounded on the way in rather than trusted:
+    a stroke is a list of at least two points, there are limits on both counts, and every number has
+    to be a finite 0..1."""
+    if not isinstance(strokes, (list, tuple)) or not strokes:
+        raise ValueError("draw a line first")
+    if len(strokes) > MAX_STROKES:
+        raise ValueError(f"{len(strokes)} lines is more than the {MAX_STROKES} this takes")
+    out = []
+    for s in strokes:
+        p = np.asarray(s, dtype=np.float64)
+        if p.ndim != 2 or p.shape[0] < 2 or p.shape[1] != 2:
+            raise ValueError("a line is two or more [x, y] points")
+        if p.shape[0] > MAX_POINTS:                      # thin it rather than refuse a long drag
+            p = p[np.linspace(0, p.shape[0] - 1, MAX_POINTS).round().astype(int)]
+        if not np.isfinite(p).all() or p.min() < -0.001 or p.max() > 1.001:
+            raise ValueError("a drawn point is outside the frame")
+        out.append(np.clip(p, 0.0, 1.0))
+    return out
+
+
+def drawn(strokes: list[np.ndarray], *, length: int, width: int, height: int,
+          amount: float = 1.0) -> np.ndarray:
+    """(length, N, 2): one path per line drawn, travelled over the frames of the render.
+
+    Two choices worth naming. Each line is resampled by **arc length**, so how fast it was dragged
+    never becomes how fast the picture moves — the shape is the instruction, the speed is not; and
+    the same smoothstep easing every other field uses carries a path from its start to `amount` of
+    the way along, so a drawn field starts and stops as gently as a formula one. A tap with no travel
+    is dropped instead of becoming a path that never moves, which is the one thing a motion field
+    must not say by accident."""
+    e = _ease(length)                                           # (T,)
+    scale = np.array([float(width), float(height)])
+    short = float(min(width, height))
+    out = []
+    for s in strokes:
+        p = s * scale                                           # (P,2) in pixels
+        step = np.linalg.norm(np.diff(p, axis=0), axis=1)
+        run = np.concatenate([[0.0], np.cumsum(step)])
+        if run[-1] < MIN_TRAVEL * short:
+            continue
+        u = e * float(amount) * run[-1]                         # (T,) distance along the line
+        out.append(np.stack([np.interp(u, run, p[:, 0]), np.interp(u, run, p[:, 1])], -1))
+    if not out:
+        raise ValueError("those lines went nowhere — drag further")
+    pos = np.stack(out, 1)
+    # Held inside the frame rather than fitted into it like a formula field: these were drawn in the
+    # frame and only ever travel along themselves, so this is a guard, not a transform — moving what
+    # was drawn would make the picture disagree with the hand that drew it.
+    return np.clip(pos, MARGIN, np.array([width - MARGIN, height - MARGIN], dtype=np.float64))
+
+
 # ------------------------------------------------------------------ what comes out
 def make(dest_dir: Path, *, kind: str = "pan", points: int = 24, length: int = 81,
          width: int = 720, height: int = 720, amount: float = 0.45, angle: float = 0.0,
-         seed: int = 0) -> dict:
+         seed: int = 0, strokes=None) -> dict:
     """One field written as <kind>-<id>.json next to the measured tracks, plus the points themselves, so
     the page can animate them without reading the file back or rendering an mp4 nobody needs."""
     k = spec(kind)
     length, width, height = max(2, int(length)), int(width), int(height)
-    pos = paths(k["id"], points=points, length=length, width=width, height=height,
-                amount=amount, angle=angle, seed=seed)
+    # Held to the range this kind declares, the one the panel's slider already obeys: a caller asking
+    # a drawn line to travel -1 would get a path that stands still, which is the shape of "no motion".
+    lim = k.get("amount") or {}
+    amount = min(float(lim.get("max", 1.0)), max(float(lim.get("min", -1.0)), float(amount)))
+    pos = (drawn(clean_strokes(strokes), length=length, width=width, height=height, amount=amount)
+           if k.get("draw") else
+           paths(k["id"], points=points, length=length, width=width, height=height,
+                 amount=amount, angle=angle, seed=seed))
     data = tracks.to_json(pos, list(range(pos.shape[1])), (width, height), (width, height))
     assert all(len(p) == length for p in data), "the node needs every track the same length"
     dest_dir.mkdir(parents=True, exist_ok=True)

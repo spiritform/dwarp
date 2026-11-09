@@ -821,7 +821,8 @@ def build_app() -> FastAPI:
 
     @app.post("/api/fields")
     async def make_field(request: Request):
-        """A motion field drawn from a formula rather than measured off a clip. Milliseconds of numpy,
+        """A motion field authored rather than measured off a clip — from a formula, or from the
+        lines the user dragged on the preview, which arrive as `strokes`. Milliseconds of numpy,
         so unlike tracking it answers in the request instead of going on the queue, and it hands the
         points back with the file so the page can animate them without reading it again."""
         from engine import fields
@@ -835,7 +836,8 @@ def build_app() -> FastAPI:
                 height=max(16, min(4096, int(body.get("height", 720)))),
                 amount=max(-1.0, min(1.0, float(body.get("amount", 0.45)))),
                 angle=float(body.get("angle", 0)) % 360.0,
-                seed=int(body.get("seed", 0)))
+                seed=int(body.get("seed", 0)),
+                strokes=body.get("strokes"))        # the Draw kind: lines dragged on the preview
         except (TypeError, ValueError) as exc:
             raise HTTPException(422, detail=f"could not draw that field: {exc}") from None
 
