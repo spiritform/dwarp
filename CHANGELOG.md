@@ -4,6 +4,18 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-08
 
+- **The H3 prompt templates moved below the Prompt header and work without a picture.** The picker was in
+  the card header, where opening it collapsed the card; it is now a **Start from** dropdown above the prompt
+  box. All three briefs — character swap, full restyle, new scene — now come in two cuts: with a reference
+  loaded they point at `<Picture 1>` as before, and with none they leave you a line to describe the medium,
+  line and palette in words. A reference picture holds an identity; a style can just be written down.
+  Switching between them now **replaces** the brief rather than folding the old one into the new one's
+  description, and keeps the lines you wrote into it — your features, soundscape and music carry across,
+  our `...` placeholders do not. **no template** is in the list too: it strips the sections away and leaves
+  only what you wrote.
+- **Drag the stage into References.** Whatever frame you are looking at becomes `<Picture n>` — a run's
+  frame as before, and now a frame of the source clip too, taken at the playhead and saved at the size H3
+  actually reads. Handy for pinning your own footage as the look reference.
 - **The runs strip is easier to move.** Grab it anywhere but a thumbnail and throw it sideways, or roll the
   wheel over it — no aiming at the scrollbar, which is also now a 12 px target. Dragging a card no longer
   paints its label blue. The thumbnail itself is left alone: it still picks a run, and still drags one onto

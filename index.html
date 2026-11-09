@@ -268,11 +268,7 @@
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
   .cloudnote .bad { color: #ff9a8a; }
-  /* the template picker wears the "random" link's clothes */
-  .tplpick { background: none; border: 0; color: var(--accent); font: inherit; font-size: 11px;
-             cursor: pointer; padding: 0; -webkit-appearance: none; appearance: none; }
-  .tplpick:focus { outline: none; }
-  .tplpick option { background: var(--panel-2); color: var(--text); }
+  #tplRow { margin-bottom: 8px; }
   .cloudnote a { color: var(--accent-2); text-decoration: none; white-space: nowrap; }
   .cloudnote a:hover { text-decoration: underline; }
   /* the optional negative prompt: a small fold under the prompt box */
@@ -738,9 +734,13 @@
 
   <section>
     <div class="card" data-card="prompt">
-    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><select id="promptTpl" class="randlink tplpick" hidden title="Lay out H3's sectioned brief, filled in from the clip and references you have loaded"></select><span class="chev">▾</span></div>
+    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="hint" id="promptHint"></div>
+    <div id="tplRow" hidden>
+      <div class="sublabel" style="margin:0 0 4px">Start from</div>
+      <select class="model" id="promptTpl" title="Lay out H3's sectioned brief, filled in from the clip and the references you have loaded. Switching rewrites the brief and keeps what you typed into it; no template strips the sections away and leaves your own lines."></select>
+    </div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
     <div class="keywrap">
     <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it (drag the first past others to reorder)"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
@@ -1369,7 +1369,7 @@ function renderH3() {
   const on = isH3();
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
-  $('promptTpl').hidden = !on; $('promptRandom').hidden = on;   // H3 wants a brief, not five style words
+  $('tplRow').hidden = !on; $('promptRandom').hidden = on;      // H3 wants a brief, not five style words
   if (on && !$('promptTpl').options.length) renderTplPick();
   $('prompt').classList.toggle('brief', on);
   if (!on) return;
@@ -1393,7 +1393,7 @@ function renderH3() {
   $('h3Refs').innerHTML = refs.map((r, i) =>
     `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
     + (refs.length >= H3_MAX_REFS ? '' :
-      `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'add a reference picture'}</div>`);
+      `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
   const key = CFG_HAS_KEY;
   // One line, and the rest in Help -> H3. The clip, when there is one, is <Video 1>.
   $('h3Note').innerHTML = key
@@ -1415,64 +1415,138 @@ document.addEventListener('click', e => {
 // Three intents, one skeleton. What separates them is retention_analysis: how hard each reference
 // binds. Say nothing and H3 takes the mood and little else, which is how a street comes back as a
 // theatre stage; pin the video and it keeps your plate and swaps who is standing in it.
+// Each one comes in two cuts, because a reference picture is only ONE way to say what you want: with a
+// picture loaded the brief points at <Picture 1>; with none it leaves you a line to describe the style
+// in words instead. H3 reads both. A picture is simply harder to be vague with.
 const H3_RECIPES = {
   swap: ['character swap', {
     role: 'identity anchor — the character design, exactly',
-    video: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+    video: {
+      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
          + 'attribute_transfer - everything else is restyled.',
-    look: 'The shot stays as filmed; only the subject is replaced, drawn in the style of <Picture 1>'
-        + ' and lit to match the plate.',
+      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+           + 'attribute_transfer - the subject is replaced by the character described below.',
+    },
+    look: {
+      ref: 'The shot stays as filmed; only the subject is replaced, drawn in the style of <Picture 1>'
+         + ' and lit to match the plate.',
+      words: 'The shot stays as filmed; only the subject is replaced by <the new character: build,'
+           + ' costume, colours, and how it is drawn> and lit to match the plate.',
+    },
   }],
   restyle: ['full restyle', {
     role: 'style anchor — the medium, line, palette and texture',
-    video: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+    video: {
+      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
          + 'attribute_transfer - every surface in frame is redrawn in the style of <Picture 1>,\n'
          + 'buildings, smoke, ground and crowd included. Nothing stays photographic.',
-    look: 'The whole frame is one drawing in the style of <Picture 1> — same medium, same line'
-        + ' weight, same palette — moving with the shot.',
+      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+           + 'attribute_transfer - every surface in frame is redrawn in the style described below,\n'
+           + 'buildings, smoke, ground and crowd included. Nothing stays photographic.',
+    },
+    look: {
+      ref: 'The whole frame is one drawing in the style of <Picture 1> — same medium, same line'
+         + ' weight, same palette — moving with the shot.',
+      words: 'The whole frame is <the medium: hand-inked 1930s rubber-hose animation / oil on canvas /'
+           + ' charcoal on paper / cel-shaded anime …>,\n'
+           + '<the line and texture: thick wobbling outlines, visible brush, paper grain …>,\n'
+           + '<the palette: four flat colours, warm sepia, acid neon …>, moving with the shot.',
+    },
   }],
   scene: ['new scene', {
     role: 'identity anchor',
-    video: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
-    look: '<the look: medium, palette, lens, grain>',
+    video: {
+      ref: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
+      words: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
+    },
+    look: { ref: '<the look: medium, palette, lens, grain>', words: '<the look: medium, palette, lens, grain>' },
   }],
 };
+// Every look line any recipe can write. They carry no "..." so they would otherwise read as your own
+// writing, and switching to a full restyle would leave "only the subject is replaced" sitting in it.
+const H3_BOILER = new Set(Object.values(H3_RECIPES).flatMap(([, r]) => [r.look.ref, r.look.words])
+  .flatMap(t => t.split('\n')).map(l => l.trim()));
+const H3_SECTIONS = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
+                     'overall_soundscape', 'non_diegetic_music'];
+const H3_SHOT = '[Shot 1] Wide frame, ... At about two seconds the camera pushes in ...';
+const H3_FEAT = 'Features to follow exactly:';
+// Picking a second template has to REPLACE the first, not fold the whole of it into one section. So a
+// brief is read back apart first, by its section names. Plain prose has none of them and is left alone.
+function h3Sections(text) {
+  const map = {}; let cur = null;
+  for (const line of (text || '').split('\n')) {
+    const m = /^([a-z_]+):\s*$/.exec(line);
+    if (m && H3_SECTIONS.includes(m[1])) { map[cur = m[1]] = []; continue; }
+    if (cur) map[cur].push(line);
+  }
+  for (const k in map) map[k] = map[k].join('\n').trim();
+  return map;
+}
+// And the rule for what survives the switch: a line still carrying one of our "..." placeholders is ours
+// to rewrite; a line you have written over is yours, and is carried across.
+const h3Filled = t => (t || '').split('\n')
+  .filter(l => l.trim() && !/\.\.\.|…/.test(l)).join('\n').trim();
+// "none" takes the scaffolding away again: the structural sections go (they were the template talking),
+// what you wrote stays, as plain text. Nothing written yet means an empty box, which is the honest answer.
+const H3_PROSE = ['summary', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
+function h3Plain(text) {
+  const prev = h3Sections(text);
+  if (!Object.keys(prev).length) return (text || '').trim();   // never was a brief
+  return H3_PROSE.map(k => h3Filled(prev[k]).split('\n').filter(l => !H3_BOILER.has(l.trim())).join('\n').trim())
+                 .filter(Boolean).join('\n\n');
+}
 function h3Template(kind) {
   const r = H3_RECIPES[kind]?.[1] || H3_RECIPES.swap[1];
-  const refs = h3Refs(), secs = h3Seconds(), had = (state.prompt || '').trim();
+  const refs = h3Refs(), secs = h3Seconds();
+  const cut = refs.length ? 'ref' : 'words';   // point at the picture, or leave a line to describe it
+  const prev = h3Sections(state.prompt), brief = !!Object.keys(prev).length;
+  // written before any template was used: the whole thing is the look line, as it always was
+  const look = brief ? h3Filled(prev.detailed_description).split('\n')
+                         .filter(l => !H3_BOILER.has(l.trim())).join('\n').trim()
+                     : (state.prompt || '').trim();
+  const feats = {};                            // your own "Features to follow exactly:", kept per subject
+  let at = 0;
+  for (const raw of (prev.subject_definitions || '').split('\n')) {
+    const line = raw.trim(), m = /^<Subject (\d+)>/.exec(line);
+    if (m) at = +m[1];
+    if (at && line.startsWith(H3_FEAT) && h3Filled(line)) feats[at] = line;
+  }
+  const kept = k => h3Filled(prev[k]) || '...';
   const out = [];
   if (refs.length) {
     out.push('subject_definitions:', ...refs.map((_, i) =>
       `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: ${r.role}.\n` +
-      `Features to follow exactly: ...\n` +
+      `${feats[i + 1] || H3_FEAT + ' ...'}\n` +
       `Do not carry over the background of <Picture ${i + 1}>.`), '');
   }
   const who = refs.length ? '<Subject 1>' : 'the subject';
+  const body = look || r.look[cut];
   out.push('summary:',
-    `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
-    'retention_analysis:',
+    h3Filled(prev.summary)
+      || `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
+    'retention_analysis:',                     // the recipe itself: always rewritten, it is what you picked
     ...refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
-    ...(state.clip ? [r.video] : []),
+    ...(state.clip ? [r.video[cut]] : []),
     '',
     'detailed_description:',
-    had || r.look,
-    '[Shot 1] Wide frame, ... At about two seconds the camera pushes in ...', '',
-    'overall_soundscape:', '...', '',
-    'non_diegetic_music:', '...');
+    body,
+    ...(/^\[Shot /m.test(body) ? [] : [H3_SHOT]), '',
+    'overall_soundscape:', kept('overall_soundscape'), '',
+    'non_diegetic_music:', kept('non_diegetic_music'));
   return out.join('\n');
 }
-function renderTplPick() {
-  $('promptTpl').innerHTML = '<option value="">template ▾</option>' + Object.entries(H3_RECIPES)
+function renderTplPick(sel = '') {
+  $('promptTpl').innerHTML = '<option value="">no template</option>' + Object.entries(H3_RECIPES)
     .map(([k, [label]]) => `<option value="${k}">${label}</option>`).join('');
-  $('promptTpl').value = '';
+  $('promptTpl').value = sel;                // the pick stays on show: it says which brief is in the box
 }
 $('promptTpl').onchange = e => {
-  const kind = e.target.value; if (!kind) return;
-  $('prompt').value = h3Template(kind);      // same path the "random" link uses
+  const kind = e.target.value;
+  $('prompt').value = kind ? h3Template(kind) : h3Plain(state.prompt);   // the "random" link's path
   $('prompt').dispatchEvent(new Event('input'));
-  renderTplPick();
   $('prompt').focus();
-  setStatus(`${H3_RECIPES[kind][0]} template — fill in the ... parts`, 'done');
+  setStatus(kind ? `${H3_RECIPES[kind][0]} — fill in the ... parts`
+                 : 'template off — your own lines kept', 'done');
 };
 $('h3Secs').onclick = e => {
   const v = e.target.dataset.s; if (!v) return;
@@ -1487,6 +1561,7 @@ $('h3Aspect').onclick = e => {
   const a = e.target.dataset.a; if (!a) return;
   state.h3aspect = a; renderH3(); paintSums(); save();
 };
+const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
 function addH3Ref(res) {
   if (h3Refs().length >= H3_MAX_REFS) return setStatus(`H3 takes up to ${H3_MAX_REFS} references`, 'bad');
   h3Refs().push({ path: res.path, name: res.name });
@@ -1503,11 +1578,28 @@ $('h3File').onchange = e => {
   api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
     .then(addH3Ref).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
 };
+// A frame of the source clip, pulled at the clip's own size and saved as a picture. The stage hands over
+// the whole video when you drag it off the Source tab, which is right for the Shape slot and wrong here:
+// a reference is a still, so what the playhead is sitting on is what gets taken.
+async function clipFrameAsRef() {
+  const src = state.clip?.source;
+  if (!src) return setStatus('no clip loaded', 'bad');
+  const fit = Math.min(1, H3_REF_LONG / Math.max(src.width, src.height));   // no point uploading more than H3 reads
+  const w = Math.max(8, Math.round(src.width * fit)), h = Math.max(8, Math.round(src.height * fit));
+  const at = clipFrame;
+  setStatus(`taking frame ${at + 1}\u2026`, 'live');
+  const res = await fetch(`/api/diff/base?${qs({ path: state.clip.path, frame: at, width: w, height: h, kind: 'luma' })}`);
+  if (!res.ok) throw new Error('could not read that frame');
+  const name = `${(state.clip.name || 'clip').replace(/\.[^.]+$/, '')}_f${String(at + 1).padStart(5, '0')}.jpg`;
+  return addH3Ref(await api(`/api/upload?${qs({ filename: name })}`, { method: 'POST', body: await res.blob() }));
+}
 $('h3Refs').addEventListener('dragover', e => e.preventDefault());
 $('h3Refs').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
   const run = runDragData(e);
-  if (run && !run.clip) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
+  if (run && run.clip) return clipFrameAsRef()
+    .catch(err => setStatus('could not use that frame: ' + err.message, 'bad'));
+  if (run) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
     .then(addH3Ref).catch(err => setStatus('could not use that frame: ' + err.message, 'bad'));
   const file = e.dataTransfer?.files?.[0];
   if (!file) return setStatus('drop a picture, or a frame off the stage', 'bad');
@@ -3008,7 +3100,9 @@ A fast 1940s big-band shuffle, brass stabs on the dance beats.</pre>
           <i>non_diegetic_music</i> are real controls — leave them out and you get whatever it decides.</li>
       <li><b>Style can come from the prompt alone.</b> A reference picture is for holding an <i>identity</i> —
           a face, a costume, a product. For a look, words are often enough: the clip goes in as
-          &lt;Video 1&gt; and the prompt restyles it.</li>
+          &lt;Video 1&gt; and the prompt restyles it. <b>Start from</b> above the prompt box knows this — with
+          no reference loaded, the same three briefs come out with a line to describe the medium, line and
+          palette in words where they would otherwise point at &lt;Picture 1&gt;.</li>
     </ul>
     <h4>Two things it is good at</h4>
     <p>The <i>retention_analysis</i> line decides which of these you get, and they are a couple of words apart.</p>
