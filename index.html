@@ -228,6 +228,8 @@
   #shapeSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #shapeSlot .clip-empty svg { width: 18px; height: 18px; }
   #shapeSlot, #trackSlot { margin-bottom: 8px; }          /* breathing room under the slot, empty or loaded */
+  #h3MotionLabel { margin-bottom: 8px; }                  /* the slot is a picture: it needs the air */
+  #tkWay { margin-top: 8px; }
   #trackSlot .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex;
             flex-direction: column; align-items: center; gap: 5px; border-radius: 8px; cursor: pointer;
             color: var(--faint); text-align: center; }
@@ -236,6 +238,7 @@
   /* the preview is the whole point of measuring: it gets the width, not a thumbnail's worth */
   #trackSlot .tk { background: #25242b; border-radius: 8px; overflow: hidden; }
   #trackSlot .tk video { display: block; width: 100%; background: #000; cursor: pointer; }
+  #trackSlot .tk canvas { display: block; width: 100%; background: #0f0e13; cursor: pointer; }
   #trackSlot .meta { display: flex; align-items: center; gap: 8px; padding: 7px 8px; }
   #trackSlot .meta b { flex: 1; min-width: 0; font-size: 11px; font-weight: 400; color: #c9c7cf;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -793,8 +796,25 @@
       <div class="sublabel" id="h3MotionLabel">Motion</div>
       <div id="trackSlot"></div>
       <input type="file" id="trackFile" accept="video/*" hidden>
+      <div class="seg" id="tkWay" style="grid-template-columns:1fr 1fr">
+        <button data-w="measure" title="Track a real video's movement — drop a clip, or one of your own runs, in the slot above">measure</button>
+        <button data-w="field" title="Draw the paths from a formula — instant, no clip needed">field</button>
+      </div>
       <div class="adnote" id="trackNote" style="margin:6px 0 0"></div>
       <div id="tkDials" hidden>
+        <div id="fieldRow" hidden>
+          <div class="sublabel">Field</div>
+          <select class="model" id="fdKind" title="Which motion to draw. The preview above animates it as you change these."></select>
+          <div class="adnote" id="fdNote" style="margin:6px 0 12px"></div>
+          <div class="slider" id="fdAmtRow">
+            <div class="slider-head"><b id="fdAmtLabel" title="How far it goes. The whole field is fitted inside the frame, so a big Amount travels further and starts closer in.">Amount</b><span id="fdAmtV"></span></div>
+            <input type="range" id="fdAmt">
+          </div>
+          <div class="slider" id="fdAngRow">
+            <div class="slider-head"><b title="Which way it travels: 0° is to the right, 90° straight up.">Direction</b><span id="fdAngV"></span></div>
+            <input type="range" id="fdAng" min="0" max="350" step="10">
+          </div>
+        </div>
         <div class="sublabel">Paths</div>
         <div class="seg" id="tkPaths" style="grid-template-columns:repeat(4,1fr)"></div>
         <div class="slider" id="tkPullRow" style="margin-top:12px">
@@ -1398,7 +1418,9 @@ function fitBox(aw, ah) {
   return [fit(aw), fit(ah)];
 }
 function sizeFrom() {                        // what decides the box: 'motion' | 'clip' | 'aspect'
-  if (wf().tracks && state.tracks) return 'motion';
+  // Only measured motion sets the shape, because its coordinates came off a video of that shape. A
+  // drawn field has no shape of its own: it is drawn to fit whatever is already decided.
+  if (wf().tracks && measured()) return 'motion';
   return wf().video && state.clip ? 'clip' : 'aspect';
 }
 function comfySize() {
@@ -1424,7 +1446,7 @@ function h3ClipSeconds() {
   const w = wf();
   const d = w.video && state.clip?.source?.duration
     ? (state.range[1] - state.range[0]) * state.clip.source.duration
-    : (w.tracks && state.tracks?.seconds) || 0;
+    : (w.tracks && measured()?.seconds) || 0;
   if (!d) return 0;
   return Math.min(w.max_seconds || 15, Math.max(w.min_frames / w.fps, d));
 }
@@ -1454,9 +1476,26 @@ function renderH3() {
   $('h3RefsLabel').hidden = $('h3Refs').hidden = !w.refs;   // h3File stays hidden: it is the picker
   $('h3LenLabel').hidden = $('h3Secs').hidden = $('h3Len').hidden = !w.seconds.length;
   $('h3MotionLabel').hidden = $('trackSlot').hidden = $('trackNote').hidden = !w.tracks;
+  $('tkWay').hidden = !(w.tracks && FIELD_KINDS.length);   // no field kinds (old server): no choice to offer
   // How many paths to measure, and how hard they pull: the two dials that matter once the motion is
   // being used as a signature rather than a match for what is in the picture.
   $('tkDials').hidden = !w.tracks;
+  // Drawn motion: the kind, and the one or two dials that kind reads. Both off the list the server
+  // sends, so a new field is an entry in engine/fields.py and nothing here.
+  const fd = fieldCfg(), fk = fieldSpec();
+  $('fieldRow').hidden = !(w.tracks && isField() && fk);
+  if (w.tracks && isField() && fk) {
+    $('fdKind').innerHTML = FIELD_KINDS.map(k =>
+      `<option value="${k.id}"${k.id === fk.id ? ' selected' : ''}>${k.label}</option>`).join('');
+    $('fdNote').textContent = fk.note || '';
+    const a = fk.amount || { min: 0, max: 1, step: 0.05 };
+    $('fdAmt').min = a.min; $('fdAmt').max = a.max; $('fdAmt').step = a.step;
+    $('fdAmt').value = fieldAmount();
+    $('fdAmtV').textContent = (+fieldAmount()).toFixed(2);
+    $('fdAngRow').hidden = !fk.angle;
+    $('fdAng').value = fd.angle || 0;
+    $('fdAngV').textContent = `${Math.round(fd.angle || 0)}\u00b0`;
+  }
   if (w.tracks) {
     $('tkPaths').innerHTML = TRACK_PTS.map(n =>
       `<button data-n="${n}" class="${n === trackPts() ? 'on' : ''}" title="${
@@ -1480,11 +1519,11 @@ function renderH3() {
   $('h3Secs').innerHTML = chips.map(v => {
     const got = h3Frames(v === 'auto' ? h3ClipSeconds() || 5 : v);
     return `<button data-s="${v}" class="${v === picked ? 'on' : ''}" title="${v === 'auto'
-      ? (w.tracks && state.tracks ? 'Match the motion you measured' : 'Match the trimmed clip')
+      ? (w.tracks && measured() ? 'Match the motion you measured' : 'Match the trimmed clip')
       : `${v} seconds asked`} — ${got} frames, ${(got / w.fps).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
   }).join('');
   $('h3Len').textContent = `${n} frames · ${(n / w.fps).toFixed(1)}s at ${+w.fps.toFixed(2)}fps`
-    + (picked === 'auto' ? (w.tracks && state.tracks ? ' · matching the motion' : ' · matching the clip') : '');
+    + (picked === 'auto' ? (w.tracks && measured() ? ' · matching the motion' : ' · matching the clip') : '');
   // With a clip loaded the output takes its shape, so there is nothing to pick
   $('h3AspectRow').hidden = sizeFrom() !== 'aspect';
   [...$('h3Sound').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === (state.h3sound !== false)));
@@ -1512,7 +1551,8 @@ function renderH3() {
 // because flow chaining drifts and watching it is the only honest way to know whether it drifted far.
 var trackJob = null, trackPoll = null, lastTrim = [];   // var: read by renderTracks above this line
 function renderTracks() {
-  const t = state.tracks, busy = trackJob;
+  const t = state.tracks, busy = trackJob, way = motionWay();
+  [...$('tkWay').children].forEach(b => b.classList.toggle('on', b.dataset.w === way));
   // Tracks measured before the tracker reported its span have no seconds, and "auto" has nothing to
   // match. Rather than make you measure again for it, read the span back off the source once.
   if (t && t.seconds == null && t.source && !t.asking) {
@@ -1535,7 +1575,27 @@ function renderTracks() {
       trackPoll = null; trackJob = null; renderTracks();
       setStatus('stopped measuring', 'done');
     };
-  } else if (t) {
+  } else if (t && t.field && way === 'field') {
+    // Drawn, so there are no frames of its own to draw it on: it animates over the picture it is about
+    // to move instead, live, which is also how the dials below get their feedback.
+    $('trackSlot').innerHTML = `<div class="tk"><canvas id="tkCanvas"
+        title="The field, animating over your first reference. Click to pause."></canvas>
+      <div class="meta"><b>${t.label || 'Field'} \u00b7 ${t.paths} paths \u00b7 ${t.frames} frames \u00b7 ${t.width}\u00d7${t.height}</b>
+      <a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>
+      <button id="tkDel" title="Remove">\u2715</button></div></div>`;
+    const ref = h3Refs()[0];
+    if ((ref?.path || '') !== (fieldBg?.path || ''))     // the backdrop, when there is a reference
+      fieldBg = ref ? { path: ref.path, img: Object.assign(new Image(),
+        { src: `/api/image/file?${qs({ path: ref.path })}` }) } : null;
+    $('tkCanvas').onclick = () => { fieldPaused = !fieldPaused; };
+    $('tkCopy').onclick = copyTracks;
+    $('tkDel').onclick = () => {               // off the field, and back to the side that takes a video
+      state.tracks = null; state.tracksOther = null; state.motionWay = 'measure';
+      fieldWant = ''; stopField(); renderH3(); paintSums(); save();
+    };
+    startField();
+  } else if (t && !t.field) {
+    stopField();
     $('trackSlot').innerHTML = `<div class="tk">
       <video src="/api/video/file?${qs({ path: t.preview })}" autoplay muted loop playsinline
              title="What was measured, drawn on the frames it came off. Click to pause."></video>
@@ -1546,19 +1606,31 @@ function renderTracks() {
       e.target.paused ? e.target.play() : e.target.pause();
     $('tkCopy').onclick = copyTracks;
     $('tkDel').onclick = () => { state.tracks = null; renderTracks(); save(); };
+  } else if (way === 'field') {
+    stopField();                                // only reached if a draw failed, or after \u2715
+    $('trackSlot').innerHTML = `<div class="clip-empty" title="Draw the paths from a formula \u2014 no clip needed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>draw a field</div>`;
   } else {
+    stopField();
     $('trackSlot').innerHTML = `<div class="clip-empty" title="Measure a video's motion as path data \u2014 click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>a video to track \u2014 yours, or a run</div>`;
   }
   // A path carries one point per frame, so tracks measured against one Length do not fit another:
   // switching from H3's 124 to WanMove's 81 would hand the model the wrong shape, and you would only
   // find out after paying for it. Say so here instead.
   const want = h3Frames(h3Seconds()), box = comfySize();
-  const why = !t ? '' : t.frames !== want ? `${t.frames} points per path, but Length is ${want} frames`
+  // A field costs milliseconds of numpy and nothing on the GPU, so a changed Length or box redraws it
+  // rather than telling you to do it again. Nothing is retried after a failure: fieldWant still holds
+  // the key that failed, so this only fires once per change.
+  if (t && t.field && wf().tracks && !fieldBusy && !fieldMatches() && fieldKey() !== fieldWant) {
+    drawField(); return;
+  }
+  const why = !t || t.field ? '' : t.frames !== want ? `${t.frames} points per path, but Length is ${want} frames`
             : (t.width !== box[0] || t.height !== box[1])
               ? `measured for ${t.width}\u00d7${t.height}, but this renders at ${box[0]}\u00d7${box[1]}` : '';
   $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
     : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
+    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows these ${t.paths} paths`
     : t ? `these go up with the render \u2014 ${wf().label} follows them`
+    : way === 'field' ? 'paths from a formula \u2014 click to draw them'
         : 'optical flow, measured off the clip you drop here';
   if (why) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
 }
@@ -1572,6 +1644,8 @@ async function copyTracks() {
 async function startTracks(path, name, trim) {
   lastTrim = trim || [];                       // kept so "measure again" can repeat the same span
   if (trackJob) return setStatus('already tracking', 'bad');
+  if (isField()) { state.tracksOther = state.tracks; state.tracks = null; stopField(); }
+  state.motionWay = 'measure';                 // a video was dropped: that is the side you are on
   let box = comfySize();                     // the box this very video implies, so nothing mismatches
   try {
     const pr = await api(`/api/video/probe?${qs({ path })}`);
@@ -1606,13 +1680,147 @@ function watchTracks() {
     if (['done', 'failed', 'cancelled'].includes(j.state)) {
       clearInterval(trackPoll); trackPoll = null;
       const ok = j.state === 'done' && j.result;
-      if (ok) { state.tracks = { ...j.result, trim: lastTrim }; save(); }
+      if (ok) { state.tracks = { ...j.result, trim: lastTrim }; state.motionWay = 'measure'; save(); }
       trackJob = null; renderTracks();
       setStatus(ok ? `${j.result.paths} paths · ${j.result.held} held all the way`
                    : `tracking ${j.state}: ${j.error || ''}`, ok ? 'done' : 'bad');
     }
   }, 1000);
 }
+// ---- Fields: the same path data, drawn instead of measured
+// Measured tracks turned out to be a motion *signature* rather than a match for what is in the picture
+// — the paths land where the clip's features were, which in another picture is usually nothing, and the
+// model still moves. Once that is what they are for, a video is a roundabout way to ask for "drift left":
+// these are the same curves, straight from a formula, through the same slot and the same JSON.
+var FIELD_KINDS = [], fieldWant = '', fieldBusy = false, fieldTimer = 0;   // var: read from above
+var fieldRaf = 0, fieldFrame = 0, fieldPaused = false, fieldBg = null;
+const TK_COLOURS = ['#ff6a3d', '#ffb36b', '#78c8ff', '#a0ffa0',
+                    '#ff8cc8', '#fff078', '#b4a0ff', '#78ffe6'];   // as engine/tracks.py draws them
+function measured() { return state.tracks && !state.tracks.field ? state.tracks : null; }
+function isField() { return !!state.tracks?.field; }
+function fieldCfg() { return (state.field ||= { kind: 'pan', amount: null, angle: 0 }); }
+function fieldSpec(id) {
+  return FIELD_KINDS.find(k => k.id === (id || fieldCfg().kind)) || FIELD_KINDS[0] || null;
+}
+function fieldAmount() {                      // the dial, or this kind's own default the first time
+  const k = fieldSpec(), d = k?.amount?.default ?? 0.45, v = fieldCfg().amount;
+  if (v == null) return d;
+  return Math.max(k?.amount?.min ?? -1, Math.min(k?.amount?.max ?? 1, +v));
+}
+// What to ask the server for, given everything the panel now says. Also the key the redraw check reads:
+// identical request, identical field, nothing to do.
+function fieldBody() {
+  const k = fieldSpec(), c = fieldCfg(), [width, height] = comfySize();
+  return { kind: k ? k.id : 'pan', points: trackPts(), length: h3Frames(h3Seconds()),
+           width, height, amount: +(+fieldAmount()).toFixed(3),
+           angle: k && k.angle ? +(c.angle || 0) : 0, seed: k && k.seed ? state.seed : 0 };
+}
+function fieldKey() { return JSON.stringify(fieldBody()); }
+// Is the field in hand the one the panel is now asking for? Compared against the result rather than
+// the request, so a field loaded from a saved session is left alone when it already matches — and
+// redrawn when it does not, which is also how a changed Length or box is picked up.
+function fieldMatches() {
+  const b = fieldBody(), t = state.tracks;
+  return !!t && t.field === b.kind && t.paths === b.points && t.frames === b.length
+    && t.width === b.width && t.height === b.height && (t.seed || 0) === b.seed
+    && Math.abs((t.amount ?? 0) - b.amount) < 1e-3 && Math.abs((t.angle ?? 0) - b.angle) < 1e-3;
+}
+async function drawField(fresh) {
+  if (!FIELD_KINDS.length) {
+    fieldWant = fieldKey();                    // said once, not once per repaint
+    return setStatus('drawn fields need the new server \u2014 restart run.bat', 'bad');
+  }
+  const body = fieldKey();
+  if (!fresh && body === fieldWant && isField()) return;
+  fieldWant = body; fieldBusy = true; fieldPaused = false;
+  try {
+    const r = await api('/api/fields', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    if (fieldWant !== body) return;            // a newer drag landed while this was in flight
+    if (!state.tracks?.field && state.tracks) state.tracksOther = state.tracks;   // keep what was measured
+    state.tracks = r; state.motionWay = 'field';
+  } catch (e) {
+    if (!isField()) state.motionWay = 'measure';          // nothing drawn: do not strand the slot
+    setStatus('could not draw the field: ' + e.message, 'bad');
+  } finally { fieldBusy = false; }
+  renderH3(); paintSums(); save();
+}
+function fieldSoon() {                         // dragging a slider: one request when it settles
+  clearTimeout(fieldTimer);
+  fieldTimer = setTimeout(() => drawField(), 110);
+}
+// The animation. A measured track gets an mp4 because it has frames of its own to be checked against;
+// a field has none, so it is drawn here over the first reference — which also means the dots follow
+// the dials while they are being dragged, instead of after a render.
+function startField() { if (!fieldRaf) fieldRaf = requestAnimationFrame(fieldLoop); }
+function stopField() { if (fieldRaf) cancelAnimationFrame(fieldRaf); fieldRaf = 0; }
+function fieldLoop() {
+  fieldRaf = 0;
+  const cv = $('tkCanvas');
+  if (!cv || !isField() || $('trackSlot').hidden) return;     // the slot moved on: stop the loop
+  paintField();
+  fieldRaf = requestAnimationFrame(fieldLoop);
+}
+function paintField() {
+  const cv = $('tkCanvas'), t = state.tracks;
+  if (!cv || !t?.tracks?.length || !cv.clientWidth) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(w * t.height / Math.max(1, t.width));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  cv.style.height = Math.round(h / dpr) + 'px';
+  const g = cv.getContext('2d'), k = w / Math.max(1, t.width);
+  if (!fieldPaused) fieldFrame = Math.floor(performance.now() / 1000 * Math.max(1, wf().fps || 16)) % t.frames;
+  const i = Math.min(t.frames - 1, Math.max(0, fieldFrame)), from = Math.max(0, i - 12);
+  g.fillStyle = '#0f0e13'; g.fillRect(0, 0, w, h);
+  if (fieldBg?.img?.complete && fieldBg.img.naturalWidth) {
+    g.globalAlpha = 0.5; g.drawImage(fieldBg.img, 0, 0, w, h); g.globalAlpha = 1;
+  }
+  g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.lineCap = 'round';
+  t.tracks.forEach((p, idx) => {
+    const c = TK_COLOURS[idx % TK_COLOURS.length];
+    g.strokeStyle = c; g.fillStyle = c;
+    g.beginPath();
+    for (let sx = from; sx <= i; sx++) {
+      const q = p[sx]; if (!q) break;
+      sx === from ? g.moveTo(q.x * k, q.y * k) : g.lineTo(q.x * k, q.y * k);
+    }
+    g.stroke();
+    const q = p[i] || p[0];
+    g.beginPath(); g.arc(q.x * k, q.y * k, 3 * dpr, 0, 6.2832); g.fill();
+  });
+}
+// Measure or draw: one switch under the slot, and the one you are not using is kept rather than
+// thrown away \u2014 measuring costs GPU time, so going back to it should not mean doing it again.
+function motionWay() {
+  return state.motionWay === 'field' || state.motionWay === 'measure' ? state.motionWay
+       : isField() ? 'field' : 'measure';
+}
+function setMotionWay(way) {
+  if (way === motionWay()) return;
+  const keep = state.tracks || null, stash = state.tracksOther || null;
+  state.tracks = stash && !!stash.field === (way === 'field') ? stash : null;
+  state.tracksOther = keep;
+  state.motionWay = way;
+  if (way === 'field' && !state.tracks) { save(); return void drawField(true); }
+  renderH3(); paintSums(); save();
+  setStatus(state.tracks
+    ? (way === 'field' ? `back to the ${state.tracks.label} field you drew` : 'back to the motion you measured')
+    : 'drop a clip, or a run, to measure its motion', 'done');
+}
+$('tkWay').onclick = e => {
+  const w = e.target.dataset.w;
+  if (w) setMotionWay(w);
+};
+$('fdKind').onchange = e => { fieldCfg().kind = e.target.value; fieldCfg().amount = null; drawField(true); };
+$('fdAmt').oninput = e => {
+  fieldCfg().amount = +e.target.value;
+  $('fdAmtV').textContent = (+e.target.value).toFixed(2);
+  fieldSoon();
+};
+$('fdAng').oninput = e => {
+  fieldCfg().angle = +e.target.value;
+  $('fdAngV').textContent = `${Math.round(+e.target.value)}\u00b0`;
+  fieldSoon();
+};
 const TRACK_PTS = [8, 16, 24, 48];
 function trackPts() { return TRACK_PTS.includes(+state.trackPts) ? +state.trackPts : 24; }
 function comfyPull() {
@@ -1623,14 +1831,19 @@ function comfyPull() {
 $('tkPaths').onclick = e => {
   const n = +e.target.dataset.n; if (!n) return;
   state.trackPts = n; renderH3(); save();
-  if (state.tracks) setStatus(`${n} paths next time \u2014 measure again to use it`, 'done');
+  if (isField()) drawField();                  // drawn: it just redraws with that many
+  else if (state.tracks) setStatus(`${n} paths next time \u2014 measure again to use it`, 'done');
 };
 $('tkPull').oninput = e => {
   (state.comfyPull ||= {})[wf().id] = +e.target.value;
   $('tkPullV').textContent = (+e.target.value).toFixed(2);
   paintSums(); save();
 };
-$('trackSlot').onclick = e => { if (e.target.closest('.clip-empty')) $('trackFile').click(); };
+$('trackSlot').onclick = e => {
+  if (!e.target.closest('.clip-empty')) return;
+  if (motionWay() === 'field') return void drawField(true);
+  $('trackFile').click();
+};
 $('trackFile').onchange = e => {
   const file = e.target.files[0]; e.target.value = '';
   if (!file || !/^video\//.test(file.type)) return setStatus('tracking needs a video', 'bad');
@@ -2128,7 +2341,7 @@ function paintSums() {
   set('prompt', state.keys.length && !isH3() ? `${state.keys.length + 1} keyframes` : '');
   set('model', isH3()
     ? [wf().label, h3Refs().length && `${h3Refs().length} ref`,
-       state.tracks && wf().tracks && `${state.tracks.paths} paths`,
+       state.tracks && wf().tracks && `${isField() ? state.tracks.label + ' \u00b7 ' : ''}${state.tracks.paths} paths`,
        wf().strength && wf().tracks && state.tracks && `pull ${(+comfyPull()).toFixed(2)}`]
       .filter(Boolean).join(' · ')
     : `${modeCfg().label} · ${shortName(checkpointPath())}`);
@@ -2817,6 +3030,7 @@ function renderControls() {
 // unlocked = each run rolls a new one. The seed a run actually used is saved with it.
 const randomSeed = () => Math.floor(Math.random() * 4294967295);
 function renderSeed() {
+  if (isH3() && isField() && fieldSpec()?.seed && wf().tracks) fieldSoon();   // Drift is seeded: a roll redraws it
   $('seed').value = state.seed; $('seed').disabled = !state.seedLock;
   $('seedLock').textContent = state.seedLock ? '🔒' : '🔓';
   $('seedLock').classList.toggle('on', state.seedLock);
@@ -3321,6 +3535,35 @@ const HELP = {
        render — that last one matters, because a LoadVideo node reports the file it read in exactly the shape of
        a real output. The file has the full list at the top. No Python, and DWARP skips an entry whose graph is
        missing rather than offering it and then failing.</p>
+    <h4>Motion — the paths a model follows</h4>
+    <p>A workflow built on a motion-control model (<b>WanMove</b>) shows a <b>Motion</b> slot, and what goes in
+       it is a list of paths — one point per output frame — that the model drags the picture along. There are
+       two ways to fill it.</p>
+    <p><b>Measure a video.</b> Drop in footage, or one of your own warp renders, and DWARP tracks it with the same
+       optical flow the warp runs on, then hands back the path data plus a preview with the dots drawn on your
+       frames. It holds the GPU for a moment, like an enhance. What comes out is a motion <i>signature</i>, not a
+       match for what is in your picture: the paths sit where the clip's features were, which in another picture
+       is often nothing at all, and the model still moves. Clips with a few big coherent movements — a slow pan,
+       a figure crossing, smoke — read far better than busy ones.</p>
+    <p><b>Or draw a field.</b> If a signature is what it is, no video is needed: pick a <b>Field</b> and the paths
+       come from a formula, instantly, with no GPU at all. The preview animates over your first reference while
+       you move the dials, so you can see what the model is going to be told. <b>Amount</b> is how far it goes,
+       <b>Direction</b> which way (where the field has one), and <b>Paths</b> how many — a few read as camera
+       drift, a dense field churns the whole surface. The motion eases in and out rather than starting at full
+       speed, and the whole set of paths is fitted inside the frame, so a big Amount travels further and begins
+       closer in.</p>
+    <table>
+      <tr><td><b>Pan</b></td><td>Everything drifts one way together — the plainest camera move.</td></tr>
+      <tr><td><b>Push / pull</b></td><td>Out from the centre, or in towards it with a negative Amount.</td></tr>
+      <tr><td><b>Orbit</b></td><td>The frame turns about its centre.</td></tr>
+      <tr><td><b>Swirl</b></td><td>A turn strongest at the centre and dying off outwards: a vortex.</td></tr>
+      <tr><td><b>Wave</b></td><td>Travel with a sway across it, each path a little behind the last.</td></tr>
+      <tr><td><b>Drift</b></td><td>No common direction — every path wanders its own way. The <b>seed</b> changes it.</td></tr>
+    </table>
+    <p>Measured paths set the render's shape, because their coordinates are pixels in the frame they were
+       measured against. A drawn field has no shape of its own, so it follows the size you have picked and is
+       redrawn whenever the Length or the box changes. <b>copy</b> on the slot puts the JSON on the clipboard,
+       for pasting into a ComfyUI path widget by hand; a render here does not need that.</p>
     <h3>H3 · Pika Flex — a clip with sound</h3>
     <p>The workflow DWARP ships with: <b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. H3 is also why this
        mode exists:
@@ -5008,8 +5251,11 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
   state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true; state.comfyWf ??= '';
-  state.tracks ??= null;                    // measured motion, if any: see renderTracks
+  state.tracks ??= null;                    // motion, measured or drawn, if any: see renderTracks
   state.trackPts ??= 24; state.comfyPull ??= {};   // how many paths, and how hard each workflow pulls
+  state.field ??= { kind: 'pan', amount: null, angle: 0 };    // the dials a drawn field was last set to
+  state.motionWay ??= state.tracks?.field ? 'field' : 'measure';   // which side of the switch
+  state.tracksOther ??= null;                 // the other side's motion, kept while you are not on it
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
@@ -5019,6 +5265,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   MOTION = await api('/api/motion').catch(() => ({ modules: [], loras: [], lcm_lora: null }));
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
+  FIELD_KINDS = (await api('/api/fields').catch(() => ({ kinds: [] }))).kinds || [];   // drawn motion
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned
   if (POST_OPTS?.active?.kind === 'tracks') { trackJob = POST_OPTS.active; watchTracks(); }

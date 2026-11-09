@@ -83,7 +83,7 @@
       "id": "wanmove_480p",
       "label": "WanMove · motion control",
       "short": "wanmove",
-      "model": "Wan 2.1 + WanMove, lightx2v distill LoRA",
+      "model": "Wan 2.1 + WanMove fp8, 20 steps CFG 6 (er_sde)",
       "note": "Image to video along paths. One picture plus measured motion: the picture stays, and whatever the tracks do is what moves. Drop a clip (or one of your renders) into Motion to measure them. No sound. 16 fps, 480p-class.",
       "graph": "video_wanmove_480p_hallucination.json",
       "saver": "235",

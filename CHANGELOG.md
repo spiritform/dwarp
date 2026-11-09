@@ -2,6 +2,25 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-09
+
+- **Motion you draw instead of measure.** Measured tracks turned out to be a motion *signature* rather
+  than a match for what is in the picture, so the video was only ever a roundabout way of asking for
+  "drift left" or "turn slowly". The Motion slot now takes a **Field** as well: a **measure | field**
+  switch under it picks which, and whichever side you are not on is kept rather than thrown away, so
+  going back to a track you measured never means measuring it again. Pick one of six fields — **Pan**,
+  **Push / pull**, **Orbit**, **Swirl**, **Wave**, **Drift** — set **Amount**, **Direction** and
+  **Paths**, and the same path JSON comes out of a formula in milliseconds, with no clip and no GPU.
+  It is the identical format through the identical slot, so WanMove cannot tell the difference.
+- **The field animates while you set it.** A measured track gets an mp4 because it has frames of its own
+  to be checked against; a drawn one has none, so it is drawn on the panel over your first reference —
+  dots and trails, live, following the dials as you drag them. Click it to pause.
+- **A drawn field follows the render instead of dictating it.** Measured paths set the output's shape,
+  because their coordinates are pixels in the frame they were measured against. A field has no shape of
+  its own, so it takes the size and Length you picked and is silently redrawn when either changes —
+  no mismatch warning to clear, because redrawing costs nothing. **Drift** reads the seed, so a roll
+  gives a different wander.
+
 ## 2026-11-08
 
 - **WanMove joins the Workflow list.** Wan 2.1 + WanMove with the lightx2v distill LoRA: one picture

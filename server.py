@@ -755,6 +755,33 @@ def build_app() -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc)) from None
 
+    @app.get("/api/fields")
+    def field_kinds():
+        """The authored motion fields this install offers, with the dials each one reads. The panel
+        builds its controls from this, so a new field is an entry in engine/fields.py and no page edit."""
+        from engine import fields
+        return {"kinds": fields.KINDS}
+
+    @app.post("/api/fields")
+    async def make_field(request: Request):
+        """A motion field drawn from a formula rather than measured off a clip. Milliseconds of numpy,
+        so unlike tracking it answers in the request instead of going on the queue, and it hands the
+        points back with the file so the page can animate them without reading it again."""
+        from engine import fields
+        body = await request.json()
+        try:
+            return fields.make(
+                INPUTS / "tracks", kind=str(body.get("kind") or "pan"),
+                points=max(1, min(128, int(body.get("points", 24)))),
+                length=max(2, min(1024, int(body.get("length", 81)))),
+                width=max(16, min(4096, int(body.get("width", 720)))),
+                height=max(16, min(4096, int(body.get("height", 720)))),
+                amount=max(-1.0, min(1.0, float(body.get("amount", 0.45)))),
+                angle=float(body.get("angle", 0)) % 360.0,
+                seed=int(body.get("seed", 0)))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, detail=f"could not draw that field: {exc}") from None
+
     @app.get("/api/tracks/file")
     def tracks_file(path: str):
         """One tracks JSON, to show or to copy. Only out of the tracks folder: this reads a file by
