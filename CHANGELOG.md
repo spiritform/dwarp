@@ -4,6 +4,14 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **Motion is translated to the render, never refused by it.** A path node takes exactly one point per
+  frame, so motion drawn at 3s and rendered at 5s used to come back as an error telling you to do it
+  again. That is a refusal over arithmetic. `fit_tracks()` re-spaces the paths to the render's frame
+  count instead: the shape you drew is untouched, it simply takes the new number of frames to describe
+  it, the ends stay exactly where you put them, and anchors hold their point at any length. The log
+  says it happened. The panel still redraws the field first when it can — a redraw re-eases the
+  motion where the engine can only re-space it — and a render now waits for that rather than leaving
+  with the old file, which is how the mismatch got out in the first place.
 - **Render in the shape of your picture.** Aspect gained a **ref** button: the box takes the first
   reference's own proportions, so none of it is cropped away — and until you click Aspect yourself,
   that is what a loaded picture gets. Give a model one picture and the obvious output is that picture

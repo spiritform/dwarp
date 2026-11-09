@@ -2044,6 +2044,8 @@ function setMotionWay(way) {
   state.tracks = stash && !!stash.field === (way === 'field') ? stash : null;
   state.tracksOther = keep;
   state.motionWay = way;
+  fieldWant = '';                              // what comes back out of the stash was fitted to an
+                                               // older panel; let the redraw check have its say
   if (way === 'field' && !state.tracks) { save(); return void wantField(true); }
   renderH3(); paintSums(); save();
   setStatus(state.tracks
@@ -4583,6 +4585,14 @@ async function startJob(kind) {
   if (kind !== 'refine' && state.i2v && !state.image && !isH3()) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
+  // A drawn field follows the panel by itself, but a redraw is a round trip to the server. Change
+  // Length and hit Render inside that gap and the job leaves with the old path - one point per frame
+  // is the one rule the graph enforces, so it comes back refused. Catch up first; it costs
+  // milliseconds, and the alternative is finding out after paying for the GPU.
+  if (kind !== 'refine' && isH3() && wf().tracks && isField() && !fieldMatches()) {
+    setStatus('fitting the motion to this render…', 'live');
+    await drawField(true);                     // redrawn at this Length, eased the way it was drawn.
+  }                                            // If that fails the engine still fits it, so carry on.
   setButtons(true);
   setStatus(`${name} · starting…`, 'live'); setBusy(true, 'starting…');
   let built;

@@ -95,6 +95,39 @@ def track_list(text: str) -> list:
     return [t for t in data if isinstance(t, list) and t]
 
 
+def fit_tracks(got: list, frames: int) -> list:
+    """The same paths, re-spaced to one point per frame of the render that is about to run.
+
+    A path node takes exactly one point per frame, and Length is a thing the panel changes freely —
+    so motion measured or drawn at one Length used to be refused at another, which is a refusal over
+    arithmetic anyone would expect us to just do. Each path is walked at even steps of its own
+    normalised time: the shape it describes is untouched, it simply takes the new number of frames to
+    describe it. Over fewer frames the same journey happens quicker, which is what asking for a
+    shorter clip of the same motion means.
+    """
+    frames = max(2, int(frames))
+    out = []
+    for path in got:
+        have = len(path)
+        if have == frames:
+            out.append(path)
+            continue
+        if have == 1:                                     # an anchor: the one place it holds
+            out.append([dict(path[0]) for _ in range(frames)])
+            continue
+        step = (have - 1) / (frames - 1)
+        fitted = []
+        for i in range(frames):
+            u = i * step
+            a = min(have - 2, int(u))
+            t = u - a
+            p, q = path[a], path[a + 1]
+            fitted.append({"x": round(p["x"] + (q["x"] - p["x"]) * t, 4),
+                           "y": round(p["y"] + (q["y"] - p["y"]) * t, 4)})
+        out.append(fitted)
+    return out
+
+
 def graph_of(w: dict) -> dict:
     return json.loads((COMFY / w["graph"]).read_text(encoding="utf-8"))
 
@@ -660,10 +693,10 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
         got = track_list(tracks)
         if not got:
             raise CloudError(f"{Path(job.comfy_tracks).name} holds no usable paths")
-        if len(got[0]) != frames:
-            raise CloudError(
-                f"the motion has {len(got[0])} points per path but this render is {frames} frames. "
-                f"A path carries one point per frame \u2014 measure the motion again at this Length.")
+        was = len(got[0])
+        if was != frames:                         # arithmetic, not a reason to refuse someone's work
+            got = fit_tracks(got, frames)
+            log(f"  fitted the motion from {was} points per path to this render's {frames} frames")
         tracks = json.dumps(got)                  # whatever shape it was saved in, as the node's own
         log(f"  tracks {Path(job.comfy_tracks).name} \u00b7 {len(got)} paths"
             f" \u00b7 {len(got[0])} points each")
