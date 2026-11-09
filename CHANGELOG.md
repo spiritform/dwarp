@@ -6,7 +6,8 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 - **The runs strip is easier to move.** Grab it anywhere but a thumbnail and throw it sideways, or roll the
   wheel over it — no aiming at the scrollbar, which is also now a 12 px target. Dragging a card no longer
-  paints its label blue.
+  paints its label blue. The thumbnail itself is left alone: it still picks a run, and still drags one onto
+  a clip or picture slot.
 - **You can hear an H3 render in the viewport.** ▶ on a run with sound plays its mp4 over the stage instead of
   stepping the PNGs — the frames never had the audio. Scrubbing and every other mode are unchanged.
 - **H3 ☁ — a new Model tab that makes a clip with sound.** [MiniMax-H3](https://huggingface.co/MiniMaxAI) through

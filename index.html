@@ -573,7 +573,7 @@
   /* the selection ring sits outside each thumbnail: room on every side so the scroller doesn't clip it */
   .runs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 3px; margin: -4px -4px 0; min-height: 104px;
            cursor: grab; overscroll-behavior-x: contain; }
-  .runs .thumb { cursor: pointer; }            /* the picture is for picking; the rest of the strip is a handle */
+  .runs .thumb { cursor: pointer; }            /* the picture picks a run and drags it to a slot; the rest of the strip is a handle */
   .runs.dragging, .runs.dragging .run, .runs.dragging .thumb { cursor: grabbing; }
   /* The page-wide 6px bar is too fine to aim at down here. This one is the same 6px of paint inside a
      12px hit area (the border is clipped away), so it is easy to grab without looking heavy. */
@@ -585,7 +585,8 @@
   .runs .empty { color: var(--faint); font-size: 12px; align-self: center; }
   .run { flex: none; width: 124px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
-  .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; }
+  /* the thumbnail stays natively draggable: that is how a run is dropped on a video / picture slot */
+  .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
   .run .thumb .num { position: absolute; top: 4px; left: 4px; height: 16px; line-height: 16px; font-size: 11px; font-weight: 600;
                      color: #fff; background: rgba(0,0,0,.75); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover: dark like the ✕ */
