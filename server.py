@@ -467,6 +467,8 @@ def build_app() -> FastAPI:
                 path = job.get("h3_video") if key == "h3_video" else job["h3_refs"][int(key[8:-1])]
                 if path and not os.path.isfile(path):
                     raise HTTPException(422, detail=[{"message": f"{'clip' if key == 'h3_video' else 'reference'} not found: {path!r}"}])
+            if job.get("comfy_tracks") and not os.path.isfile(job["comfy_tracks"]):
+                raise HTTPException(422, detail=[{"message": f"tracks not found: {job['comfy_tracks']!r}"}])
             if not job.get("h3_video") and not (job.get("h3_refs") or []):
                 raise HTTPException(422, detail=[{"message": "this workflow needs a clip, or a reference picture"}])
         else:
@@ -731,6 +733,38 @@ def build_app() -> FastAPI:
                               slowmo=bool(body.get("slowmo")), interp=interp)
         except RuntimeError as exc:
             raise HTTPException(409, detail=str(exc))
+
+    @app.post("/api/tracks")
+    async def make_tracks(request: Request):
+        """Track a video's motion into path data a motion-control model can follow. The clip can be
+        anything on disk — your footage, or a warp render, which is the interesting one."""
+        body = await request.json()
+        src = body.get("path") or ""
+        if not src or not os.path.isfile(src):
+            raise HTTPException(422, detail=f"no video at {src!r}")
+        if jobs.busy():
+            raise HTTPException(409, detail="Wait for the render to finish — both need the GPU")
+        try:
+            return post.start_tracks(
+                src, INPUTS / "tracks",
+                points=max(1, min(128, int(body.get("points", 24)))),
+                length=max(2, min(1024, int(body.get("length", 81)))),
+                width=max(16, min(4096, int(body.get("width", 720)))),
+                height=max(16, min(4096, int(body.get("height", 720)))),
+                trim=body.get("trim") or None, fps=float(body.get("fps", 16)))
+        except RuntimeError as exc:
+            raise HTTPException(409, detail=str(exc)) from None
+
+    @app.get("/api/tracks/file")
+    def tracks_file(path: str):
+        """One tracks JSON, to show or to copy. Only out of the tracks folder: this reads a file by
+        path, so it is pinned to the one directory DWARP writes them into."""
+        folder = (INPUTS / "tracks").resolve()
+        target = Path(path).resolve()
+        if folder not in target.parents or target.suffix != ".json" or not target.is_file():
+            raise HTTPException(404, detail="Not a tracks file")
+        return FileResponse(target, media_type="application/json",
+                            headers={"Cache-Control": "max-age=600"})
 
     @app.get("/api/post/{job_id}")
     def post_status(job_id: str):

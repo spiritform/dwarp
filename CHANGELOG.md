@@ -4,6 +4,34 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-08
 
+- **WanMove joins the Workflow list.** Wan 2.1 + WanMove with the lightx2v distill LoRA: one picture
+  plus measured motion, and whatever the tracks do is what moves. Pick it and the **Motion** slot appears;
+  drop a clip or one of your own renders in, and the paths DWARP measured go up with the job. It also
+  brings back the graph's own **track visualiser** — the dots drawn on the finished render — as a
+  `tracks` chip under the stage, so the cloud's view of your paths and DWARP's can be compared.
+- **The Comfy tab opens a Workflow picker inside Model**, with only the controls that workflow actually
+  takes under it. Model's own summary line names the workflow and what is loaded into it.
+- **Two dials for driving a picture with motion.** **Paths** (8 / 16 / 24 / 48) is how many trajectories
+  to measure — a few read as camera drift, a dense field churns the whole surface — and **Motion
+  strength** is how hard they pull, from a drift to being dragged along the vectors. Strength is a
+  manifest key, so it appears only for a workflow that has such an input, and is remembered per workflow.
+- **The motion source sets the render size, and Length gets an `auto` that matches it.** Path
+  coordinates are pixels in the output frame, so whatever the motion was measured against decides the
+  shape — measure in one box and render in another and the paths land squashed into part of the picture.
+  After the motion it is the clip, then the Aspect buttons; Aspect hides itself when something else is
+  deciding. If the two ever drift apart, the slot says so and offers to measure again rather than
+  letting the render go out wrong, and the engine refuses one point count against a different frame
+  count before spending anything.
+- **Motion tracks (experimental).** A **Motion** slot on the Workflow card, shown only for a workflow
+  whose manifest asks for tracks: drop a video in — your footage,
+  or one of your own warp renders — and DWARP measures its movement into the path data that motion-control
+  models like Wan-Move follow. It is the same RAFT optical flow the warp already runs, chased frame to
+  frame, with the occlusion test deciding when a point has been lost. Out comes the JSON plus a preview
+  with the dots and trails drawn on your frames, because flow chaining drifts and watching it is the only
+  honest way to know whether it drifted too far. A workflow declares `tracks: {"coords": [node, input]}`
+  and the measured JSON is written straight onto that input when the job goes up; **copy** on the slot
+  puts it on the clipboard for pasting into ComfyUI by hand in the meantime.
+
 - **The H3 tab is now **Comfy**, and H3 is one workflow inside it.** The mode is no longer one model: it runs
   whichever ComfyUI graph is picked in the new **Workflow** dropdown, and the controls under it follow what that
   graph takes — no reference slots in its manifest, no References card; no audio, no Sound switch. Adding one

@@ -110,6 +110,67 @@ def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: 
 
 
 # ------------------------------------------------------------------ models
+def start_tracks(src: str, dest_dir: Path, *, points: int = 24, length: int = 81,
+                 width: int = 720, height: int = 720, trim: list | None = None,
+                 fps: float = 16.0) -> dict:
+    """Track a video on the post queue. It is GPU work like an upscale, and it shares that queue so the
+    two cannot collide; the page polls it at /api/post/{id} exactly as it polls an enhance."""
+    with _lock:
+        if active_job():
+            raise RuntimeError("A post-process job is already running")
+        job = {
+            "id": uuid.uuid4().hex[:12], "run_id": "", "kind": "tracks", "state": "queued",
+            "progress": 0.0, "message": "queued", "error": None, "output": Path(src).name,
+            "frames_in": 0, "frames_out": int(length), "started": time.time(), "cancel": False,
+            "result": None,
+        }
+        _jobs[job["id"]] = job
+    threading.Thread(target=_guarded, daemon=True, args=(
+        _run_tracks, job, src, Path(dest_dir), int(points), int(length), int(width), int(height),
+        trim, float(fps))).start()
+    return job
+
+
+def _guarded(fn, job, *args):
+    """Nothing may leave a job sitting on "queued". A worker thread that dies before its own try --
+    a bad import, the wrong arguments -- prints to the console and is never heard from again, and the
+    page waits for a worker that is already gone. This catches the lot and marks the job failed."""
+    try:
+        fn(job, *args)
+    except BaseException as exc:                 # noqa: BLE001 - the page shows whatever went wrong
+        traceback.print_exc()
+        job["state"] = "failed"
+        job["error"] = job["message"] = f"{exc.__class__.__name__}: {exc}".strip(": ")
+    if job.get("state") in (None, "queued", "running"):      # returned without saying how it went
+        job["state"], job["message"] = "failed", "the worker stopped without finishing"
+
+
+def _run_tracks(job, src, dest_dir, points, length, width, height, trim, fps):
+    # everything inside the try, the import included: a thread that dies above it leaves the job on
+    # "queued" for ever and the page waits on a worker that is already gone
+    try:
+        from engine import tracks as tk
+        job["state"], job["message"] = "running", "reading the clip"
+
+        def on(done, total):
+            if job["cancel"]:
+                raise InterruptedError
+            job["progress"] = done / max(1, total)
+            job["message"] = f"tracking {done}/{total}"
+
+        job["result"] = tk.make(src, dest_dir, points=points, length=length, width=width,
+                                height=height, trim=trim, fps=fps, on=on,
+                                log=lambda m: job.__setitem__("message", m.strip()),
+                                cancelled=lambda: job["cancel"])
+        job["state"], job["progress"], job["message"] = "done", 1.0, "done"
+    except InterruptedError:
+        job["state"], job["message"] = "cancelled", "cancelled"
+    except BaseException as exc:                 # noqa: BLE001 - the page shows whatever went wrong
+        traceback.print_exc()
+        job["state"] = "cancelled" if job["cancel"] else "failed"
+        job["error"] = job["message"] = f"{exc.__class__.__name__}: {exc}".strip(': ')
+
+
 def _rife():
     if "rife" not in _models:
         from vendor.rife_arch import IFNet

@@ -70,6 +70,25 @@ def workflow(wid: str = "") -> dict:
     return next((w for w in found if w["id"] == wid), found[0])
 
 
+def track_list(text: str) -> list:
+    """Motion as the path nodes read it: a list of tracks, each a list of one {x, y} per frame.
+
+    A path editor's own document wraps the same points as {"paths": [{"points": [...]}]}, and DWARP
+    wrote that shape for a while before the node turned out to want the bare list. Both come in here,
+    so a tracks file saved earlier still renders."""
+    try:
+        data = json.loads(text or "[]")
+    except ValueError:
+        return []
+    if isinstance(data, dict):
+        data = [p.get("points") or [] for p in (data.get("paths") or [])]
+    if not isinstance(data, list):
+        return []
+    if data and isinstance(data[0], dict) and "x" in data[0]:
+        data = [data]                              # a single track, handed over unwrapped
+    return [t for t in data if isinstance(t, list) and t]
+
+
 def graph_of(w: dict) -> dict:
     return json.loads((COMFY / w["graph"]).read_text(encoding="utf-8"))
 
@@ -81,6 +100,9 @@ def caps(w: dict) -> dict:
     return {"id": w["id"], "label": w.get("label") or w["id"], "model": w.get("model", ""),
             "short": w.get("short") or w["id"],
             "note": w.get("note", ""), "refs": int((w.get("refs") or {}).get("max", 0)),
+            "tracks": bool(w.get("tracks")), "strength": w.get("strength") or None,
+            "megapixels": float((w.get("size") or {}).get("megapixels", 1.03)),
+            "multiple": int((w.get("size") or {}).get("multiple", 32)),
             "video": bool(w.get("video")), "audio_in": bool((w.get("video") or {}).get("audio")),
             "sound": bool(w.get("sound")), "seconds": length.get("seconds") or [],
             "fps": float(length.get("fps", 24)), "snap": int(length.get("snap", 1)),
@@ -250,7 +272,8 @@ def fit_size(width: int, height: int, size: dict | None = None) -> tuple[int, in
 
 
 def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height: int,
-          frames: int, seed: int, video: str = "", video_audio: bool = False) -> dict:
+          frames: int, seed: int, video: str = "", video_audio: bool = False,
+          tracks: str = "", strength: float | None = None) -> dict:
     """The shipped graph with this job's values on it, placed where the manifest says they go.
 
     The reference pictures replace whatever the graph carries: one LoadImage per picture, wired into the
@@ -264,19 +287,28 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
         at(w["seed"])[w["seed"][1]] = int(seed) % (2 ** 63)
 
     main = g[str(w["node"])]["inputs"]
+
+    def put(where, value, fallback):
+        """A manifest slot is either an input name on the model node, or [node, input] anywhere."""
+        if isinstance(where, (list, tuple)):
+            g[str(where[0])]["inputs"][where[1]] = value
+        else:
+            main[where or fallback] = value
+
     size = w.get("size") or {}
-    main[size.get("width", "width")] = int(width)
-    main[size.get("height", "height")] = int(height)
+    put(size.get("width"), int(width), "width")
+    put(size.get("height"), int(height), "height")
     if w.get("length"):
         unit = (w["length"].get("unit") or "frames")
         main[w["length"].get("input", "length")] = (
             round(frames / float(w["length"].get("fps", 24)), 2) if unit == "seconds" else int(frames))
 
+    for node_id, node in list(g.items()):              # whatever the graph shipped as its example
+        if node.get("class_type") in (w.get("drop") or []):
+            del g[node_id]
+
     spec = w.get("refs") or {}
-    if spec:
-        for node_id, node in list(g.items()):          # the graph's own example pictures go
-            if node.get("class_type") in (w.get("drop") or ["LoadImage"]):
-                del g[node_id]
+    if spec.get("slot"):                               # auto-growing reference slots: one loader each
         for slot in [k for k in main if k.startswith(spec.get("clear", "ref_images."))]:
             del main[slot]
         for i, name in enumerate(refs[:int(spec.get("max", 0))]):
@@ -284,6 +316,16 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
             g[node_id] = {"class_type": "LoadImage", "inputs": {"image": name},
                           "_meta": {"title": f"Picture {i + 1}"}}
             main[spec["slot"].replace("{i}", str(i))] = [node_id, 0]
+    elif spec.get("node") and refs:                    # one picture, onto a loader the graph already has
+        g[str(spec["node"])]["inputs"][spec.get("input", "image")] = refs[0]
+
+    sspec = w.get("strength") or {}
+    if sspec and strength is not None:                 # how hard the conditioning pulls the picture
+        main[sspec.get("input", "strength")] = float(strength)
+
+    tspec = w.get("tracks") or {}
+    if tspec:                                          # measured motion, as the path JSON it reads
+        at(tspec["coords"])[tspec["coords"][1]] = tracks or "[]"
 
     vspec = w.get("video") or {}
     if video and vspec:
@@ -378,6 +420,9 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
 
     w = workflow(getattr(job, "comfy_workflow", "") or "")
     name = w.get("label") or w["id"]
+    tracks = ""
+    if w.get("tracks") and (getattr(job, "comfy_tracks", "") or ""):
+        tracks = Path(job.comfy_tracks).read_text(encoding="utf-8")
     length, limit = w.get("length") or {}, float((w.get("length") or {}).get("max_seconds", 15.1))
     max_refs = int((w.get("refs") or {}).get("max", 0))
 
@@ -419,8 +464,22 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     if cancelled():
         return []
 
+    if tracks:
+        got = track_list(tracks)
+        if not got:
+            raise CloudError(f"{Path(job.comfy_tracks).name} holds no usable paths")
+        if len(got[0]) != frames:
+            raise CloudError(
+                f"the motion has {len(got[0])} points per path but this render is {frames} frames. "
+                f"A path carries one point per frame \u2014 measure the motion again at this Length.")
+        tracks = json.dumps(got)                  # whatever shape it was saved in, as the node's own
+        log(f"  tracks {Path(job.comfy_tracks).name} \u00b7 {len(got)} paths"
+            f" \u00b7 {len(got[0])} points each")
+    pull = getattr(job, "comfy_strength", None)
+    if tracks and pull is not None and w.get("strength"):
+        log(f"  strength {float(pull):g}")
     graph = build(w, graph_of(w), job.prompt, names,
-                  width, height, frames, job.seed, video, sound)
+                  width, height, frames, job.seed, video, sound, tracks, pull)
     prompt_id = submit(key, base, graph)
     log(f"queued on Comfy Cloud ({prompt_id})")
 
@@ -466,6 +525,16 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     if not keep:
         mute(got)
         log("dropped the audio track (Sound: silent)")
+
+    extra = w.get("extra") or {}
+    # strict: outputs() falls back to scanning every node, which would fetch the render a second time
+    if extra.get("saver") in (detail.get("outputs") or {}):
+        more = outputs(detail, extra["saver"], skip=video)
+        if more:
+            (out / "post").mkdir(parents=True, exist_ok=True)
+            name = f"{extra.get('name', 'extra')}{Path(more[0]['filename']).suffix or '.mp4'}"
+            side = fetch(key, base, more[0], out / "post" / name)
+            log(f"downloaded {extra.get('name', 'extra')} ({side.stat().st_size / 2**20:.1f} MB)")
 
     written = extract(got, out / "frames")
     progress("done", len(written), frames, "done")

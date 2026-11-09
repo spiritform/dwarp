@@ -17,7 +17,12 @@
     "          offer on the panel. A model that takes seconds instead can set \"unit\": \"seconds\".",
     "  refs    the auto-growing picture slots: a {i} template, the prefix to clear first, and how many",
     "  video   the slot a source clip goes in, and the one its sound goes in",
+    "  tracks  {\"coords\": [node, input]} for a motion-control graph: DWARP measures a video's",
+    "          movement (engine/tracks.py) and writes the path JSON straight onto that input. The",
+    "          Motion slot on the panel appears only for a workflow that has this key.",
     "  sound   whether the file it writes has audio at all",
+    "  extra   {\"saver\": node, \"name\": \"label\"} for a second output the graph writes — WanMove's track visualiser, say. It lands in the run's post folder and shows as a chip under the stage.",
+    "  strength {\"input\": name, \"min\", \"max\", \"step\", \"default\"} — one number on the model node, shown as a slider. WanMove uses it for how hard the tracks pull the picture.",
     "Leave a key out and that control disappears from the panel."
   ],
   "version": 1,
@@ -30,16 +35,115 @@
       "note": "Reference to video, with sound. Up to nine pictures and your clip go in; a new 5-15 s clip comes out, picture and audio made together. Six sampling steps, native 1344x768.",
       "graph": "pika_h3_ref2va.json",
       "saver": "92",
-      "prompt": ["138", "value"],
-      "seed": ["129", "noise_seed"],
+      "prompt": [
+        "138",
+        "value"
+      ],
+      "seed": [
+        "129",
+        "noise_seed"
+      ],
       "node": "136",
-      "drop": ["LoadImage"],
-      "size": {"megapixels": 1.03, "multiple": 32, "width": "width", "height": "height"},
-      "length": {"input": "length", "fps": 24, "snap": 17, "min_frames": 124, "max_seconds": 15.1,
-                 "seconds": [5, 7, 10, 15]},
-      "refs": {"slot": "ref_images.ref_image_{i}", "clear": "ref_images.", "max": 9},
-      "video": {"slot": "ref_videos.ref_video_0", "audio": "ref_video_audios.ref_video_audio_0"},
+      "drop": [
+        "LoadImage"
+      ],
+      "size": {
+        "megapixels": 1.03,
+        "multiple": 32,
+        "width": "width",
+        "height": "height"
+      },
+      "length": {
+        "input": "length",
+        "fps": 24,
+        "snap": 17,
+        "min_frames": 124,
+        "max_seconds": 15.1,
+        "seconds": [
+          5,
+          7,
+          10,
+          15
+        ]
+      },
+      "refs": {
+        "slot": "ref_images.ref_image_{i}",
+        "clear": "ref_images.",
+        "max": 9
+      },
+      "video": {
+        "slot": "ref_videos.ref_video_0",
+        "audio": "ref_video_audios.ref_video_audio_0"
+      },
       "sound": true
+    },
+    {
+      "id": "wanmove_480p",
+      "label": "WanMove · motion control",
+      "short": "wanmove",
+      "model": "Wan 2.1 + WanMove, lightx2v distill LoRA",
+      "note": "Image to video along paths. One picture plus measured motion: the picture stays, and whatever the tracks do is what moves. Drop a clip (or one of your renders) into Motion to measure them. No sound. 16 fps, 480p-class.",
+      "graph": "video_wanmove_480p_hallucination.json",
+      "saver": "235",
+      "prompt": [
+        "317:151",
+        "text"
+      ],
+      "seed": [
+        "317:144",
+        "seed"
+      ],
+      "node": "317:195",
+      "drop": [
+        "FL_PathAnimator"
+      ],
+      "size": {
+        "megapixels": 0.4,
+        "multiple": 16,
+        "width": [
+          "263",
+          "value"
+        ],
+        "height": [
+          "264",
+          "value"
+        ]
+      },
+      "length": {
+        "input": "length",
+        "fps": 16,
+        "snap": 4,
+        "min_frames": 17,
+        "max_seconds": 5.1,
+        "seconds": [
+          2,
+          3,
+          5
+        ]
+      },
+      "refs": {
+        "max": 1,
+        "node": "238",
+        "input": "image"
+      },
+      "tracks": {
+        "coords": [
+          "260",
+          "track_coords"
+        ]
+      },
+      "sound": false,
+      "extra": {
+        "saver": "922",
+        "name": "tracks"
+      },
+      "strength": {
+        "input": "strength",
+        "min": 0,
+        "max": 3,
+        "step": 0.05,
+        "default": 1
+      }
     }
   ]
 }

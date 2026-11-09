@@ -227,7 +227,25 @@
     align-items: center; gap: 6px; border-radius: 8px; }
   #shapeSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #shapeSlot .clip-empty svg { width: 18px; height: 18px; }
-  #shapeSlot { margin-bottom: 8px; }                      /* breathing room under the slot, empty or loaded */
+  #shapeSlot, #trackSlot { margin-bottom: 8px; }          /* breathing room under the slot, empty or loaded */
+  #trackSlot .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex;
+            flex-direction: column; align-items: center; gap: 5px; border-radius: 8px; cursor: pointer;
+            color: var(--faint); text-align: center; }
+  #trackSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #trackSlot .clip-empty svg { width: 18px; height: 18px; }
+  /* the preview is the whole point of measuring: it gets the width, not a thumbnail's worth */
+  #trackSlot .tk { background: #25242b; border-radius: 8px; overflow: hidden; }
+  #trackSlot .tk video { display: block; width: 100%; background: #000; cursor: pointer; }
+  #trackSlot .meta { display: flex; align-items: center; gap: 8px; padding: 7px 8px; }
+  #trackSlot .meta b { flex: 1; min-width: 0; font-size: 11px; font-weight: 400; color: #c9c7cf;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #trackSlot .meta a { color: var(--accent-2); font-size: 11px; cursor: pointer; }
+  #trackSlot .meta button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  #trackSlot .meta button:hover { color: #ff9a8a; }
+  #trackSlot .busy { background: #25242b; border-radius: 8px; padding: 10px 12px; font-size: 11px; color: var(--dim);
+            overflow-wrap: anywhere; }   /* the first line carries the file name: it has to wrap, not spill */
+  #trackSlot .bar { height: 3px; background: #35343d; border-radius: 2px; margin-top: 7px; overflow: hidden; }
+  #trackSlot .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
   #shapeSlot .clip { background: #25242b; }
   #shapeSlot .clip-top { padding: 8px; }
   #shapeSlot .clip-thumb { width: 44px; height: 44px; background: #000; }
@@ -298,6 +316,9 @@
   input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
 
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; border-radius: 8px; overflow: hidden; }
+  /* a class that sets display beats the hidden attribute, so every one of ours has to say so itself:
+     without this a Sound or Length row stays on screen for a workflow that has no such control */
+  .seg[hidden], .pair[hidden], .slider[hidden] { display: none; }
   .seed { display: flex; gap: 6px; }
   .seed-tag { display: grid; place-items: center; padding: 0 10px; border-radius: 8px;
               background: var(--panel-2); color: var(--dim); font-size: 12px; flex: none; }
@@ -763,12 +784,24 @@
     <div class="card-body">
     <div class="seg mode" id="mode"></div>
     <div id="h3Box" hidden>
-      <div class="sublabel" style="margin-top:10px">Workflow</div>
+      <div class="sublabel" id="h3WfLabel" style="margin-top:10px">Workflow</div>
       <select class="model" id="h3Wf" title="Which graph runs on Comfy Cloud. Each one takes its own inputs, so the controls below follow what you pick."></select>
       <div class="cloudnote" id="h3Note"></div>
       <div class="sublabel" id="h3RefsLabel">References</div>
       <div id="h3Refs"></div>
       <input type="file" id="h3File" accept="image/*" hidden>
+      <div class="sublabel" id="h3MotionLabel">Motion</div>
+      <div id="trackSlot"></div>
+      <input type="file" id="trackFile" accept="video/*" hidden>
+      <div class="adnote" id="trackNote" style="margin:6px 0 0"></div>
+      <div id="tkDials" hidden>
+        <div class="sublabel">Paths</div>
+        <div class="seg" id="tkPaths" style="grid-template-columns:repeat(4,1fr)"></div>
+        <div class="slider" id="tkPullRow" style="margin-top:12px">
+          <div class="slider-head"><b title="How hard the motion pulls the picture. Low is a drift, high drags it along the paths.">Motion strength</b><span id="tkPullV"></span></div>
+          <input type="range" id="tkPull">
+        </div>
+      </div>
       <div class="sublabel" id="h3LenLabel">Length</div>
       <div class="seg" id="h3Secs"></div>
       <div class="adnote" id="h3Len" style="margin:6px 0 0"></div>
@@ -806,6 +839,7 @@
     </div>
     </div></div>
   </section>
+
 
   <section>
     <div class="card" data-card="render">
@@ -1306,18 +1340,18 @@ function h3Config(kind) {
   const seconds = h3Seconds();
   // The output's shape: the clip's, or the picked aspect. Only the ratio matters — the engine
   // puts it on H3's own ~1 MP grid (16:9 lands exactly on the 1344x768 Pika Flex is tuned for).
-  const src = state.clip?.source;
-  const [aw, ah] = src?.width ? [src.width, src.height] : (state.h3aspect || '16:9').split(':').map(Number);
-  const k = 1344 / Math.max(aw, ah);
-  const dur = src?.duration || 0;
+  const [width, height] = comfySize();
+  const dur = state.clip?.source?.duration || 0;
   return {
     job: {
       video: '', checkpoint: '', family: 'comfy', comfy_workflow: wf().id,
       prompt: withLook(state.prompt), negative: '',    // one prompt: no travel, no keyframes
-      width: Math.round(aw * k), height: Math.round(ah * k), seed: state.seed,
+      width, height, seed: state.seed,
       h3_refs: h3Refs().map(r => r.path),
       h3_seconds: seconds,
       h3_sound: state.h3sound !== false,
+      comfy_tracks: (wf().tracks && state.tracks?.path) || '',
+      comfy_strength: comfyPull(),
       h3_video: state.clip?.path || '',
       h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
     },
@@ -1354,21 +1388,45 @@ function renderStyleRef() {
 }
 // ---- H3 references: the same gestures as a style ref (click, drop a picture, drop a run off the stage)
 function h3Refs() { return (state.h3refs ||= []); }
+// The output box, fitted to the model's own working area. Path coordinates are pixels in THIS box, so
+// whatever the motion was measured against has to win: a track measured in one shape and rendered in
+// another lands squashed into part of the frame. After that the clip, then the Aspect buttons.
+function fitBox(aw, ah) {
+  const w = wf(), m = w.multiple || 32;
+  const k = Math.sqrt((w.megapixels || 1.03) * 1e6 / (aw * ah));
+  const fit = v => Math.max(m, Math.round(v * k / m) * m);
+  return [fit(aw), fit(ah)];
+}
+function sizeFrom() {                        // what decides the box: 'motion' | 'clip' | 'aspect'
+  if (wf().tracks && state.tracks) return 'motion';
+  return wf().video && state.clip ? 'clip' : 'aspect';
+}
+function comfySize() {
+  const from = sizeFrom();
+  if (from === 'motion') return [state.tracks.width, state.tracks.height];
+  const src = state.clip?.source;
+  return from === 'clip' ? fitBox(src.width, src.height)
+                         : fitBox(...(state.h3aspect || '16:9').split(':').map(Number));
+}
 // Every Comfy Cloud graph this install has, from /api/comfy/workflows, with what each one takes. The
 // panel is built from that rather than from anything written here, so a new graph is a JSON file and no
 // page edit. WF_FALLBACK is only what the controls read before the list has arrived.
 var CLOUD_WF = [];                                    // var: read by functions above this line
-var WF_FALLBACK = { id: '', label: 'Comfy Cloud', short: 'comfy', note: '', refs: 9, video: true, sound: true,
+var WF_FALLBACK = { id: '', label: 'Comfy Cloud', short: 'comfy', note: '', refs: 9, video: true,
+                    tracks: false, sound: true, megapixels: 1.03, multiple: 32,
                       seconds: [5, 7, 10, 15], fps: 24, snap: 17, min_frames: 124, max_seconds: 15.1 };
 function wf() {
   return CLOUD_WF.find(w => w.id === state.comfyWf) || CLOUD_WF[0] || WF_FALLBACK;
 }
-// How long the trimmed clip runs, inside what this workflow will make.
+// What "auto" matches: the trimmed clip for a workflow that takes one, else the span the motion was
+// measured over. Clamped to what this model can actually make.
 function h3ClipSeconds() {
-  const d = state.clip?.source?.duration || 0, w = wf();
+  const w = wf();
+  const d = w.video && state.clip?.source?.duration
+    ? (state.range[1] - state.range[0]) * state.clip.source.duration
+    : (w.tracks && state.tracks?.seconds) || 0;
   if (!d) return 0;
-  const floor = w.min_frames / w.fps, top = w.max_seconds || 15;
-  return Math.min(top, Math.max(floor, (state.range[1] - state.range[0]) * d));
+  return Math.min(w.max_seconds || 15, Math.max(w.min_frames / w.fps, d));
 }
 // "auto" matches the clip, which is the only way to ask for a length the chips don't offer (6 s, say).
 function h3Seconds() {
@@ -1376,7 +1434,7 @@ function h3Seconds() {
   return +state.h3secs || (wf().seconds[0] || 5);
 }
 function renderH3() {
-  const on = isH3(), w = wf(), many = CLOUD_WF.length > 1;
+  const on = isH3(), w = wf();
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
   $('tplRow').hidden = !on; $('promptRandom').hidden = on;      // H3 wants a brief, not five style words
@@ -1388,25 +1446,44 @@ function renderH3() {
   $('h3Wf').innerHTML = CLOUD_WF.map(x =>
     `<option value="${x.id}"${x.id === w.id ? ' selected' : ''}>${x.label}</option>`).join('')
     || '<option>no workflows installed</option>';
-  $('h3Wf').parentElement && ($('h3Wf').previousElementSibling.hidden = !many);
-  $('h3Wf').hidden = !many;                 // one graph: nothing to choose, so no chooser
-  $('h3RefsLabel').hidden = $('h3Refs').hidden = $('h3File').hidden = !w.refs;
+  // always on show, even with one installed: it is where you go to pick another, so hiding it hides
+  // the fact that there is a choice at all
+  $('h3RefsLabel').hidden = $('h3Refs').hidden = !w.refs;   // h3File stays hidden: it is the picker
   $('h3LenLabel').hidden = $('h3Secs').hidden = $('h3Len').hidden = !w.seconds.length;
+  $('h3MotionLabel').hidden = $('trackSlot').hidden = $('trackNote').hidden = !w.tracks;
+  // How many paths to measure, and how hard they pull: the two dials that matter once the motion is
+  // being used as a signature rather than a match for what is in the picture.
+  $('tkDials').hidden = !w.tracks;
+  if (w.tracks) {
+    $('tkPaths').innerHTML = TRACK_PTS.map(n =>
+      `<button data-n="${n}" class="${n === trackPts() ? 'on' : ''}" title="${
+        n <= 8 ? 'a few broad vectors \u2014 reads as camera drift'
+        : n >= 48 ? 'a dense field \u2014 the whole surface churns' : ''}">${n}</button>`).join('');
+    const sp = w.strength;
+    $('tkPullRow').hidden = !sp;
+    if (sp) {
+      $('tkPull').min = sp.min ?? 0; $('tkPull').max = sp.max ?? 3; $('tkPull').step = sp.step ?? 0.05;
+      $('tkPull').value = comfyPull();
+      $('tkPullV').textContent = (+comfyPull()).toFixed(2);
+    }
+  }
   $('h3SoundLabel').hidden = $('h3Sound').hidden = !w.sound;
+  renderTracks();
   // The chips never give the length they name: H3, for one, only makes 17n + 5 frames, so 5s is really
   // 5.2s and 7s is 7.3s. The line under them says what you are actually going to get.
   const picked = state.h3secs ?? (w.seconds[0] || 5), n = h3Frames(h3Seconds());
-  const chips = [...(state.clip && w.video ? ['auto'] : []), ...w.seconds];
+  const chips = [...(h3ClipSeconds() ? ['auto'] : []), ...w.seconds];
   $('h3Secs').style.gridTemplateColumns = `repeat(${chips.length}, 1fr)`;
   $('h3Secs').innerHTML = chips.map(v => {
     const got = h3Frames(v === 'auto' ? h3ClipSeconds() || 5 : v);
     return `<button data-s="${v}" class="${v === picked ? 'on' : ''}" title="${v === 'auto'
-      ? 'Match the trimmed clip' : `${v} seconds asked`} — ${got} frames, ${(got / w.fps).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
+      ? (w.tracks && state.tracks ? 'Match the motion you measured' : 'Match the trimmed clip')
+      : `${v} seconds asked`} — ${got} frames, ${(got / w.fps).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
   }).join('');
   $('h3Len').textContent = `${n} frames · ${(n / w.fps).toFixed(1)}s at ${+w.fps.toFixed(2)}fps`
-    + (picked === 'auto' ? ' · matching the clip' : '');
+    + (picked === 'auto' ? (w.tracks && state.tracks ? ' · matching the motion' : ' · matching the clip') : '');
   // With a clip loaded the output takes its shape, so there is nothing to pick
-  $('h3AspectRow').hidden = !!(state.clip && w.video);
+  $('h3AspectRow').hidden = sizeFrom() !== 'aspect';
   [...$('h3Sound').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === (state.h3sound !== false)));
   [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.h3aspect || '16:9')));
   const refs = h3Refs();
@@ -1416,7 +1493,7 @@ function renderH3() {
       `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
   // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
   $('h3Note').innerHTML = CFG_HAS_KEY
-    ? `${many ? `<b>${w.label}</b> on Comfy Cloud` : 'On <b>Comfy Cloud</b>'} · spends credits${
+    ? `On <b>Comfy Cloud</b> · spends credits${
         w.sound ? ' · comes back with sound' : ''}. ${state.clip && w.video
         ? 'The trimmed clip goes in as <b>&lt;Video 1&gt;</b>.'
         : w.refs ? 'Working from references alone.' : ''}
@@ -1425,6 +1502,161 @@ function renderH3() {
        <b>Settings → Comfy Cloud</b>. <a href="#" data-help="h3">how it works</a>`;
   $('h3Wf').title = w.note || $('h3Wf').title;
 }
+// ---- Motion: a video's movement as path data
+// Models like Wan-Move follow hand-drawn paths — one {x, y} per output frame. DWARP can measure the
+// real ones instead: RAFT, the same optical flow the warp runs on, chased frame to frame. Drop in the
+// footage (or a warp render) and what comes back is that JSON plus a preview with the dots drawn on,
+// because flow chaining drifts and watching it is the only honest way to know whether it drifted far.
+var trackJob = null, trackPoll = null, lastTrim = [];   // var: read by renderTracks above this line
+function renderTracks() {
+  const t = state.tracks, busy = trackJob;
+  // Tracks measured before the tracker reported its span have no seconds, and "auto" has nothing to
+  // match. Rather than make you measure again for it, read the span back off the source once.
+  if (t && t.seconds == null && t.source && !t.asking) {
+    t.asking = true;
+    api(`/api/video/probe?${qs({ path: t.source })}`).then(pr => {
+      const tr = t.trim || [], d = pr.source?.duration || 0;
+      t.seconds = +((tr.length > 1 ? tr[1] - tr[0] : d) || 0).toFixed(2);
+      save(); renderH3();
+    }).catch(() => { t.seconds = 0; });
+  }
+  if (busy) {
+    const since = busy.started ? Math.round(Date.now() / 1000 - busy.started) : 0;
+    $('trackSlot').innerHTML = `<div class="busy">${busy.message || 'tracking\u2026'}${since > 5
+      ? ` \u00b7 ${Math.floor(since / 60)}m ${String(since % 60).padStart(2, '0')}s` : ''}
+      <div class="bar"><i style="width:${Math.round((busy.progress || 0) * 100)}%"></i></div>
+      <a id="tkStop" class="randlink" style="font-size:11px">stop</a></div>`;
+    $('tkStop').onclick = async () => {        // always a way out, whatever the row is showing
+      await api(`/api/post/${busy.id}/cancel`, { method: 'POST' }).catch(() => {});
+      if (trackPoll) clearInterval(trackPoll);
+      trackPoll = null; trackJob = null; renderTracks();
+      setStatus('stopped measuring', 'done');
+    };
+  } else if (t) {
+    $('trackSlot').innerHTML = `<div class="tk">
+      <video src="/api/video/file?${qs({ path: t.preview })}" autoplay muted loop playsinline
+             title="What was measured, drawn on the frames it came off. Click to pause."></video>
+      <div class="meta"><b title="${t.source || ''}">${t.paths} paths \u00b7 ${t.frames} frames \u00b7 ${t.width}\u00d7${t.height}</b>
+      <a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>
+      <button id="tkDel" title="Remove">\u2715</button></div></div>`;
+    $('trackSlot').querySelector('video').onclick = e =>
+      e.target.paused ? e.target.play() : e.target.pause();
+    $('tkCopy').onclick = copyTracks;
+    $('tkDel').onclick = () => { state.tracks = null; renderTracks(); save(); };
+  } else {
+    $('trackSlot').innerHTML = `<div class="clip-empty" title="Measure a video's motion as path data \u2014 click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>a video to track \u2014 yours, or a run</div>`;
+  }
+  // A path carries one point per frame, so tracks measured against one Length do not fit another:
+  // switching from H3's 124 to WanMove's 81 would hand the model the wrong shape, and you would only
+  // find out after paying for it. Say so here instead.
+  const want = h3Frames(h3Seconds()), box = comfySize();
+  const why = !t ? '' : t.frames !== want ? `${t.frames} points per path, but Length is ${want} frames`
+            : (t.width !== box[0] || t.height !== box[1])
+              ? `measured for ${t.width}\u00d7${t.height}, but this renders at ${box[0]}\u00d7${box[1]}` : '';
+  $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
+    : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
+    : t ? `these go up with the render \u2014 ${wf().label} follows them`
+        : 'optical flow, measured off the clip you drop here';
+  if (why) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
+}
+async function copyTracks() {
+  try {
+    const res = await fetch(`/api/tracks/file?${qs({ path: state.tracks.path })}`);
+    await navigator.clipboard.writeText(await res.text());
+    setStatus('tracks copied \u2014 paste into track_coords', 'done');
+  } catch (e) { setStatus('could not copy: ' + e.message, 'bad'); }
+}
+async function startTracks(path, name, trim) {
+  lastTrim = trim || [];                       // kept so "measure again" can repeat the same span
+  if (trackJob) return setStatus('already tracking', 'bad');
+  let box = comfySize();                     // the box this very video implies, so nothing mismatches
+  try {
+    const pr = await api(`/api/video/probe?${qs({ path })}`);
+    if (pr.source?.width) box = fitBox(pr.source.width, pr.source.height);
+  } catch {}
+  const [width, height] = box;
+  const length = h3Frames(h3Seconds());        // one point per frame of what you are about to make
+  try {
+    trackJob = await api('/api/tracks', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path, trim: trim || [], points: trackPts(), length, width, height, fps: wf().fps }) });
+  } catch (e) { return setStatus('tracking failed: ' + e.message, 'bad'); }
+  renderTracks();
+  setStatus(`tracking ${name || 'clip'}\u2026`, 'live');
+  watchTracks();
+}
+// Watching is split from starting so a measure already under way can be picked up rather than stared
+// at: the work happens on the server, and a reload (or a restart) used to leave the slot saying
+// "queued" over a job that had long since finished and written its files.
+function watchTracks() {
+  if (trackPoll) clearInterval(trackPoll);
+  let misses = 0;
+  trackPoll = setInterval(async () => {
+    if (!trackJob) { clearInterval(trackPoll); trackPoll = null; return; }
+    const j = await api(`/api/post/${trackJob.id}`).catch(() => null);
+    if (!j) {                                  // the job is gone: say so rather than wait for ever
+      if (++misses < 5) return;
+      clearInterval(trackPoll); trackPoll = null; trackJob = null; renderTracks();
+      return setStatus('lost track of the measuring job — try again', 'bad');
+    }
+    misses = 0;
+    trackJob = j; renderTracks();
+    if (['done', 'failed', 'cancelled'].includes(j.state)) {
+      clearInterval(trackPoll); trackPoll = null;
+      const ok = j.state === 'done' && j.result;
+      if (ok) { state.tracks = { ...j.result, trim: lastTrim }; save(); }
+      trackJob = null; renderTracks();
+      setStatus(ok ? `${j.result.paths} paths · ${j.result.held} held all the way`
+                   : `tracking ${j.state}: ${j.error || ''}`, ok ? 'done' : 'bad');
+    }
+  }, 1000);
+}
+const TRACK_PTS = [8, 16, 24, 48];
+function trackPts() { return TRACK_PTS.includes(+state.trackPts) ? +state.trackPts : 24; }
+function comfyPull() {
+  const sp = wf().strength; if (!sp) return 1;
+  const v = state.comfyPull?.[wf().id];
+  return v == null ? (sp.default ?? 1) : +v;
+}
+$('tkPaths').onclick = e => {
+  const n = +e.target.dataset.n; if (!n) return;
+  state.trackPts = n; renderH3(); save();
+  if (state.tracks) setStatus(`${n} paths next time \u2014 measure again to use it`, 'done');
+};
+$('tkPull').oninput = e => {
+  (state.comfyPull ||= {})[wf().id] = +e.target.value;
+  $('tkPullV').textContent = (+e.target.value).toFixed(2);
+  paintSums(); save();
+};
+$('trackSlot').onclick = e => { if (e.target.closest('.clip-empty')) $('trackFile').click(); };
+$('trackFile').onchange = e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file || !/^video\//.test(file.type)) return setStatus('tracking needs a video', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(res => startTracks(res.path, res.name))
+    .catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+};
+$('trackSlot').addEventListener('dragover', e => e.preventDefault());
+$('trackSlot').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run?.clip) {                             // the Source clip off the stage: its trimmed range
+    const d = state.clip?.source?.duration || 0;
+    return startTracks(run.clip, run.name, d ? [+(state.range[0] * d).toFixed(2), +(state.range[1] * d).toFixed(2)] : []);
+  }
+  if (run) return (async () => {               // a run: its mp4, built first if it has none yet
+    if (run.count < 2) return setStatus('a single frame has no motion to track', 'bad');
+    setStatus(`run ${run.run} \u2192 tracks\u2026`, 'live');
+    await ensureMp4(run.run);
+    const res = await api(`/api/runs/${run.run}/as_input`, { method: 'POST' });
+    await startTracks(res.path, res.name);
+  })().catch(err => setStatus('tracking failed: ' + err.message, 'bad'));
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return setStatus('drop a video, or a run off the strip', 'bad');
+  if (!/^video\//.test(file.type)) return setStatus('tracking needs a video', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(res => startTracks(res.path, res.name))
+    .catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+});
 $('h3Wf').onchange = e => {
   state.comfyWf = e.target.value;
   const w = wf();
@@ -1891,7 +2123,12 @@ function paintCam() {
 function paintSums() {
   const set = (k, t) => { const el = $('sum_' + k); if (el) el.textContent = t; };
   set('prompt', state.keys.length && !isH3() ? `${state.keys.length + 1} keyframes` : '');
-  set('model', `${modeCfg().label} · ${shortName(checkpointPath())}`);
+  set('model', isH3()
+    ? [wf().label, h3Refs().length && `${h3Refs().length} ref`,
+       state.tracks && wf().tracks && `${state.tracks.paths} paths`,
+       wf().strength && wf().tracks && state.tracks && `pull ${(+comfyPull()).toFixed(2)}`]
+      .filter(Boolean).join(' · ')
+    : `${modeCfg().label} · ${shortName(checkpointPath())}`);
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
@@ -2487,7 +2724,10 @@ $('mloraW').oninput = e => { state.ad.loraW = +e.target.value; $('mloraWV').text
 function renderControls() {
   renderMode(); renderEmbed(); renderSampler(); renderLora(); renderH3();
   // H3 has none of DWARP's own controls: no denoise, no ControlNet, no mask, no camera.
-  for (const [card, off] of [['render', isH3()], ['guidance', isH3()], ['shape', isH3()], ['style', isH3()]])
+  // ...and with no clip loaded, the Text -> Video Size / Duration card is not Comfy's either: the
+  // workflow decides its own size, and Length lives under the picker.
+  for (const [card, off] of [['render', isH3()], ['guidance', isH3()], ['shape', isH3()],
+                             ['style', isH3()], ['length', isH3() && !state.clip]])
     document.querySelector(`[data-card="${card}"]`)?.closest('section')?.toggleAttribute('hidden', off);
   // H3 makes nothing shorter than 124 frames, so Frame and Preview would cost a whole render. They step aside.
   $('frameBtn').hidden = $('testBtn').hidden = isH3();
@@ -3781,7 +4021,8 @@ async function startJob(kind) {
   const name = { frame: 'frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
   if (kind !== 'refine' && !state.clip && !state.t2v && !isH3()) { setStatus('drop a video first', 'bad'); return; }
   if (isH3() && !state.clip && !h3Refs().length) { setStatus('H3 needs a clip, or a reference picture', 'bad'); return; }
-  if (kind !== 'refine' && state.i2v && !state.image) { setStatus('drop an image first', 'bad'); return; }
+  // Comfy brings its own inputs; the Image -> Video slot belongs to the local modes and must not gate it
+  if (kind !== 'refine' && state.i2v && !state.image && !isH3()) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
   showError(null);
   setButtons(true);
@@ -4764,6 +5005,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
   state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true; state.comfyWf ??= '';
+  state.tracks ??= null;                    // measured motion, if any: see renderTracks
+  state.trackPts ??= 24; state.comfyPull ??= {};   // how many paths, and how hard each workflow pulls
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
@@ -4774,6 +5017,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
   CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
+  // a measure still running from before this page loaded is picked up, not abandoned
+  if (POST_OPTS?.active?.kind === 'tracks') { trackJob = POST_OPTS.active; watchTracks(); }
   if (!PRESETS.some(p => p.id === state.preset)) state.preset = PRESETS[0].id;
   bindKeys();                               // the lane is static markup: bound once
   api('/api/config').then(c => { CFG_HAS_KEY = !!c.comfy_key; renderH3(); }).catch(() => {});

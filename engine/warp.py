@@ -161,6 +161,8 @@ class RenderJob:
     # fields keep their h3_ names: they are the reference-to-video inputs every one of these graphs takes,
     # and renaming them would orphan the job.json of every run made before the mode grew a second workflow.
     comfy_workflow: str = ""                      # which graph in engine/comfy/workflows.json; "" = the first
+    comfy_tracks: str = ""                        # a tracks JSON from engine/tracks.py, for a motion-control graph
+    comfy_strength: float = 1.0                   # how hard that motion pulls the picture, where the graph says
     h3_refs: list = field(default_factory=list)   # reference pictures, in <Picture 1>, <Picture 2> ... order
     h3_seconds: float = 5.0                       # clip length; H3 rounds up to 17n + 5 frames at 24 fps
     h3_sound: bool = True                         # keep H3's soundtrack in the mp4 (it is made either way)
