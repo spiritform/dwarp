@@ -1,0 +1,339 @@
+{
+  "665": {
+    "inputs": {
+      "video": [
+        "727",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "666": {
+    "inputs": {
+      "fps": [
+        "665",
+        2
+      ],
+      "bit_depth": "auto",
+      "color_space": "sRGB",
+      "chroma_subsampling": "auto",
+      "codec": "none",
+      "images": [
+        "749",
+        0
+      ],
+      "audio": [
+        "665",
+        1
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    }
+  },
+  "667": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "mp4",
+      "format.codec": "h264",
+      "format.codec.encoding": "auto",
+      "codec": "auto",
+      "video": [
+        "666",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    }
+  },
+  "668": {
+    "inputs": {
+      "batch_index": 0,
+      "length": 81,
+      "image": [
+        "665",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Image from Batch",
+      "cnr_id": "comfy-core",
+      "ver": "0.7.0"
+    }
+  },
+  "727": {
+    "inputs": {
+      "file": "input_upscale.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "Load Video"
+    }
+  },
+  "742": {
+    "inputs": {
+      "backend": "inductor",
+      "fullgraph": false,
+      "mode": "default",
+      "dynamic": false,
+      "dynamo_cache_size_limit": 64,
+      "compile_transformer_blocks_only": true,
+      "dynamo_recompile_limit": 128,
+      "force_parameter_static_shapes": false,
+      "allow_unmerged_lora_compile": false
+    },
+    "class_type": "WanVideoTorchCompileSettings",
+    "_meta": {
+      "title": "Torch CompSettings",
+      "cnr_id": "comfyui-wanvideowrapper",
+      "ver": "1.2.3"
+    }
+  },
+  "743": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "744": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Heigth"
+    }
+  },
+  "745": {
+    "inputs": {
+      "width": [
+        "743",
+        0
+      ],
+      "height": [
+        "744",
+        0
+      ],
+      "interpolation": "lanczos",
+      "method": "stretch",
+      "condition": "always",
+      "multiple_of": 64,
+      "image": [
+        "668",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "\ud83d\udd27 Image Resize"
+    }
+  },
+  "746": {
+    "inputs": {
+      "lora": "lightx2v_14B_T2V_cfg_step_distill_lora_adaptive_rank_quantile_0.15_bf16.safetensors",
+      "strength": 0.7,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelect",
+    "_meta": {
+      "title": "Lightning Lora"
+    }
+  },
+  "747": {
+    "inputs": {
+      "steps": 4,
+      "cfg": 1.0000000000000002,
+      "shift": 5,
+      "seed": 1050612516184924,
+      "force_offload": false,
+      "scheduler": "euler",
+      "riflex_freq_index": 0,
+      "denoise_strength": 0.25,
+      "batched_cfg": false,
+      "rope_function": "comfy",
+      "start_step": 0,
+      "end_step": -1,
+      "add_noise_to_samples": true,
+      "model": [
+        "751",
+        0
+      ],
+      "image_embeds": [
+        "753",
+        0
+      ],
+      "text_embeds": [
+        "755",
+        0
+      ],
+      "samples": [
+        "754",
+        0
+      ]
+    },
+    "class_type": "WanVideoSampler",
+    "_meta": {
+      "title": "WanVideo Sampler",
+      "cnr_id": "comfyui-wanvideowrapper",
+      "ver": "1.2.3"
+    }
+  },
+  "748": {
+    "inputs": {
+      "model": "Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+      "base_precision": "fp16_fast",
+      "quantization": "fp8_e4m3fn_scaled",
+      "load_device": "offload_device",
+      "attention_mode": "sdpa",
+      "rms_norm_function": "default",
+      "compile_args": [
+        "742",
+        0
+      ]
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "WanVideo Model Loader"
+    }
+  },
+  "749": {
+    "inputs": {
+      "enable_vae_tiling": true,
+      "tile_x": 512,
+      "tile_y": 512,
+      "tile_stride_x": 256,
+      "tile_stride_y": 256,
+      "normalization": "default",
+      "vae": [
+        "750",
+        0
+      ],
+      "samples": [
+        "747",
+        1
+      ]
+    },
+    "class_type": "WanVideoDecode",
+    "_meta": {
+      "title": "WanVideo Decode",
+      "cnr_id": "comfyui-wanvideowrapper",
+      "ver": "1.2.3"
+    }
+  },
+  "750": {
+    "inputs": {
+      "model_name": "wan_2.1_vae.safetensors",
+      "precision": "bf16",
+      "use_cpu_cache": false,
+      "verbose": false
+    },
+    "class_type": "WanVideoVAELoader",
+    "_meta": {
+      "title": "WanVideo VAE Loader",
+      "cnr_id": "comfyui-wanvideowrapper",
+      "ver": "1.2.3"
+    }
+  },
+  "751": {
+    "inputs": {
+      "model": [
+        "748",
+        0
+      ],
+      "lora": [
+        "746",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetLoRAs",
+    "_meta": {
+      "title": "WanVideo Set LoRAs",
+      "cnr_id": "ComfyUI-WanVideoWrapper",
+      "ver": "998a69cc0acbec503001b8b0ce0a5d5404420e1e"
+    }
+  },
+  "752": {
+    "inputs": {
+      "image": [
+        "745",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "753": {
+    "inputs": {
+      "width": [
+        "752",
+        0
+      ],
+      "height": [
+        "752",
+        1
+      ],
+      "num_frames": [
+        "752",
+        2
+      ]
+    },
+    "class_type": "WanVideoEmptyEmbeds",
+    "_meta": {
+      "title": "Image Embeds",
+      "cnr_id": "comfyui-wanvideowrapper",
+      "ver": "1.2.3"
+    }
+  },
+  "754": {
+    "inputs": {
+      "enable_vae_tiling": true,
+      "tile_x": 512,
+      "tile_y": 512,
+      "tile_stride_x": 256,
+      "tile_stride_y": 256,
+      "noise_aug_strength": 0.001,
+      "latent_strength": 1,
+      "vae": [
+        "750",
+        0
+      ],
+      "image": [
+        "745",
+        0
+      ]
+    },
+    "class_type": "WanVideoEncode",
+    "_meta": {
+      "title": "WanVideo Encode"
+    }
+  },
+  "755": {
+    "inputs": {
+      "model_name": "umt5_xxl_fp16.safetensors",
+      "precision": "bf16",
+      "positive_prompt": "high resolution, sharp, detailed",
+      "negative_prompt": "",
+      "quantization": "disabled",
+      "use_disk_cache": true,
+      "device": "gpu"
+    },
+    "class_type": "WanVideoTextEncodeCached",
+    "_meta": {
+      "title": "WanVideo TextEncode Cached"
+    }
+  }
+}

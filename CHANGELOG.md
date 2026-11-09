@@ -4,6 +4,33 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **An enhanced video is a run now, not a chip.** An upscale or a smooth used to land as a file in the
+  button row, where it could not be scrubbed, compared or thumbnailed — but it is a video you want to
+  look at, so it goes in the runs strip like Refine's does. It gets its own frames and a label naming
+  what it came from: **upscale · wanmove** beside the **wanmove · render** it was made from, with the
+  settings it used kept on it and the source run's own settings still behind *use settings*. The page
+  jumps to it when it finishes, the way a render jumps to itself.
+- **Enhance keeps a log.** A cloud upscale has as much to say as a render — what it sent, the size it
+  asked for, the queue id, how long it has waited — and all of it was going into a field that holds
+  one line. Post jobs now carry a log to the same panel renders use, with the once-a-second poll line
+  left in the status bar where it belongs. Local upscales log what they are about to do too.
+- **Upscale on your card, or in the cloud.** Enhance's Upscale section gained a **your card | cloud ☁**
+  switch. The cloud side lists video upscalers that run on Comfy Cloud, and picking one swaps the
+  controls with it, because each declares its own: **FlashVSR** a target height, **Clarity Crystal** a
+  scale factor, **Wan 2.2 Creative** a scale, a *Creative* amount and a prompt. They live in
+  `engine/comfy/workflows.json` next to the render graphs, so another one is a graph plus an entry —
+  no page edit. The result lands in the run's post folder and shows as the same chip a local upscale
+  does, and because none of it touches your card it can run while a render has the GPU. Enhance was
+  until now entirely local, so every cloud entry carries a line saying what it spends — partner API
+  upscalers bill per call, a GPU workflow bills GPU time — shown before the button, not after.
+- **Refine picks its own model, and a Comfy run can be refined at all.** Refine always runs here, on
+  your card — but it took its model and family from the panel, which is nothing at all with the panel
+  on Comfy, and would have posted the frames back to the cloud as an engine job. It now has a **Model**
+  row of its own — an SDXL checkpoint, picked there and only there, never changing the panel behind
+  the dialog. A fast model (⚡) brings its own steps and CFG, shown under Scale. And a cloud run's frames
+  were always on disk — only the engine's `job.json` was missing, which Refine reported as *“no engine
+  frames to refine”*. Their size is read off the first frame, and the prompt and seed off the saved page
+  state, so **WanMove → Refine** now works: the graph gives it the motion, diffusion gives it the look.
 - **Motion you draw instead of measure.** Measured tracks turned out to be a motion *signature* rather
   than a match for what is in the picture, so the video was only ever a roundabout way of asking for
   "drift left" or "turn slowly". The Motion slot now takes a **Field** as well: a **measure | field**

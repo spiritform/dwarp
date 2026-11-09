@@ -492,7 +492,6 @@
   .enh .enhcols h4 { margin-top: 18px; color: var(--text); font-size: 12px; }   /* Refine / Upscale / Smooth: the sections */
   /* the controls inside read like the side panel's: plain case, not section headers */
   .enh .label, .enh .slider-head b { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: #c9c7cf; }
-  .enh .note { color: var(--faint); font-size: 11.5px; margin: 0 0 12px; }
   .enh .row { margin-bottom: 12px; }
   .enh .label { margin-bottom: 6px; }
   .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 0;
@@ -500,6 +499,8 @@
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
   .enh .seg button { color: #c9c7cf; }     /* unpicked options read clearly; the pick is the fill */
   .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
+  .enh .cost { color: var(--accent-2); }                    /* what a cloud upscale will spend */
+  .enh .ctl { margin-top: 10px; }                           /* one control a cloud upscaler declares */
   .enh textarea { min-height: 84px; }
   .enh .btn { width: 100%; }
 
@@ -1078,8 +1079,10 @@
       <div class="enhcols">
       <section>
         <h4>Refine</h4>
-        <div class="note">Renders the run again, bigger, with diffusion: new detail from the prompt, held to the frames by a
-          tile ControlNet, carried frame to frame by the warp. Makes a new run, with the model and LoRA from the panel.</div>
+        <div class="seg" id="refFam" style="--n:1;margin-bottom:8px"></div>
+        <div class="row">
+          <select id="refModel"></select>
+        </div>
         <div class="row">
           <div class="label">Scale</div>
           <div class="seg" id="refScale" style="--n:3"><button data-v="1" title="Same size: a second diffusion pass over the run">1×</button><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
@@ -1097,17 +1100,25 @@
       </section>
       <section>
         <h4>Upscale</h4>
-        <div class="row">
+        <div class="seg" id="enhWhere" style="--n:2;margin-bottom:8px"><button data-v="local" title="An upscaling model on your own card — free, and it holds the GPU">Local</button><button data-v="cloud" title="A video upscaler on Comfy Cloud — it spends credits, and it leaves your card free">Cloud ☁</button></div>
+        <div class="row" id="enhLocalBox">
           <select id="enhModel"></select>
           <div class="seg" id="enhScale" style="--n:2"><button data-v="2">2×</button><button data-v="4">4×</button></div>
           <div class="hint" id="enhScaleHint"></div>
         </div>
-        <h4>Smooth <em style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">in-between frames</em></h4>
-        <div class="row">
-          <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
-          <div class="seg" id="enhInterp" style="--n:2;margin-top:6px"><button data-v="rife" title="RIFE: fast">RIFE</button><button data-v="film" title="FILM (Google Research): slower, steadier on big motion — less wobble. Weights download on first use (138 MB)">FILM</button></div>
-          <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
-          <div class="hint" id="enhSmoothHint"></div>
+        <div class="row" id="enhCloudBox" hidden>
+          <select id="enhCloud"></select>
+          <div id="enhCloudCtl"></div>
+          <div class="hint" id="enhCloudHint"></div>
+        </div>
+        <div id="enhSmoothBox">
+          <h4>Smooth <em style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">in-between frames</em></h4>
+          <div class="row">
+            <div class="seg" id="enhSmooth" style="--n:4"><button data-v="1">off</button><button data-v="2">2×</button><button data-v="3">3×</button><button data-v="4">4×</button></div>
+            <div class="seg" id="enhInterp" style="--n:2;margin-top:6px"><button data-v="rife" title="RIFE: fast">RIFE</button><button data-v="film" title="FILM (Google Research): slower, steadier on big motion — less wobble. Weights download on first use (138 MB)">FILM</button></div>
+            <div class="seg" id="enhTiming" style="--n:2;margin-top:6px"><button data-v="fps" title="In-between frames raise the fps: same length, smoother">smoother</button><button data-v="slow" title="In-between frames play at the run's fps: longer, slow motion">slow-mo</button></div>
+            <div class="hint" id="enhSmoothHint"></div>
+          </div>
         </div>
         <button class="btn go" id="enhGo">Enhance</button>
       </section>
@@ -1194,7 +1205,7 @@ let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
 var CFG_HAS_KEY = false;                    // is a Comfy Cloud API key set? (never the key itself)
 var EMBEDS = [];                           // [{name, family}] from the embeddings folder
 var LORAS = [];                            // [{name, path, family}] from models/loras
-const loraOn = () => LORAS.some(l => l.path === state.lora && l.family === state.mode) ? state.lora : '';
+const loraOn = (mode = state.mode) => LORAS.some(l => l.path === state.lora && l.family === mode) ? state.lora : '';
 function renderLora() {
   const list = LORAS.filter(l => l.family === state.mode);
   $('lora').innerHTML = (list.length ? '<option value="">none</option>' : '<option value="">none — add some to models/loras</option>') +
@@ -2179,8 +2190,8 @@ $('styleRef').addEventListener('drop', e => {
 });
 $('styleRefW').oninput = e => { state.styleRefW = +e.target.value; $('styleRefWV').textContent = state.styleRefW.toFixed(2); save(); };
 $('styleOnly').onclick = e => { const v = e.target.dataset.v; if (!v) return; state.styleOnly = v === 'style'; renderStyleRef(); save(); };
-function styleRefJob() {                     // the job's style-ref fields (empty = none)
-  const sr = modeCfg().style_ref, r = state.styleRef;
+function styleRefJob(mode = state.mode) {    // the job's style-ref fields (empty = none)
+  const sr = (MODES[mode] || {}).style_ref, r = state.styleRef;
   if (!sr || !r) return { style_image: '' };
   return { style_image: r.path, style_scale: state.styleRefW, style_only: !!state.styleOnly,
            ip_adapter: sr.path, ip_adapter_repo: `${sr.repo}::${sr.repo_file}`,
@@ -2870,29 +2881,32 @@ function h3Frames(seconds) {
 function shortName(path) { return path.split('/').pop().replace(/\.(safetensors|ckpt)$/, ''); }
 // The checkpoint a render will use: explicit pick, else the look's (SD1.5) / mode default (SDXL).
 function checkpointPath() { return state.ckpt?.[state.mode] || defaultCheckpoint(); }
-function defaultCheckpoint() {
-  const want = state.mode === 'sd15' ? currentPreset().checkpoint : (modeCfg().default_checkpoint || '');
+function defaultCheckpoint(mode = state.mode) {
+  const want = mode === 'sd15' ? currentPreset().checkpoint : ((MODES[mode] || {}).default_checkpoint || '');
   // Defaults are file names, found in any subfolder; if missing, fall back to the first of the family.
-  const have = CHECKPOINTS.filter(c => c.family === state.mode);
+  const have = CHECKPOINTS.filter(c => c.family === mode);
   const base = want.split('/').pop().toLowerCase();
   const hit = have.find(c => c.path.split('/').pop().toLowerCase() === base);
   return hit ? hit.path : have.length ? have[0].path : `${CKPT_DIR}/${want}`;
 }
 const isFast = path => /lightning|turbo|hyper|lcm|flash/i.test(path.split('/').pop());
+// The <option>s for a family's checkpoints — the panel's Model and Refine's own show the same list.
+function ckptOptions(mode) {
+  const list = CHECKPOINTS.filter(c => c.family === mode), def = defaultCheckpoint(mode);
+  // the file name only (the folder is the family already picked), the bolt first so a long name can't push it off the line
+  const bolt = path => isFast(path) ? '\u26a1 ' : '';
+  // the same file name in two folders: those two show their folder too (AnimateDiff/photonLCM_v10)
+  const dup = n => list.filter(c => shortName(c.path) === n).length > 1;
+  const label = path => dup(shortName(path)) ? path.split('/').slice(-2).join('/').replace(/\.(safetensors|ckpt)$/, '') : shortName(path);
+  const first = `${bolt(def)}${shortName(def)} (${mode === 'sd15' ? 'look default' : 'default'})`;
+  return `<option value="" title="${def}">${first}</option>` + list.filter(c => c.path !== def).map(c =>
+    `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${label(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
+}
 function renderMode() {
   $('mode').style.gridTemplateColumns = `repeat(${Object.keys(MODES).length}, 1fr)`;
   $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
     `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}"${m.cloud ? ` title="Renders on ${m.cloud}, not on your card — it costs credits"` : ''}>${m.label}${m.cloud ? ' ☁' : ''}</button>`).join('');
-  const list = CHECKPOINTS.filter(c => c.family === state.mode);
-  const def = defaultCheckpoint();
-  // the file name only (the folder is the family already picked), ⚡ first so a long name can't push it off the line
-  const bolt = path => isFast(path) ? '⚡ ' : '';
-  // the same file name in two folders: those two show their folder too (AnimateDiff/photonLCM_v10)
-  const dup = n => list.filter(c => shortName(c.path) === n).length > 1;
-  const label = path => dup(shortName(path)) ? path.split('/').slice(-2).join('/').replace(/\.(safetensors|ckpt)$/, '') : shortName(path);
-  const first = `${bolt(def)}${shortName(def)} (${state.mode === 'sd15' ? 'look default' : 'default'})`;
-  $('model').innerHTML = `<option value="" title="${def}">${first}</option>` + list.filter(c => c.path !== def).map(c =>
-    `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${label(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
+  $('model').innerHTML = ckptOptions(state.mode);
   $('model').value = state.ckpt[state.mode] || '';
   if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
@@ -3901,7 +3915,14 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
     <p><b>Refine</b> renders a finished run again with diffusion — at 1× as a second pass at the same size, or 1.5× / 2× bigger: <b>Denoise</b> sets how much new
        detail goes in, the <b>prompt</b> what it looks like, <b>Hold</b> how tightly a tile ControlNet keeps it to the
        run's frames. Big frames are painted in tiles, so the detail comes out at the scale the model knows, and the warp
-       carries it from frame to frame. It uses the model and LoRA picked in the panel and makes a new run.</p>
+       carries it from frame to frame. It makes a new run.</p>
+    <p>Refine has its own <b>Model</b> — an SDXL one — because it always runs here on your card, whatever made the run:
+       a Comfy Cloud result refines too, and the panel stays how you left it. A fast model (⚡) brings its own steps and
+       CFG, shown under Scale.</p>
+    <p><b>Upscale</b> runs on <b>your card</b> or in the <b>cloud ☁</b>. The cloud ones are video upscalers on Comfy Cloud —
+       they leave your card free but they spend credits, and the line under the picker says what each one costs and does.
+       Each brings its own controls, so changing the pick changes the knobs; they are declared in
+       <b>engine/comfy/workflows.json</b> beside the render graphs, so another one is a graph plus an entry.</p>
     <p>After a Render: <b>Upscale</b> 2× / 4× with an upscaling model, and <b>Smooth</b> adds in-between frames: <b>RIFE</b> is fast,
        <b>FILM</b> slower but steadier on big motion (less wobble).
        <b>smoother</b> raises the fps (same length, more fluid); <b>slow-mo</b> keeps the fps (longer, slowed down).
@@ -4496,7 +4517,7 @@ async function showRun(runId, { follow = false } = {}) {
   $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
   $('playBtn').title = runHasSound() ? 'Play the mp4 with its sound (space)' : 'Play frames (space)';
   $('loadRun').classList.remove('hide');
-  $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
+  $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife && !POST_OPTS.cloud?.length));
   $('animateLink').classList.toggle('hide', frames.length !== 1);   // a Frame: send it on to be animated
   if (switched || !follow) renderOutputs(runId);
   if (switched && !$('enh').hidden) openEnhance();
@@ -5180,7 +5201,49 @@ addEventListener('pointerdown', e => {
 
 // ---------------------------------------------------------------- enhance (upscale + RIFE)
 let POST_OPTS = null, postJob = null, enhFps = 24;
-const postPrefs = () => (state.post ||= { upscaler: '4x-UltraSharp.pth', scale: 2, smooth: 2, slowmo: false });
+const postPrefs = () => {
+  const p = (state.post ||= { upscaler: '4x-UltraSharp.pth', scale: 2, smooth: 2, slowmo: false });
+  p.where ||= 'local'; p.cparams ||= {};        // 'cloud' puts the work on Comfy Cloud; cparams is per upscaler
+  return p;
+};
+// The cloud upscalers the manifest installs, and the one picked. Each carries its own controls, so
+// the dropdown changing swaps the controls with it — nothing about them is written into this page.
+const cloudUps = () => (POST_OPTS?.cloud) || [];
+function cloudUp() {
+  const list = cloudUps(), p = postPrefs();
+  return list.find(u => u.id === p.cloud) || list[0] || null;
+}
+function cloudParams(u = cloudUp()) {
+  if (!u) return {};
+  const held = (postPrefs().cparams[u.id] ||= {});
+  for (const c of u.controls || []) if (held[c.id] === undefined) held[c.id] = c.default;
+  return held;
+}
+// A number, a set of choices or a switch — whatever the entry declared, drawn the way the rest of
+// the panel draws one. `data-c` carries the control's id; nothing here is addressed by a fixed id.
+function cloudControl(c, val) {
+  const head = `<div class="label">${c.label || c.id}</div>`;
+  if (c.kind === 'choice') {
+    const opts = (c.options || []).map(o => `<button data-c="${c.id}" data-v="${o}" class="${o === val ? 'on' : ''}">${o}</button>`).join('');
+    return `<div class="ctl">${head}<div class="seg" style="--n:${(c.options || []).length}">${opts}</div>` +
+           (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
+  }
+  if (c.kind === 'toggle') {
+    return `<div class="ctl">${head}<div class="seg" style="--n:2">` +
+           `<button data-c="${c.id}" data-v="" class="${val ? '' : 'on'}">off</button>` +
+           `<button data-c="${c.id}" data-v="1" class="${val ? 'on' : ''}">on</button></div>` +
+           (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
+  }
+  if (c.kind === 'text') {
+    return `<div class="ctl">${head}<textarea data-c="${c.id}" spellcheck="false" style="min-height:52px">${val || ''}</textarea>` +
+           (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
+  }
+  const step = c.step ?? 0.1, dp = String(step).split('.')[1]?.length || 0;
+  return `<div class="ctl"><div class="slider"><div class="slider-head"><b>${c.label || c.id}</b>` +
+         `<span>${(+val).toFixed(dp)}</span></div>` +
+         `<input type="range" data-c="${c.id}" min="${c.min ?? 1}" max="${c.max ?? 4}" step="${step}" value="${val}"></div>` +
+         (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
+}
 
 async function renderOutputs(runId) {
   const outs = await api(`/api/runs/${runId}/outputs`).catch(() => []);
@@ -5199,6 +5262,13 @@ function segPick(el, v) { [...el.children].forEach(b => b.classList.toggle('on',
 function paintEnhance() {
   paintRefine();
   const p = postPrefs(), r = runsCache.find(r => r.id === viewRun);
+  const onCloud = p.where === 'cloud' && cloudUps().length;
+  segPick($('enhWhere'), onCloud ? 'cloud' : 'local');
+  $('enhWhere').classList.toggle('idle', !cloudUps().length);     // nothing to switch to
+  $('enhLocalBox').hidden = !!onCloud;
+  $('enhCloudBox').hidden = !onCloud;
+  $('enhSmoothBox').hidden = !!onCloud;        // RIFE / FILM run here; a cloud job writes one mp4
+  if (onCloud) { paintCloudUp(); return; }
   $('enhModel').value = p.upscaler || '';
   segPick($('enhScale'), p.scale); segPick($('enhSmooth'), p.smooth); segPick($('enhTiming'), p.slowmo ? 'slow' : 'fps');
   segPick($('enhInterp'), p.interp || 'rife');
@@ -5214,6 +5284,40 @@ function paintEnhance() {
   $('enhGo').disabled = !!postJob || (!p.upscaler && p.smooth === 1) || (job && !['completed', 'cancelled', 'failed'].includes(job.state));
   $('enhGo').textContent = postJob ? 'working…' : 'Enhance';
 }
+// The cloud side: the picker, then whatever controls the picked entry declares.
+function paintCloudUp() {
+  const u = cloudUp();
+  $('enhCloud').innerHTML = cloudUps().map(x =>
+    `<option value="${x.id}"${x.model ? ` title="${x.model}"` : ''}>${x.label}</option>`).join('');
+  $('enhCloud').value = u ? u.id : '';
+  const held = cloudParams(u);
+  $('enhCloudCtl').innerHTML = u ? (u.controls || []).map(c => cloudControl(c, held[c.id])).join('') : '';
+  $('enhCloudCtl').querySelectorAll('input[type=range]').forEach(i => i.oninput = e => {
+    cloudParams()[e.target.dataset.c] = +e.target.value; save(); paintCloudUp();
+  });
+  // a textarea keeps its own value: repainting under the cursor would lose the caret mid-word
+  $('enhCloudCtl').querySelectorAll('textarea').forEach(t => t.oninput = e => {
+    cloudParams()[e.target.dataset.c] = e.target.value; save();
+  });
+  $('enhCloudCtl').querySelectorAll('.seg').forEach(seg => seg.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const was = cloudParams()[b.dataset.c];
+    cloudParams()[b.dataset.c] = typeof was === 'boolean' ? !!b.dataset.v : b.dataset.v;
+    save(); paintCloudUp();
+  });
+  // it spends: say so, and say what it is before the button is pressed
+  $('enhCloudHint').innerHTML = !u ? 'no cloud upscalers installed'
+    : `<span class="cost">☁ ${u.cost || 'Runs on Comfy Cloud — it spends credits.'}</span>` +
+      (POST_OPTS.cloud_key ? '' : '<br>no Comfy Cloud API key — add one in Settings') +
+      (u.note ? `<br>${u.note}` : '') + (u.limits ? `<br>${u.limits}` : '');
+  $('enhGo').disabled = !!postJob || !u || !POST_OPTS.cloud_key;
+  $('enhGo').textContent = postJob ? 'working…' : 'Upscale on Comfy Cloud';
+}
+$('enhWhere').onclick = e => {
+  const v = e.target.closest('button')?.dataset.v;
+  if (v && cloudUps().length) { postPrefs().where = v; save(); paintEnhance(); }
+};
+$('enhCloud').onchange = e => { postPrefs().cloud = e.target.value; save(); paintCloudUp(); };
 async function openEnhance() {
   if (!viewRun) return;
   $('enhModel').innerHTML = '<option value="">none</option>' +
@@ -5229,42 +5333,65 @@ async function openEnhance() {
 }
 $('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hidden = true);
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('enh').hidden) $('enh').hidden = true; });
-// Refine: the run's frames, bigger, through the panel's model at a low Denoise (see refineConfig)
+// Refine: the run's frames, bigger, through a local model at a low Denoise (see refineConfig)
 var refSrc = null, refPromptRun = null;
-const refPrefs = () => (state.refine ||= { scale: 2, denoise: 0.4, hold: 0.6 });
+const refPrefs = () => { const r = (state.refine ||= { scale: 2, denoise: 0.4, hold: 0.6 }); r.ckpt ||= {}; return r; };
+// Refine always runs here, on your card, whatever made the run — so it owns its model instead of
+// borrowing the panel's, which would be empty with the panel on Comfy and would change under you when
+// you picked one. SDXL only for now: it is the family worth a detail pass, and one picker beats two.
+// The other families still carry a `refine` block in presets.json if this ever wants a family row back.
+function refineMode() { return 'sdxl'; }
+function refineCfg() { return MODES[refineMode()] || MODES.sd15; }
+function refineCkpt() { return refPrefs().ckpt[refineMode()] || defaultCheckpoint(refineMode()); }
 function refDims(src = refSrc) {
   const k = refPrefs().scale;
   return [Math.round(src.width * k / 8) * 8, Math.round(src.height * k / 8) * 8];
 }
 function paintRefine() {
-  const r = refPrefs(), rf = modeCfg().refine || {}, busy = job && !['completed', 'cancelled', 'failed'].includes(job.state);
+  const r = refPrefs(), m = refineMode(), rf = refineCfg().refine || {};
+  const busy = job && !['completed', 'cancelled', 'failed'].includes(job.state);
+  $('refFam').innerHTML = `<button class="on">${refineCfg().label}</button>`;
+  $('refModel').innerHTML = ckptOptions(m);
+  $('refModel').value = r.ckpt[m] || '';
+  if ($('refModel').value !== (r.ckpt[m] || '')) { r.ckpt[m] = ''; $('refModel').value = ''; }   // the file went away
   segPick($('refScale'), r.scale);
   $('refDenoise').value = r.denoise; $('refDenoiseV').textContent = (+r.denoise).toFixed(2);
   $('refHold').value = r.hold; $('refHoldV').textContent = (+r.hold).toFixed(2);
   $('refHoldBox').hidden = !rf.controlnet?.have;
-  if (!refSrc) { $('refSizeHint').textContent = 'this run has no engine frames to refine'; $('refGo').disabled = true; return; }
+  $('refGo').disabled = true;
+  if (!CHECKPOINTS.some(c => c.family === m)) {
+    $('refSizeHint').textContent = `Refine needs an ${refineCfg().label} checkpoint — there is none on disk`; return;
+  }
+  if (!refSrc) { $('refSizeHint').textContent = 'this run has no frames on disk to refine'; return; }
   const [W, H] = refDims(), tiles = rf.tile && Math.max(W, H) > rf.tile
     ? Math.ceil((W - 128) / (rf.tile - 128)) * Math.ceil((H - 128) / (rf.tile - 128)) : 1;
+  const f = fastProfile(refineCkpt());        // a fast model brings its own steps and CFG (see refineConfig)
   $('refSizeHint').textContent = `${refSrc.width}×${refSrc.height} → ${W}×${H} · ${refSrc.frame_count} frames` +
-    (tiles > 1 ? ` · ${tiles} tiles each` : '') + ` · ${modeCfg().label}` +
+    (tiles > 1 ? ` · ${tiles} tiles each` : '') +
+    ` · ${f ? f.steps : state.steps} steps, CFG ${f ? f.cfg : state.cfg}` +
     (rf.controlnet?.have ? '' : rf.controlnet ? ' · tile ControlNet missing' : ' · no tile ControlNet');
   $('refGo').disabled = !!busy || !!postJob;
 }
+$('refModel').onchange = e => { refPrefs().ckpt[refineMode()] = e.target.value; save(); paintRefine(); };
 $('refScale').onclick = e => { if (e.target.dataset.v) { refPrefs().scale = +e.target.dataset.v; save(); paintRefine(); } };
 $('refDenoise').oninput = e => { refPrefs().denoise = +e.target.value; save(); paintRefine(); };
 $('refHold').oninput = e => { refPrefs().hold = +e.target.value; save(); paintRefine(); };
 $('refPromptReset').onclick = () => { if (refSrc) $('refPrompt').value = refSrc.prompt || ''; };
 $('refGo').onclick = () => { $('enh').hidden = true; startJob('refine'); };
 function refineConfig() {
-  const r = refPrefs(), m = modeCfg(), rf = m.refine || {}, src = refSrc, [W, H] = refDims();
+  const r = refPrefs(), fam = refineMode(), rf = refineCfg().refine || {}, src = refSrc, [W, H] = refDims();
+  // Refine's own model, not the panel's — and a distilled one wants its own steps / CFG / sampler, the
+  // way picking one in the panel sets them. The hint line above the button shows which it will use.
+  const ckpt = refineCkpt(), f = fastProfile(ckpt);
   const job = {
-    video: src.frames_dir, checkpoint: checkpointPath(), family: state.mode,
+    video: src.frames_dir, checkpoint: ckpt, family: fam,
     prompt: $('refPrompt').value.trim() || src.prompt, negative: src.negative || '',
     width: W, height: H, frame_start: 0, frame_end: -1, nth: 1, hold: src.hold || 1,
     style: r.denoise, style_next: r.denoise,   // the same Denoise every frame: the warp carries the detail on
-    steps: state.steps, cfg: state.cfg,
-    sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
-    lora: loraOn(), lora_weight: state.loraW, ...styleRefJob(), seed: src.seed ?? randomSeed(),
+    steps: f ? f.steps : state.steps, cfg: f ? f.cfg : state.cfg,
+    sampler: f ? f.sampler : (SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m'),
+    schedule: f ? f.schedule : state.schedule,
+    lora: loraOn(fam), lora_weight: state.loraW, ...styleRefJob(fam), seed: src.seed ?? randomSeed(),
     controlnets: rf.controlnet?.have ? [{ kind: 'tile', path: rf.controlnet.path, start: 0, end: 1, repo: '', weight: r.hold }] : [],
     flow_blend: 0.85, color_match: 0.5, tile: rf.tile || 0, tile_overlap: 128,
     diff_source: 'off', prompt_keys: [], prompt_blend: 12,
@@ -5279,10 +5406,12 @@ $('enhSmooth').onclick = e => { if (e.target.dataset.v) { postPrefs().smooth = +
 $('enhInterp').onclick = e => { if (e.target.dataset.v) { postPrefs().interp = e.target.dataset.v; save(); paintEnhance(); } };
 $('enhTiming').onclick = e => { if (e.target.dataset.v) { postPrefs().slowmo = e.target.dataset.v === 'slow'; save(); paintEnhance(); } };
 $('enhGo').onclick = async () => {
-  const p = postPrefs(), runId = viewRun;
+  const p = postPrefs(), runId = viewRun, u = p.where === 'cloud' && cloudUps().length ? cloudUp() : null;
+  const body = u ? { cloud: u.id, params: cloudParams(u) }
+                 : { upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo, interp: p.interp || 'rife' };
   try {
     postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo, interp: p.interp || 'rife' }) });
+      body: JSON.stringify(body) });
   } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }
   $('enh').hidden = true; followPost(runId);
 };
@@ -5293,15 +5422,20 @@ function followPost(runId) {
   const tick = async () => {
     try { postJob = await api(`/api/post/${postJob.id}`); } catch { setTimeout(tick, 2000); return; }
     setProgress(postJob.progress);
+    if (postJob.logs) setLog(postJob.logs);     // an upscale has as much to say as a render does
     if (postJob.state === 'running' || postJob.state === 'queued') {
       setStatus(`enhance · ${postJob.message}`, 'live'); setTimeout(tick, 1000); return;
     }
     const done = postJob.state === 'completed';
     setStatus(done ? `enhance ${postJob.message}` : `enhance ${postJob.state}`, done ? 'done' : postJob.state === 'failed' ? 'bad' : '');
     if (postJob.state === 'failed') showError(postJob.error, postJob.traceback);
+    // an enhance makes its own run now (upscale / smooth, labelled after the one it came from):
+    // show it, the way a finished render jumps to itself
+    const made = done && postJob.run;
     postJob = null; setButtons(false); $('cancelLink').classList.add('hide');
     $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
-    if (viewRun === runId) renderOutputs(runId);
+    if (made) { await refreshRuns(); showRun(made); }
+    else if (viewRun === runId) renderOutputs(runId);
   };
   tick();
 }
@@ -5347,7 +5481,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   EMBEDS = (await api('/api/embeddings').catch(() => ({ embeddings: [] }))).embeddings;
   LORAS = (await api('/api/loras').catch(() => ({ loras: [] }))).loras;
   MOTION = await api('/api/motion').catch(() => ({ modules: [], loras: [], lcm_lora: null }));
-  POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], rife: false, active: null }));
+  POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null }));
   CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
   FIELD_KINDS = (await api('/api/fields').catch(() => ({ kinds: [] }))).kinds || [];   // drawn motion
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;

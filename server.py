@@ -168,7 +168,7 @@ def build_app() -> FastAPI:
         this — no references slot in a manifest means no References card — so dropping a graph into
         engine/comfy/ and naming it in workflows.json is the whole job of adding one."""
         try:
-            return {"workflows": [cloud.caps(w) for w in cloud.workflows()]}
+            return {"workflows": [cloud.caps(w) for w in cloud.workflows("render")]}
         except cloud.CloudError as e:
             return {"workflows": [], "error": str(e)}
 
@@ -678,13 +678,29 @@ def build_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}/job")
     def get_job_json(run_id: str):
-        """The engine job a run was rendered from (Refine starts from its size, prompt and frames)."""
+        """What Refine starts from: size, prompt, seed and the frames on disk.
+
+        Engine runs keep a job.json and it answers all of that. A cloud render doesn't write one -
+        the frames are still there, so read their size off the first one and take the prompt and seed
+        from the page state saved beside them. Refining a Comfy result through a local model is a
+        real thing to want: the graph gave it the motion, diffusion gives it the look.
+        """
         path = run_or_404(run_id)
+        frames = sorted((path / "frames").glob("*.png"))
         try:
             job = json.loads((path / "job.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            raise HTTPException(404, detail="This run has no engine job")
-        return job | {"frames_dir": str(path / "frames"), "frame_count": len(list((path / "frames").glob("*.png")))}
+            if not frames:
+                raise HTTPException(404, detail="This run has no frames")
+            from PIL import Image
+            with Image.open(frames[0]) as im:
+                width, height = im.size
+            ui = runs.read_meta(run_id).get("ui") or {}
+            seed = ui.get("seed")
+            job = {"engine": False, "width": width, "height": height, "hold": 1,
+                   "prompt": ui.get("prompt") or "", "negative": ui.get("negative") or "",
+                   "seed": int(seed) if isinstance(seed, (int, float)) else None}
+        return {"engine": True} | job | {"frames_dir": str(path / "frames"), "frame_count": len(frames)}
 
     @app.get("/api/runs/{run_id}/ui")
     def get_ui(run_id: str):
@@ -705,13 +721,33 @@ def build_app() -> FastAPI:
     # -------------------------------------------------------------- post-process
     @app.get("/api/post/options")
     def post_options():
+        """What Enhance can offer: the upscaling models on disk, and the cloud upscalers the manifest
+        installs. Each cloud one carries its own controls, so the panel draws them from this and adding
+        another upscaler stays a JSON entry plus a graph."""
+        try:
+            on_cloud = [cloud.upscale_caps(w) for w in cloud.workflows("upscale")]
+        except cloud.CloudError:
+            on_cloud = []
         return {"upscalers": post.list_upscalers(settings().get("upscale_dir", "")),
+                "cloud": on_cloud, "cloud_key": bool(h3_key(config())),
                 "rife": post.RIFE_WEIGHTS.is_file(), "film": post.FILM_WEIGHTS.is_file(), "active": post.active_job()}
 
     @app.post("/api/runs/{run_id}/post")
     async def post_run(run_id: str, request: Request):
         body = await request.json()
         path = run_or_404(run_id)
+        # A cloud upscale holds nothing here, so it is allowed to run while a render has the card.
+        if body.get("cloud"):
+            wid = str(body["cloud"])
+            if wid not in {w["id"] for w in cloud.workflows("upscale")}:
+                raise HTTPException(422, detail=f"Unknown cloud upscaler {wid}")
+            params = body.get("params")
+            if params is not None and not isinstance(params, dict):
+                raise HTTPException(422, detail="params must be an object")
+            try:
+                return post.start_cloud(path, wid, params or {})
+            except (RuntimeError, cloud.CloudError) as exc:
+                raise HTTPException(409, detail=str(exc))
         if jobs.busy():
             raise HTTPException(409, detail="Wait for the render to finish — both need the GPU")
         smooth, scale, name = int(body.get("smooth", 1)), int(body.get("scale", 2)), body.get("upscaler") or None

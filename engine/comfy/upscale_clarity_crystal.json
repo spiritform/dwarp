@@ -1,0 +1,25 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "" }
+  },
+  "2": {
+    "class_type": "ClarityCrystalVideoUpscaleNode",
+    "inputs": {
+      "model": "crystal-video-upscaler",
+      "model.video": ["1", 0],
+      "model.scale_factor": 2
+    }
+  },
+  "3": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["2", 0],
+      "filename_prefix": "video/dwarp-upscale",
+      "format": "mp4",
+      "format.codec": "auto",
+      "codec": "h264",
+      "codec.encoding": "auto"
+    }
+  }
+}

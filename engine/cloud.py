@@ -50,23 +50,29 @@ class CloudError(RuntimeError):
 
 
 # ------------------------------------------------------------------ the workflows
-def workflows() -> list[dict]:
-    """Every installed workflow, in panel order. A manifest entry whose graph is missing is skipped
-    rather than offered and then failed on."""
+def kind_of(w: dict) -> str:
+    """render (makes a clip, lives in the panel) or upscale (takes a finished mp4, lives in Enhance)."""
+    return (w.get("kind") or "render").strip().lower()
+
+
+def workflows(kind: str = "") -> list[dict]:
+    """Every installed workflow, in panel order, or just the one kind. A manifest entry whose graph is
+    missing is skipped rather than offered and then failed on."""
     try:
         data = json.loads(REGISTRY.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise CloudError(f"could not read {REGISTRY.name}: {e}") from None
-    return [w for w in (data.get("workflows") or [])
-            if w.get("id") and w.get("graph") and (COMFY / w["graph"]).is_file()]
+    found = [w for w in (data.get("workflows") or [])
+             if w.get("id") and w.get("graph") and (COMFY / w["graph"]).is_file()]
+    return [w for w in found if kind_of(w) == kind] if kind else found
 
 
-def workflow(wid: str = "") -> dict:
-    """The one asked for, or the first installed. An id that is no longer there falls back rather than
-    failing the job: the graph is what matters and the panel can be out of date."""
-    found = workflows()
+def workflow(wid: str = "", kind: str = "render") -> dict:
+    """The one asked for, or the first installed of that kind. An id that is no longer there falls back
+    rather than failing the job: the graph is what matters and the panel can be out of date."""
+    found = workflows(kind)
     if not found:
-        raise CloudError("no Comfy Cloud workflows are installed (engine/comfy/workflows.json)")
+        raise CloudError(f"no Comfy Cloud {kind} workflows are installed (engine/comfy/workflows.json)")
     return next((w for w in found if w["id"] == wid), found[0])
 
 
@@ -110,6 +116,42 @@ def caps(w: dict) -> dict:
             "fps": float(length.get("fps", 24)), "snap": int(length.get("snap", 1)),
             "min_frames": int(length.get("min_frames", 1)),
             "max_seconds": float(length.get("max_seconds", 0))}
+
+
+def upscale_caps(w: dict) -> dict:
+    """What Enhance should offer for one cloud upscaler. The controls go out as the panel draws them —
+    label, kind, range, options — with the node and input left behind, since only the graph needs those."""
+    keep = ("id", "label", "kind", "min", "max", "step", "default", "options", "note")
+    return {"id": w["id"], "label": w.get("label") or w["id"], "short": w.get("short") or w["id"],
+            "model": w.get("model", ""), "note": w.get("note", ""), "cost": w.get("cost", ""),
+            "limits": w.get("limits", ""),
+            "controls": [{k: c[k] for k in keep if k in c} for c in (w.get("controls") or [])]}
+
+
+def control_values(w: dict, params: dict | None = None) -> dict:
+    """The panel's numbers, clamped to what the manifest says each control takes. Anything missing or
+    out of range falls back to the declared default, so a stale page can't put nonsense on a graph."""
+    params, out = params or {}, {}
+    for c in w.get("controls") or []:
+        kind, default = (c.get("kind") or "number"), c.get("default")
+        got = params.get(c["id"], default)
+        if kind == "text":
+            got = str(got if got is not None else "")
+        elif kind == "choice":
+            opts = list(c.get("options") or [])
+            got = got if got in opts else (default if default in opts else (opts[0] if opts else got))
+        elif kind == "toggle":
+            got = bool(got)
+        else:
+            try:
+                got = float(got)
+            except (TypeError, ValueError):
+                got = float(default or 0)
+            got = min(float(c.get("max", got)), max(float(c.get("min", got)), got))
+            if got == int(got) and float(c.get("step", 1)) == int(float(c.get("step", 1))):
+                got = int(got)
+        out[c["id"]] = got
+    return out
 
 
 # ------------------------------------------------------------------ the account
@@ -359,6 +401,43 @@ def submit(key: str, base: str, graph: dict) -> str:
     return r["prompt_id"]
 
 
+def wait(key: str, base: str, prompt_id: str, *, tick: Callable[[str], None] = lambda s: None,
+         cancelled: Callable[[], bool] = lambda: False, log: Callable[[str], None] = print,
+         what: str = "render", doing: str = "") -> dict | None:
+    """Poll one cloud job to the end. Returns its detail, or None if it was cancelled here.
+
+    Comfy's REST API reports no percentage, so a bar can't move and sits at 0 until the clip arrives.
+    Elapsed time is the only honest signal there is, so it goes out every poll and into the log every
+    half minute — otherwise a four-minute render looks like a hung one."""
+    t0, seen, beat = time.time(), "", 0.0
+    while True:
+        if cancelled():
+            try:
+                _call(key, base, "/api/queue", json.dumps({"delete": [prompt_id]}).encode(),
+                      "application/json")
+                log("cancelled on Comfy Cloud")
+            except CloudError as e:
+                log(f"couldn't cancel the cloud job: {e}")
+            return None
+        detail = _call(key, base, f"/api/jobs/{prompt_id}")
+        state = (detail.get("status") or "") if isinstance(detail, dict) else ""
+        mins, secs = divmod(round(time.time() - t0), 60)
+        label = {"pending": "waiting for a GPU",
+                 "in_progress": doing or f"{what}ing"}.get(state, state or "working")
+        tick(f"{label} on Comfy Cloud · {mins}m {secs:02d}s")
+        waited = time.time() - t0
+        if state != seen or waited - beat >= 30:
+            log(f"{label} ({mins}m {secs:02d}s)")
+            seen, beat = state, waited
+        if state == "completed":
+            return detail
+        if state in ("failed", "error", "cancelled"):
+            why = (detail.get("error_message") or
+                   json.dumps(detail.get("execution_error") or {})[:300] or state)
+            raise CloudError(f"the cloud {what} {state}: {why}")
+        time.sleep(POLL)
+
+
 def outputs(detail: dict, saver: str = "", skip: str = "") -> list[dict]:
     """What the finished job wrote.
 
@@ -419,6 +498,102 @@ def extract(video: Path, frames_dir: Path) -> list[Path]:
 
 
 # ------------------------------------------------------------------ the mode
+def measure(path: Path) -> tuple[int, int, int]:
+    """width, height and frame count of an mp4, straight from ffprobe. A graph that enlarges has to be
+    told the shape it is enlarging, or it invents one \u2014 which is how a square clip comes back cropped."""
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+         "-show_entries", "stream=width,height,nb_read_frames", "-of", "json", str(path)],
+        capture_output=True, text=True)
+    try:
+        st = (json.loads(out.stdout).get("streams") or [{}])[0]
+        return int(st["width"]), int(st["height"]), int(st.get("nb_read_frames") or 0)
+    except (ValueError, KeyError, IndexError) as e:
+        raise CloudError(f"couldn't read {path.name}: {out.stderr.strip()[:200] or e}") from None
+
+
+def upscale_size(spec: dict, width: int, height: int, scale: float) -> tuple[int, int]:
+    """The frame to ask for: the source times the scale, kept to the graph's multiple and under its
+    megapixel ceiling. Scaling both sides by the same number is what keeps the shape the run was made in."""
+    mp = float(spec.get("max_megapixels") or 0)
+    scale = max(1.0, float(scale))
+    if mp and width * height * scale * scale > mp * 1_000_000:
+        scale = max(1.0, (mp * 1_000_000 / (width * height)) ** 0.5)
+    mult = max(1, int(spec.get("multiple", 8)))
+    fit = lambda v: max(mult, int(round(v * scale / mult)) * mult)
+    return fit(width), fit(height)
+
+
+def upscale_cloud(wid: str, src: Path, dest: Path, params: dict | None = None, *,
+                  progress: Callable[[str], None] = lambda note: None,
+                  cancelled: Callable[[], bool] = lambda: False,
+                  log: Callable[[str], None] = print) -> Path:
+    """Send a finished run's mp4 to a cloud upscaler and write what comes back to `dest`.
+
+    Nothing here touches the card, so this can run while a render has it — which is the point: an
+    upscale that costs you nothing locally should not have to wait its turn behind one that does.
+    """
+    key, base = api_key(), base_url()
+    if not key:
+        raise CloudError("no Comfy Cloud API key — add one in Settings. "
+                         "Keys come from platform.comfy.org/profile/api-keys.")
+    src = Path(src)
+    if not src.is_file():
+        raise CloudError(f"no video at {src}")
+
+    w = workflow(wid, kind="upscale")
+    name = w.get("label") or w["id"]
+    values = control_values(w, params)
+    said = " \u00b7 ".join(f"{c.get('label') or c['id']} {values[c['id']]}"
+                          for c in (w.get("controls") or []) if c["id"] in values)
+    log(f"{name} on Comfy Cloud \u00b7 {src.name} ({src.stat().st_size / 2**20:.1f} MB)"
+        f"{f' \u00b7 {said}' if said else ''}")
+    if w.get("limits"):
+        log(f"  {w['limits']}")
+
+    progress("sending the clip")
+    stored = upload_video(key, base, src)
+    log(f"  sent as {stored}")
+    if cancelled():
+        raise CloudError("cancelled")
+
+    graph = graph_of(w)
+    node, field = w["input"]
+    graph[str(node)]["inputs"][field] = stored
+    for c in w.get("controls") or []:
+        if c.get("node"):                 # a control with no node feeds the size below, not the graph
+            graph[str(c["node"])]["inputs"][c["input"]] = values[c["id"]]
+
+    size, frames_at = w.get("size") or {}, w.get("frames")
+    if size or frames_at:
+        sw, sh, count = measure(src)
+        if size:
+            tw, th = upscale_size(size, sw, sh, values.get("scale", 1))
+            graph[str(size["width"][0])]["inputs"][size["width"][1]] = tw
+            graph[str(size["height"][0])]["inputs"][size["height"][1]] = th
+            log(f"  {sw}x{sh} -> {tw}x{th}")
+        if frames_at and count:
+            graph[str(frames_at[0])]["inputs"][frames_at[1]] = count
+            log(f"  {count} frames")
+
+    prompt_id = submit(key, base, graph)
+    log(f"queued on Comfy Cloud ({prompt_id})")
+    detail = wait(key, base, prompt_id, tick=progress, cancelled=cancelled, log=log,
+                  what="upscale", doing="upscaling")
+    if detail is None:
+        raise CloudError("cancelled")
+
+    files = outputs(detail, w.get("saver", ""), skip=stored)   # never hand back the clip we sent up
+    if not files:
+        raise CloudError("the cloud upscale finished but wrote no file")
+    progress("downloading the clip")
+    log(f"downloading {files[0]['filename']}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    got = fetch(key, base, files[0], dest)
+    log(f"downloaded {dest.name} ({got.stat().st_size / 2**20:.1f} MB)")
+    return got
+
+
 def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[[], bool] = lambda: False,
                  log: Callable[[str], None] = print) -> list[Path]:
     """Called by engine.warp.render for the Comfy family. Returns [] so the caller doesn't reassemble the
@@ -496,36 +671,10 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
                   width, height, frames, job.seed, video, sound, tracks, pull, fast)
     prompt_id = submit(key, base, graph)
     log(f"queued on Comfy Cloud ({prompt_id})")
-
-    # Comfy's REST API reports no percentage, so the bar can't move and sits at 0 until the clip
-    # arrives. Elapsed time is the only honest signal there is, so it goes out every poll and into
-    # the log every half minute — otherwise a four-minute render looks like a hung one.
-    t0, seen, beat = time.time(), "", 0.0
-    while True:
-        if cancelled():
-            try:
-                _call(key, base, "/api/queue", json.dumps({"delete": [prompt_id]}).encode(),
-                      "application/json")
-                log("cancelled on Comfy Cloud")
-            except CloudError as e:
-                log(f"couldn't cancel the cloud job: {e}")
-            return []
-        detail = _call(key, base, f"/api/jobs/{prompt_id}")
-        state = (detail.get("status") or "") if isinstance(detail, dict) else ""
-        mins, secs = divmod(round(time.time() - t0), 60)
-        label = {"pending": "waiting for a GPU", "in_progress": "rendering"}.get(state, state or "working")
-        progress("cloud", 0, frames, f"{label} on Comfy Cloud · {mins}m {secs:02d}s")
-        waited = time.time() - t0
-        if state != seen or waited - beat >= 30:
-            log(f"{label} ({mins}m {secs:02d}s)")
-            seen, beat = state, waited
-        if state == "completed":
-            break
-        if state in ("failed", "error", "cancelled"):
-            why = (detail.get("error_message") or
-                   json.dumps(detail.get("execution_error") or {})[:300] or state)
-            raise CloudError(f"the cloud render {state}: {why}")
-        time.sleep(POLL)
+    detail = wait(key, base, prompt_id,
+                  tick=lambda note: progress("cloud", 0, frames, note), cancelled=cancelled, log=log)
+    if detail is None:
+        return []
 
     files = outputs(detail, w.get("saver", ""), skip=video)   # `skip`: never hand back the clip we sent up
     if not files:

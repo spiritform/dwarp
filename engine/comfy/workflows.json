@@ -25,7 +25,8 @@
     "  strength {\"input\": name, \"min\", \"max\", \"step\", \"default\"} — one number on the model node, shown as a slider. WanMove uses it for how hard the tracks pull the picture.",
     "  speed   {\"node\", \"input\", \"fast\": value, \"note\", \"fast_note\"} — one boolean in the graph that swaps a whole recipe at once (WanMove's switch feeds model, steps and CFG together). It puts the quality / fast pair on the panel; the notes are its tooltips.",
     "  brief   true when the model reads a sectioned brief rather than a line of description. It is what puts the \"Start from\" template picker and the tall monospace prompt box on the panel; a model with an ordinary text encoder leaves it out and gets the usual prompt box.",
-    "Leave a key out and that control disappears from the panel."
+    "Leave a key out and that control disappears from the panel.",
+    "  kind    \"render\" (the default) builds a clip and belongs in the panel's Workflow dropdown.\n          \"upscale\" takes a finished run's mp4 and hands back a bigger one; those appear in\n          Enhance instead, under Upscale -> cloud, and never in the panel.\n  input   [node, input] the mp4 goes on, for an upscale graph (its LoadVideo file widget).\n  controls what the Enhance panel shows for an upscale graph, in order. One entry per knob:\n          {\"id\", \"label\", \"kind\": number | choice | toggle, \"node\", \"input\", \"default\", \"note\"}\n          plus \"min\"/\"max\"/\"step\" for a number and \"options\" for a choice. The page builds the\n          controls from this list, so picking a different upscaler changes the controls with it\n          and adding one is still a JSON entry.\n  cost    one line saying how this graph bills — shown under the picker, because Enhance is\n          otherwise entirely local and a cloud entry is the first button there that spends.\n\nA graph that wraps its work in a subgraph (node types that look like a UUID) cannot be written by\nhand: /api/prompt takes a flat graph. Open it in the Comfy editor and use Workflow -> Export (API),\nwhich flattens the subgraphs, then drop the file in here and name it in an entry."
   ],
   "version": 1,
   "workflows": [
@@ -154,6 +155,132 @@
         "step": 0.05,
         "default": 1
       }
+    },
+    {
+      "id": "upscale_flashvsr",
+      "kind": "upscale",
+      "graph": "upscale_flashvsr.json",
+      "label": "FlashVSR · fast",
+      "short": "flashvsr",
+      "model": "WaveSpeed FlashVSR (partner API)",
+      "note": "One pass to a fixed height. Sharpens and de-artifacts without repainting, and holds still between frames.",
+      "cost": "Runs as a partner API node — billed per call, not against GPU time.",
+      "saver": "3",
+      "input": [
+        "4",
+        "file"
+      ],
+      "controls": [
+        {
+          "id": "target_resolution",
+          "label": "Target",
+          "kind": "choice",
+          "node": "16",
+          "input": "target_resolution",
+          "options": [
+            "720p",
+            "1080p",
+            "2K",
+            "4K"
+          ],
+          "default": "1080p",
+          "note": "The height it upscales to, whatever came in."
+        }
+      ]
+    },
+    {
+      "id": "upscale_clarity_crystal",
+      "kind": "upscale",
+      "graph": "upscale_clarity_crystal.json",
+      "label": "Clarity Crystal · faithful",
+      "short": "clarity",
+      "model": "Clarity AI Crystal (partner API)",
+      "note": "Multiplies the frame size and stays close to what it was given — it restores rather than invents. Keeps the frame count and the sound.",
+      "cost": "Runs as a partner API node — billed per call, not against GPU time. Over 30 fps costs 2x, over 60 fps 3x.",
+      "limits": "Capped at 9 megapixels a frame and 360 megapixel-seconds a clip, so a long or large clip comes back upscaled by less than you asked for.",
+      "saver": "3",
+      "input": [
+        "1",
+        "file"
+      ],
+      "controls": [
+        {
+          "id": "scale_factor",
+          "label": "Scale",
+          "kind": "number",
+          "node": "2",
+          "input": "model.scale_factor",
+          "min": 1,
+          "max": 4,
+          "step": 0.25,
+          "default": 2,
+          "note": "Multiplies width and height: 2 doubles both."
+        }
+      ]
+    },
+    {
+      "id": "upscale_wan_creative",
+      "kind": "upscale",
+      "graph": "wan-creative-upscale.json",
+      "label": "Wan 2.2 Creative",
+      "short": "wan",
+      "model": "Wan 2.2 T2V A14B fp8 + lightx2v step-distill LoRA · 4 steps, CFG 1, euler",
+      "note": "A diffusion pass rather than a resample: it repaints as it enlarges, so it invents detail that was never there. Closest in spirit to Refine, but on their card.",
+      "cost": "A GPU workflow — it runs the real model on a Comfy Cloud GPU and bills GPU time, not per call like the partner upscalers.",
+      "saver": "667",
+      "input": [
+        "727",
+        "file"
+      ],
+      "size": {
+        "width": [
+          "743",
+          "value"
+        ],
+        "height": [
+          "744",
+          "value"
+        ],
+        "multiple": 64,
+        "max_megapixels": 2.1
+      },
+      "frames": [
+        "668",
+        "length"
+      ],
+      "controls": [
+        {
+          "id": "scale",
+          "label": "Scale",
+          "kind": "number",
+          "min": 1,
+          "max": 2,
+          "step": 0.25,
+          "default": 1.5,
+          "note": "Multiplies the run's own frame size, so the shape it was rendered in is kept."
+        },
+        {
+          "id": "denoise_strength",
+          "label": "Creative",
+          "kind": "number",
+          "node": "747",
+          "input": "denoise_strength",
+          "min": 0.05,
+          "max": 0.6,
+          "step": 0.05,
+          "default": 0.25,
+          "note": "How much it is allowed to repaint. Low adds texture, high changes what is there."
+        },
+        {
+          "id": "positive_prompt",
+          "label": "Prompt",
+          "kind": "text",
+          "node": "755",
+          "input": "positive_prompt",
+          "default": "high resolution, sharp, detailed",
+          "note": "What the new detail should look like."
+        }
+      ]
     }
   ]
 }

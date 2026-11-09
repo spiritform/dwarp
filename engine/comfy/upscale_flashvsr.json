@@ -1,0 +1,22 @@
+{
+  "4": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "" }
+  },
+  "16": {
+    "class_type": "WavespeedFlashVSRNode",
+    "inputs": {
+      "video": ["4", 0],
+      "target_resolution": "1080p"
+    }
+  },
+  "3": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["16", 0],
+      "filename_prefix": "video/dwarp-upscale",
+      "format": "mp4",
+      "format.codec": "auto"
+    }
+  }
+}

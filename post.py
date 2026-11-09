@@ -3,11 +3,16 @@ straight into ffmpeg. Nothing is written to disk but the final mp4 (in <run>/pos
 
 Interpolation runs first, at render resolution, where it is cheap; every frame it
 produces is then upscaled. One post job at a time — they share the GPU with renders.
+
+A cloud upscale (start_cloud) is the same job in the same slot, with the work happening on Comfy
+Cloud instead: the run's mp4 goes up, a bigger one comes back into the same post folder and shows
+as the same chip. It holds no GPU here, so unlike the local one it can run while a render does.
 """
 import glob
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -99,14 +104,92 @@ def start(run_dir: Path, batch: str, *, fps: float, smooth: int, upscaler_path: 
         name = re.sub(r"[^\w.\-]+", "_", "_".join(parts))[:120] + ".mp4"
         job = {
             "id": uuid.uuid4().hex[:12], "run_id": run_dir.name, "state": "queued",
-            "progress": 0.0, "message": "queued", "error": None, "output": name,
+            "progress": 0.0, "message": "queued", "error": None, "output": name, "logs": [],
             "frames_in": len(frames), "frames_out": (len(frames) - 1) * smooth + 1,
             "started": time.time(), "cancel": False,
         }
+        bits = ([f"upscale x{scale} with {Path(upscaler_path).stem}"] if upscaler_path else []) + \
+               ([f"{interp.upper()} {smooth}x" + (" as slow motion" if slowmo else "")] if smooth > 1 else [])
+        say(job, f"{' + '.join(bits)} on your card · {len(frames)} frames "
+                 f"→ {(len(frames) - 1) * smooth + 1} at {out_fps:g} fps")
         _jobs[job["id"]] = job
     threading.Thread(target=_run, args=(job, frames, run_dir / "post" / name, out_fps, smooth,
                                         upscaler_path, scale, interp), daemon=True).start()
     return job
+
+
+def start_cloud(run_dir: Path, wid: str, params: dict | None = None, *, batch: str = "warpbox") -> dict:
+    """Send the run's own mp4 to a Comfy Cloud upscaler. Nothing here loads a model or takes the card."""
+    from engine import cloud
+
+    src = run_dir / "video.mp4"
+    if not src.is_file():                        # a run the page can play always has one
+        raise RuntimeError("This run has no mp4 to upscale")
+    w = cloud.workflow(wid, kind="upscale")
+    values = cloud.control_values(w, params)
+    with _lock:
+        if active_job():
+            raise RuntimeError("A post-process job is already running")
+        # only the short knobs belong in a file name: a prompt pasted into one is unreadable,
+        # and the full settings are kept on the run this becomes
+        short = {c["id"] for c in (w.get("controls") or [])
+                 if c.get("kind") in ("number", "choice", "toggle")}
+        bits = [w.get("short") or w["id"]] + [f"{k}{v}" for k, v in values.items() if k in short]
+        name = re.sub(r"[^\w.\-]+", "_", "-".join(str(b) for b in bits))[:120] + ".mp4"
+        job = {
+            "id": uuid.uuid4().hex[:12], "run_id": run_dir.name, "state": "queued", "kind": "cloud",
+            "progress": 0.0, "message": "queued", "error": None, "output": name, "logs": [],
+            "workflow": w["id"], "label": w.get("label") or w["id"], "params": values,
+            "started": time.time(), "cancel": False,
+        }
+        _jobs[job["id"]] = job
+    threading.Thread(target=_guarded, args=(_run_cloud, job, run_dir, w["id"], values, name),
+                     daemon=True).start()
+    return job
+
+
+def _rate(run_dir: Path) -> float:
+    """The new run plays at the source's rate: an upscale changes the frame, never the clock."""
+    import runs as rr
+    try:
+        return rr.fps(run_dir.name)
+    except Exception:                            # noqa: BLE001 - a rate we cannot read is not fatal
+        return 24.0
+
+
+def _run_cloud(job, run_dir: Path, wid: str, values: dict, name: str):
+    from engine import cloud
+
+    job["state"] = "running"
+
+    def note(message):
+        """The poll line: it changes every second with the clock, so it is the status, not the log."""
+        if job["cancel"]:
+            raise InterruptedError
+        say(job, message, keep=False)
+
+    try:
+        cloud.upscale_cloud(wid, run_dir / "video.mp4", run_dir / "post" / name, values,
+                            progress=note, cancelled=lambda: job["cancel"],
+                            log=lambda m: say(job, m))
+    except InterruptedError:
+        job["state"], job["message"] = "cancelled", "cancelled"
+        return
+    except cloud.CloudError as exc:
+        if job["cancel"]:
+            job["state"], job["message"] = "cancelled", "cancelled"
+            return
+        job["state"] = "failed"
+        job["error"] = str(exc)
+        say(job, str(exc))
+        return
+    # a post job reports 0-100 (the local path does); the cloud reports no percentage at all,
+    # so it stays at 0 and the elapsed time in the message is the honest signal
+    detail = " · ".join(f"{c.get('label') or c['id']} {values[c['id']]}"
+                        for c in (cloud.workflow(wid, kind="upscale").get("controls") or [])
+                        if c["id"] in values and c.get("kind") != "text")
+    promote(job, run_dir / "post" / name, run_dir, "upscale", detail, _rate(run_dir))
+    job["state"], job["progress"] = "completed", 100.0
 
 
 # ------------------------------------------------------------------ models
@@ -129,6 +212,49 @@ def start_tracks(src: str, dest_dir: Path, *, points: int = 24, length: int = 81
         _run_tracks, job, src, Path(dest_dir), int(points), int(length), int(width), int(height),
         trim, float(fps))).start()
     return job
+
+
+def promote(job: dict, made: Path, source: Path, verb: str, detail: str, rate: float) -> str:
+    """Put a finished post video in the runs list as its own run.
+
+    It gets its own frames, so it has a thumbnail, scrubs and compares like any other run, and a label
+    saying what it came from — "upscale · wanmove" beside the "wanmove · render" it was made from.
+    The source run's settings ride along, so "use settings" still gets you back to what made it.
+    """
+    import runs as rr
+    from engine import cloud
+
+    was = rr.read_meta(source.name)
+    came = (was.get("label") or source.name).split(" · ")[0].strip() or source.name
+    rid, path = rr.new_run()
+    try:
+        shutil.move(str(made), str(path / "video.mp4"))
+        say(job, "extracting frames for the run")
+        cloud.extract(path / "video.mp4", path / "frames")
+        rr.write_meta(rid, label=f"{verb} · {came}", fps=float(rate),
+                      ui={**(was.get("ui") or {}), "kind": verb, "source_run": source.name,
+                          "post": detail})
+    except BaseException:
+        shutil.rmtree(path, ignore_errors=True)    # a half-made run in the list is worse than none
+        raise
+    job["run"] = rid
+    say(job, f"run {rid} · {verb} · {came}" + (f" · {detail}" if detail else ""))
+    return rid
+
+
+def say(job: dict, message: str, keep: bool = True) -> None:
+    """One line of progress. It becomes the job's message, and — unless it is the per-frame counter,
+    which would bury everything else — it is kept in the log the page shows."""
+    message = str(message).rstrip()                # the right side only: the cloud log indents its
+    if not message.strip():                        # detail lines, and that is the structure of it
+        return
+    job["message"] = message.strip()
+    if keep:
+        log = job.setdefault("logs", [])
+        last = log[-1].split("] ", 1)[-1] if log else None    # past the timestamp this line will get
+        if last != message:                        # a poll that repeats itself is not news
+            log.append(f"[{time.strftime('%H:%M:%S')}] {message}")
+            del log[:-400]
 
 
 def _guarded(fn, job, *args):
@@ -316,7 +442,8 @@ def _run(job, frames, out_path: Path, fps, smooth, upscaler_path, scale, interp=
             done += 1
             job["progress"] = done / total * 100
             per = (time.time() - t0) / done
-            job["message"] = f"frame {done}/{total} · {per:.2f} s/f · {max(0, total - done) * per:.0f}s left"
+            # the per-frame counter is the status line's job, not the log's
+            say(job, f"frame {done}/{total} · {per:.2f} s/f · {max(0, total - done) * per:.0f}s left", keep=False)
 
         prev = first
         emit(prev)
@@ -332,8 +459,12 @@ def _run(job, frames, out_path: Path, fps, smooth, upscaler_path, scale, interp=
         if proc.wait() != 0:
             raise RuntimeError(f"ffmpeg failed: {err.strip()[-500:]}")
         os.replace(tmp, out_path)
+        say(job, f"made {total} frames in {time.time() - t0:.0f}s")
+        bits = ([f"{scale}x {Path(upscaler_path).stem}"] if upscaler_path else []) + \
+               ([f"{interp} {smooth}x"] if smooth > 1 else [])
+        promote(job, out_path, out_path.parent.parent, "upscale" if upscaler_path else "smooth",
+                " · ".join(bits), fps)
         job["state"], job["progress"] = "completed", 100.0
-        job["message"] = f"done · {total} frames · {time.time() - t0:.0f}s"
     except InterruptedError:
         job["state"], job["message"] = "cancelled", "cancelled"
     except Exception as exc:
