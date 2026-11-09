@@ -10,6 +10,7 @@
     "  saver   the node whose output IS the render. Read outputs from this one only: a LoadVideo node",
     "          reports the file it read in the same shape as a real output and would otherwise win.",
     "  prompt  [node, input] the text goes on",
+    "  prompt_hint {\"weak\": true, \"note\": \"...\", \"dead_on_fast\": true} — for a graph whose text\n          encoder barely moves the picture. It dims the Prompt card and prints the note under\n          it, so the box stops looking like the dial it is not; dead_on_fast also disables it\n          while fast is selected. Only claim this from a measurement: WanMove earned it over\n          four renders on one seed and field.",
     "  seed    [node, input] the seed goes on (optional)",
     "  node    the model node that carries size, length and the reference slots",
     "  size    megapixels + multiple the width/height are fitted to, and the input names",
@@ -94,6 +95,11 @@
         "317:151",
         "text"
       ],
+      "prompt_hint": {
+        "weak": true,
+        "dead_on_fast": true,
+        "note": "Barely read here: the motion comes from the paths, not the words. Measured over four renders on one seed and field — a completely different scene prompt moved colour a little and changed nothing else, and on fast it did nothing at all."
+      },
       "seed": [
         "317:144",
         "seed"

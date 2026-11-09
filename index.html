@@ -228,6 +228,7 @@
   #shapeSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #shapeSlot .clip-empty svg { width: 18px; height: 18px; }
   #shapeSlot, #trackSlot { margin-bottom: 8px; }          /* breathing room under the slot, empty or loaded */
+  #trackSlot { margin-top: 10px; }                        /* and under the word above it */
   #h3MotionLabel { margin-bottom: 8px; }                  /* the slot is a picture: it needs the air */
   #tkWay { margin-top: 8px; }
   #trackSlot .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex;
@@ -240,6 +241,11 @@
   #trackSlot .tk video { display: block; width: 100%; background: #000; cursor: pointer; }
   #trackSlot .tk canvas { display: block; width: 100%; background: #0f0e13; cursor: pointer; }
   #trackSlot .tk canvas.draw { cursor: crosshair; touch-action: none; }
+  /* A prompt box the model barely reads: dimmed, never hidden - it still colours the render, and
+     typing in it brings it back so it never fights you while you are using it. */
+  .card[data-card="prompt"].weak textarea, .card[data-card="prompt"].weak .keywrap { opacity: .45; }
+  .card[data-card="prompt"].weak textarea:focus { opacity: 1; }
+  .card[data-card="prompt"] textarea:disabled { color: var(--faint); cursor: not-allowed; }
   #trackSlot .meta { display: flex; align-items: center; gap: 8px; padding: 7px 8px; }
   #trackSlot .meta b { flex: 1; min-width: 0; font-size: 11px; font-weight: 400; color: #c9c7cf;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -768,6 +774,7 @@
       <select class="model" id="promptTpl" title="Lay out H3's sectioned brief, filled in from the clip and the references you have loaded. Switching rewrites the brief and keeps what you typed into it; no template strips the sections away and leaves your own lines."></select>
     </div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
+    <div class="hint" id="promptWeak" style="margin:6px 0 2px"></div>
     <div class="keywrap">
     <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it (drag the first past others to reorder)"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="keybar" id="keyBar" hidden>
@@ -804,13 +811,13 @@
       <div id="trackSlot"></div>
       <input type="file" id="trackFile" accept="video/*" hidden>
       <div class="seg" id="tkWay" style="grid-template-columns:1fr 1fr">
-        <button data-w="measure" title="Track a real video's movement — drop a clip, or one of your own runs, in the slot above">measure</button>
-        <button data-w="field" title="Author the paths — a formula, or lines you draw yourself. Instant, no clip needed">field</button>
+        <button data-w="measure" title="Take the movement off a real video — drop a clip, or one of your own runs, in the slot above">track motion</button>
+        <button data-w="field" title="Make the paths here: lines you draw on the picture, or a formula. Instant, no clip needed">draw motion</button>
       </div>
       <div class="adnote" id="trackNote" style="margin:6px 0 0"></div>
       <div id="tkDials" hidden>
         <div id="fieldRow" hidden>
-          <div class="sublabel">Field</div>
+          <div class="sublabel">Path</div>
           <select class="model" id="fdKind" title="Which motion to draw. The preview above animates it as you change these."></select>
           <div class="adnote" id="fdNote" style="margin:6px 0 12px"></div>
           <div class="slider" id="fdAmtRow">
@@ -837,7 +844,7 @@
         <button data-v="1" title="Keep the soundtrack H3 generates — voices, effects and music, made with the picture">keep</button>
         <button data-v="0" title="Drop the audio track, for cutting your own over it. H3 still makes the sound; it is left out of the file">silent</button></div>
       <div id="h3AspectRow"><div class="sublabel">Aspect</div>
-        <div class="seg" id="h3Aspect"><button data-a="16:9">16:9</button><button data-a="1:1">1:1</button><button data-a="9:16">9:16</button></div></div>
+        <div class="seg" id="h3Aspect" style="grid-template-columns:repeat(4,1fr)"><button data-a="16:9">16:9</button><button data-a="1:1">1:1</button><button data-a="9:16">9:16</button><button data-a="ref" id="h3AspectRef" title="The shape of your first reference, so none of it is cropped away. The model fits the picture into whatever box this row picks by cutting the overflow off the long side.">ref</button></div></div>
     </div>
     <div id="sdBox">
     <div class="sublabel">Checkpoint</div>
@@ -1444,12 +1451,24 @@ function sizeFrom() {                        // what decides the box: 'motion' |
   if (wf().tracks && measured() && !measured().chase) return 'motion';
   return wf().video && state.clip ? 'clip' : 'aspect';
 }
+// The first reference's own shape, when the page knows it. A picture is fitted into the render box by
+// the model with a centre crop, so a 4:5 photo in a 16:9 box loses its top and bottom - matching the
+// box to the picture is the only way to keep all of it, and it is one button rather than a lecture.
+function refShape() {
+  const r = h3Refs()[0];
+  return r && r.width > 0 && r.height > 0 ? [r.width, r.height] : null;
+}
+function h3Aspect() {                          // the chosen one, or 16:9 if it is no longer available
+  const a = state.h3aspect || '16:9';
+  return a === 'ref' && !refShape() ? '16:9' : a;
+}
 function comfySize() {
   const from = sizeFrom();
   if (from === 'motion') return [state.tracks.width, state.tracks.height];
   const src = state.clip?.source;
-  return from === 'clip' ? fitBox(src.width, src.height)
-                         : fitBox(...(state.h3aspect || '16:9').split(':').map(Number));
+  if (from === 'clip') return fitBox(src.width, src.height);
+  const a = h3Aspect();
+  return fitBox(...(a === 'ref' ? refShape() : a.split(':').map(Number)));
 }
 // Every Comfy Cloud graph this install has, from /api/comfy/workflows, with what each one takes. The
 // panel is built from that rather than from anything written here, so a new graph is a JSON file and no
@@ -1486,6 +1505,13 @@ function renderH3() {
   $('tplRow').hidden = !brief; $('promptRandom').hidden = brief;
   if (brief && !$('promptTpl').options.length) renderTplPick();
   $('prompt').classList.toggle('brief', brief);
+  // A graph whose text encoder barely moves the picture says so in its manifest, and the box says it
+  // back: dimmed, with the measurement under it, rather than left looking like a dial that works.
+  const ph = on ? w.prompt_hint : null, dead = !!(ph && ph.dead_on_fast && comfyFast());
+  document.querySelector('[data-card="prompt"]').classList.toggle('weak', !!ph);
+  $('prompt').disabled = dead;
+  $('promptWeak').textContent = !ph ? ''
+    : dead ? `ignored while fast is selected. ${ph.note || ''}` : (ph.note || '');
   if (!on) return;
   // The list, and then every control below it: a workflow with no refs slot has no References card, one
   // that writes no audio has no Sound switch. All of it off the manifest.
@@ -1563,7 +1589,9 @@ function renderH3() {
   // With a clip loaded the output takes its shape, so there is nothing to pick
   $('h3AspectRow').hidden = sizeFrom() !== 'aspect';
   [...$('h3Sound').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === (state.h3sound !== false)));
-  [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.h3aspect || '16:9')));
+  $('h3AspectRef').hidden = !refShape();      // nothing to match until a picture with a known shape is in
+  $('h3Aspect').style.gridTemplateColumns = `repeat(${refShape() ? 4 : 3},1fr)`;
+  [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === h3Aspect()));
   const refs = h3Refs();
   $('h3Refs').innerHTML = refs.map((r, i) =>
     `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
@@ -1620,27 +1648,36 @@ function renderTracks() {
     $('trackSlot').innerHTML = `<div class="tk"><canvas id="tkCanvas" class="${dr ? 'draw' : ''}"
         title="${dr ? 'Drag across the picture to draw a path. Each drag adds one.'
                     : 'The field, animating over your first reference. Click to pause.'}"></canvas>
-      <div class="meta"><b title="${has ? `${t.width}\u00d7${t.height}` : ''}">${has
+      <div class="meta"><b title="${has ? `${t.width}\u00d7${t.height}${
+          t.anchors ? ` \u00b7 ${t.anchors} of them anchors` : ''}` : ''}">${has
         ? `${t.label || 'Field'} \u00b7 ${t.paths} path${t.paths === 1 ? '' : 's'} \u00b7 ${t.frames} frames`
-        : 'drag to draw a path'}</b>
+        : 'drag to draw a path \u00b7 click to pin'}</b>
       ${dr && has ? '<a id="tkUndo" title="Take back the last line you drew">undo</a>' : ''}
       ${has ? '<a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>' : ''}
       <button id="tkDel" title="Remove">\u2715</button></div></div>`;
     const ref = h3Refs()[0];
     if ((ref?.path || '') !== (fieldBg?.path || ''))     // the backdrop, when there is a reference
-      fieldBg = ref ? { path: ref.path, img: Object.assign(new Image(),
-        { src: `/api/image/file?${qs({ path: ref.path })}` }) } : null;
+      fieldBg = ref ? { path: ref.path, img: Object.assign(new Image(), {
+        src: `/api/image/file?${qs({ path: ref.path })}`,
+        onload() {                             // a reference from before the shape was recorded
+          // looked up again rather than closed over: by the time a picture loads, the slot may hold
+          // a different one, and writing its size onto a reference that has been replaced is a lie
+          const cur = h3Refs()[0];
+          if (!cur || cur.path !== ref.path || cur.width || !this.naturalWidth) return;
+          cur.width = this.naturalWidth; cur.height = this.naturalHeight;
+          save(); renderH3();
+        } }) } : null;
     if (dr) armDrawing($('tkCanvas'));
     else $('tkCanvas').onclick = () => { fieldPaused = !fieldPaused; };
     if ($('tkUndo')) $('tkUndo').onclick = () => {
       strokes().pop();
-      if (strokes().length) return void drawField(true);
+      if (moving()) return void drawField(true);
       state.tracks = null; fieldWant = ''; renderH3(); paintSums(); save();
     };
     if ($('tkCopy')) $('tkCopy').onclick = copyTracks;
     $('tkDel').onclick = () => {               // off the field, and back to the side that takes a video
       state.tracks = null; state.tracksOther = null; state.motionWay = 'measure';
-      fieldCfg().strokes = []; drawPts = [];
+      fieldCfg().strokes = []; drawPts = [];      // the pins go with the lines
       fieldWant = ''; stopField(); renderH3(); paintSums(); save();
     };
     startField();
@@ -1676,8 +1713,10 @@ function renderTracks() {
   // A field costs milliseconds of numpy and nothing on the GPU, so a changed Length or box redraws it
   // rather than telling you to do it again. Nothing is retried after a failure: fieldWant still holds
   // the key that failed, so this only fires once per change.
+  // wantField, not drawField: undoing a drawn field down to its anchors leaves a field in hand that
+  // the panel can no longer ask for, and asking anyway is a 422 the user never did anything to earn.
   if (t && t.field && wf().tracks && !fieldBusy && !fieldMatches() && fieldKey() !== fieldWant) {
-    drawField(); return;
+    wantField(); return;
   }
   const why = !t || t.field ? '' : t.frames !== want ? `${t.frames} points per path, but Length is ${want} frames`
             : (t.width !== box[0] || t.height !== box[1])
@@ -1685,14 +1724,17 @@ function renderTracks() {
   $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
     : refitBusy ? 'fitting the measurement to this render \u2014 no GPU, no tracking again'
     : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
-    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows ${t.paths === 1
-        ? 'this one path' : `these ${t.paths} paths`}`
+    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows ${drawnBits(t)}`
     : t ? `these go up with the render \u2014 ${wf().label} follows them`
     : way === 'field' ? (drawKind() ? 'drag on the picture above \u2014 one drag is one path'
                                     : 'paths from a formula \u2014 click to draw them')
-        : 'optical flow, measured off the clip you drop here';
+        : `optical flow, measured off the clip you drop here \u2014 or <a id="tkDraw" class="randlink">draw the motion yourself</a>`;
   // the link is only in the note when the note is showing it: a refit in flight replaces that line
   if ($('tkRedo')) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
+  if ($('tkDraw')) $('tkDraw').onclick = () => {        // straight to the canvas, kind and all
+    fieldCfg().kind = 'draw'; fieldCfg().amount = null;
+    setMotionWay('field');
+  };
 }
 async function copyTracks() {
   try {
@@ -1795,6 +1837,14 @@ function fieldCfg() { return (state.field ||= { kind: 'pan', amount: null, angle
 // They live in the panel's state rather than in the field that came back, so they survive a redraw at a
 // new size, a reload, and a trip through another kind and back.
 function strokes() { return (fieldCfg().strokes ||= []); }
+// How many of them actually move. A one-point stroke is an anchor, and a field of nothing but anchors
+// asks for no motion at all, so there is nothing to send until at least one line has been drawn.
+function moving() { return strokes().filter(p => p.length > 1).length; }
+function drawnBits(t) {                        // "2 lines and 3 anchors", or "these 24 paths"
+  const a = t.anchors || 0, l = t.paths - a;
+  if (!a) return t.paths === 1 ? 'this one path' : `these ${t.paths} paths`;
+  return `${l} line${l === 1 ? '' : 's'} and ${a} anchor${a === 1 ? '' : 's'}`;
+}
 function drawKind() { return motionWay() === 'field' && !!fieldSpec()?.draw; }
 function fieldSpec(id) {
   return FIELD_KINDS.find(k => k.id === (id || fieldCfg().kind)) || FIELD_KINDS[0] || null;
@@ -1830,7 +1880,7 @@ function fieldMatches() {
 async function drawField(fresh) {
   if (!FIELD_KINDS.length) {
     fieldWant = fieldKey();                    // said once, not once per repaint
-    return setStatus('drawn fields need the new server \u2014 restart run.bat', 'bad');
+    return setStatus('drawn motion needs the new server \u2014 restart run.bat', 'bad');
   }
   const body = fieldKey();
   if (!fresh && body === fieldWant && isField()) return;
@@ -1849,7 +1899,7 @@ async function drawField(fresh) {
 // The Draw kind is the one field that cannot be asked for out of nowhere: with no lines yet there is
 // nothing to send, so the slot shows its empty drawing surface instead of an error from the server.
 function wantField(fresh) {
-  if (drawKind() && !strokes().length) {
+  if (drawKind() && !moving()) {
     state.tracks = null; fieldWant = ''; renderH3(); paintSums(); save();
     return;
   }
@@ -1888,12 +1938,26 @@ function paintField() {
   const i = Math.min(frames - 1, Math.max(0, fieldFrame)), from = Math.max(0, i - 12);
   g.fillStyle = '#0f0e13'; g.fillRect(0, 0, w, h);
   if (fieldBg?.img?.complete && fieldBg.img.naturalWidth) {
-    g.globalAlpha = 0.5; g.drawImage(fieldBg.img, 0, 0, w, h); g.globalAlpha = 1;
+    // Cropped the way the model crops it, not stretched. WanMoveTrackToVideo fits the reference with
+    // common_upscale(..., "center"): it covers the box and the overflow is cut off either side. Drawn
+    // paths are coordinates in that box, so if the backdrop were stretched instead you would be aiming
+    // at a picture the model never sees - a line on a chair landing somewhere else entirely.
+    const iw = fieldBg.img.naturalWidth, ih = fieldBg.img.naturalHeight;
+    const cover = Math.max(w / iw, h / ih), sw = w / cover, sh = h / cover;
+    g.globalAlpha = 0.5;
+    g.drawImage(fieldBg.img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
+    g.globalAlpha = 1;
   }
   g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.lineCap = 'round';
   (t?.tracks || []).forEach((p, idx) => {
     const c = TK_COLOURS[idx % TK_COLOURS.length];
     g.strokeStyle = c; g.fillStyle = c;
+    const end = p[p.length - 1];
+    if (end && p[0] && end.x === p[0].x && end.y === p[0].y) {    // an anchor: a pin, not a trail
+      g.strokeStyle = '#8f8c98';
+      g.beginPath(); g.arc(p[0].x * k, p[0].y * k, 4 * dpr, 0, 6.2832); g.stroke();
+      return;
+    }
     g.beginPath();
     for (let sx = from; sx <= i; sx++) {
       const q = p[sx]; if (!q) break;
@@ -1903,10 +1967,16 @@ function paintField() {
     const q = p[i] || p[0];
     g.beginPath(); g.arc(q.x * k, q.y * k, 3 * dpr, 0, 6.2832); g.fill();
   });
-  if (drawKind() && !t?.tracks?.length && !drawPts?.length) {
-    g.setLineDash([6 * dpr, 6 * dpr]); g.strokeStyle = '#3a3942';
-    g.strokeRect(6 * dpr, 6 * dpr, w - 12 * dpr, h - 12 * dpr);
-    g.setLineDash([]);
+  if (!t) (strokes() || []).forEach(p => {   // drawn but not sent yet - anchors with no line yet
+    g.strokeStyle = '#8f8c98'; g.beginPath();
+    if (p.length < 2) g.arc(p[0][0] * w, p[0][1] * h, 4 * dpr, 0, 6.2832);
+    else p.forEach((q, i) => i ? g.lineTo(q[0] * w, q[1] * h) : g.moveTo(q[0] * w, q[1] * h));
+    g.stroke();
+  });
+  if (drawKind() && !t?.tracks?.length && !drawPts?.length && !strokes().length) {
+    g.strokeStyle = '#4a4953'; g.lineWidth = dpr;
+    g.strokeRect(dpr / 2, dpr / 2, w - dpr, h - dpr);
+    g.lineWidth = 2 * dpr;
   }
   if (drawPts?.length > 1) {                   // the line under the hand, before it is a path
     g.strokeStyle = '#ffffff'; g.beginPath();
@@ -1939,14 +2009,20 @@ function armDrawing(cv) {
   cv.onpointercancel = () => { drawPts = []; };
   cv.onpointerup = () => {
     const line = drawPts; drawPts = [];
-    if (line.length < 2) return;                                 // a tap, not a line
+    if (!line.length) return;
     const [bw, bh] = comfySize();
     let travel = 0;
     for (let idx = 1; idx < line.length; idx++)
       travel += Math.hypot((line[idx][0] - line[idx - 1][0]) * bw, (line[idx][1] - line[idx - 1][1]) * bh);
-    if (travel < 0.012 * Math.min(bw, bh))     // the same floor the engine keeps, said here instead
-      return setStatus('that line went nowhere \u2014 drag further', 'bad');
-    strokes().push(line.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]));
+    // A click, or a drag that went nowhere, is an **anchor**: one point, held for every frame, saying
+    // this part of the picture stays. It is what lets you move a chair instead of the camera - two
+    // lines and nothing else reads as "everything goes that way", which is a camera move.
+    const anchor = travel < 0.012 * Math.min(bw, bh);     // the same floor the engine keeps
+    strokes().push((anchor ? [line[0]] : line).map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]));
+    if (!moving()) {                           // anchors alone ask for no motion: nothing to send yet
+      renderH3(); paintSums(); save();
+      return setStatus('pinned \u2014 now drag a line for what should move', 'done');
+    }
     drawField(true);
   };
 }
@@ -1965,7 +2041,7 @@ function setMotionWay(way) {
   if (way === 'field' && !state.tracks) { save(); return void wantField(true); }
   renderH3(); paintSums(); save();
   setStatus(state.tracks
-    ? (way === 'field' ? `back to the ${state.tracks.label} field you drew` : 'back to the motion you measured')
+    ? (way === 'field' ? `back to the ${state.tracks.label} motion you drew` : 'back to the motion you tracked')
     : 'drop a clip, or a run, to measure its motion', 'done');
 }
 $('tkWay').onclick = e => {
@@ -2220,7 +2296,7 @@ $('h3Aspect').onclick = e => {
 const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
 function addH3Ref(res) {
   if (h3Refs().length >= wf().refs) return setStatus(`${wf().label} takes up to ${wf().refs} references`, 'bad');
-  h3Refs().push({ path: res.path, name: res.name });
+  h3Refs().push({ path: res.path, name: res.name, width: res.width || 0, height: res.height || 0 });
   renderH3(); paintSums(); save(); setStatus(`<Picture ${h3Refs().length}> added`);
 }
 $('h3Refs').onclick = e => {
@@ -3737,7 +3813,7 @@ const HELP = {
        match for what is in your picture: the paths sit where the clip's features were, which in another picture
        is often nothing at all, and the model still moves. Clips with a few big coherent movements — a slow pan,
        a figure crossing, smoke — read far better than busy ones.</p>
-    <p><b>Or author a field.</b> If a signature is what it is, no video is needed: pick a <b>Field</b> and the paths
+    <p><b>Or draw the motion.</b> If a signature is what it is, no video is needed: pick a <b>Path</b> and the paths
        come from a formula — or from your own hand — instantly, with no GPU at all. The preview animates over your first reference while
        you move the dials, so you can see what the model is going to be told. <b>Amount</b> is how far it goes,
        <b>Direction</b> which way (where the field has one), and <b>Paths</b> how many — a few read as camera
@@ -3751,9 +3827,9 @@ const HELP = {
       <tr><td><b>Swirl</b></td><td>A turn strongest at the centre and dying off outwards: a vortex.</td></tr>
       <tr><td><b>Wave</b></td><td>Travel with a sway across it, each path a little behind the last.</td></tr>
       <tr><td><b>Drift</b></td><td>No common direction — every path wanders its own way. The <b>seed</b> changes it.</td></tr>
-      <tr><td><b>Draw</b></td><td>Your own lines, dragged straight onto the picture. One drag is one path.</td></tr>
+      <tr><td><b>Draw</b></td><td>Your own lines, dragged straight onto the picture. One drag is one path, one click is an anchor.</td></tr>
     </table>
-    <p><b>Draw</b> turns the preview into the paper. Drag across it and that line becomes a path, from where you
+    <p><b>Draw</b> — the Path you want most of the time — turns the preview into the paper. Drag across it and that line becomes a path, from where you
        started to where you let go; drag again for another. The picture you are drawing over is the picture about
        to move, which is the whole reason the lines are drawn here and not on a blank square — you aim them at
        what is in the frame. How <i>fast</i> you drag is not part of it: a line is resampled by its length, so a hand
@@ -3761,12 +3837,25 @@ const HELP = {
        every other field. Here <b>Amount</b> is how far along your lines it goes — 1.00 reaches the end of each,
        lower stops short — and <b>Paths</b> is gone, because you decided that by drawing. <b>undo</b> takes back
        the last line, <b>✕</b> clears them all.</p>
+    <p><b>Click to pin.</b> A click, rather than a drag, leaves an <b>anchor</b>: a path that holds its point for
+       every frame, saying <i>this stays put</i>. It is the difference between moving an object and moving the
+       camera. A couple of lines and nothing else is a very sparse instruction, and the model spreads that
+       motion over the whole picture — which reads as a camera move in the opposite direction, because a
+       scene sliding right and down is a camera panning left and up. Pin the walls, the floor, the doorway,
+       draw three to five short lines across the thing that should move, and the instruction stops being
+       ambiguous. Anchors show as grey rings; a field of nothing but them is refused, since it asks for no
+       motion at all.</p>
     <p>Either way, the paths follow the render rather than the other way round: <b>Aspect</b> and
        <b>Length</b> decide the box, and the motion is fitted into it — which is how a landscape clip's
        movement can drive a tall frame. Fitting a measurement into a shape it was not measured in stretches
        it, and that is the point: these are motion signatures, not a map of what is in your picture.
        <b>copy</b> on the slot puts the JSON on the clipboard, for pasting into a ComfyUI path widget by
        hand; a render here does not need that.</p>
+    <p><b>A dimmed Prompt box means the model barely reads it.</b> WanMove is one: its motion comes from the
+       paths, and four renders on one seed and field showed a completely different scene prompt moving colour
+       a little and changing nothing else — on <b>fast</b>, nothing at all, so there it is switched off. The box
+       is dimmed rather than hidden because it still nudges colour, and typing in it brings it back. A graph
+       declares this in its own manifest entry, so it is a fact about that model, not about the mode.</p>
     <p><b>Amount and Motion strength are not the same dial.</b> Amount belongs to the paths: it decides how far
        they travel across the frame, and you can see it in the preview. <b>Motion strength</b> belongs to the
        graph: it is handed to the model with the paths and decides how much the picture <i>obeys</i> them. Low is a

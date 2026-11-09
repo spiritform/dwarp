@@ -178,8 +178,8 @@ def clean_strokes(strokes) -> list[np.ndarray]:
     """The page's normalised polylines, checked and turned into arrays of (x, y) in 0..1.
 
     Anything that arrives here was drawn by hand, so it is bounded on the way in rather than trusted:
-    a stroke is a list of at least two points, there are limits on both counts, and every number has
-    to be a finite 0..1."""
+    there are limits on both counts, and every number has to be a finite 0..1. A stroke of a **single
+    point** is allowed and means an anchor — see `drawn`."""
     if not isinstance(strokes, (list, tuple)) or not strokes:
         raise ValueError("draw a line first")
     if len(strokes) > MAX_STROKES:
@@ -187,8 +187,8 @@ def clean_strokes(strokes) -> list[np.ndarray]:
     out = []
     for s in strokes:
         p = np.asarray(s, dtype=np.float64)
-        if p.ndim != 2 or p.shape[0] < 2 or p.shape[1] != 2:
-            raise ValueError("a line is two or more [x, y] points")
+        if p.ndim != 2 or p.shape[0] < 1 or p.shape[1] != 2:
+            raise ValueError("a line is a list of [x, y] points")
         if p.shape[0] > MAX_POINTS:                      # thin it rather than refuse a long drag
             p = p[np.linspace(0, p.shape[0] - 1, MAX_POINTS).round().astype(int)]
         if not np.isfinite(p).all() or p.min() < -0.001 or p.max() > 1.001:
@@ -199,28 +199,35 @@ def clean_strokes(strokes) -> list[np.ndarray]:
 
 def drawn(strokes: list[np.ndarray], *, length: int, width: int, height: int,
           amount: float = 1.0) -> np.ndarray:
-    """(length, N, 2): one path per line drawn, travelled over the frames of the render.
+    """(length, N, 2): one path per stroke drawn, travelled over the frames of the render.
 
-    Two choices worth naming. Each line is resampled by **arc length**, so how fast it was dragged
+    Three choices worth naming. Each line is resampled by **arc length**, so how fast it was dragged
     never becomes how fast the picture moves — the shape is the instruction, the speed is not; and
     the same smoothstep easing every other field uses carries a path from its start to `amount` of
-    the way along, so a drawn field starts and stops as gently as a formula one. A tap with no travel
-    is dropped instead of becoming a path that never moves, which is the one thing a motion field
-    must not say by accident."""
+    the way along, so a drawn field starts and stops as gently as a formula one.
+
+    And a stroke that goes nowhere — a click, or a drag under `MIN_TRAVEL` — is an **anchor**: a path
+    that holds its point for every frame, saying *this stays put*. Everywhere else in this file a
+    motionless path is the one thing a field must not say by accident; drawn by hand it is the only
+    way to say "that moves, and the rest of the picture does not", which is what separates moving an
+    object from moving the camera. A field of nothing but anchors is still refused, since that asks
+    for no motion at all."""
     e = _ease(length)                                           # (T,)
     scale = np.array([float(width), float(height)])
     short = float(min(width, height))
-    out = []
+    out, moving = [], 0
     for s in strokes:
         p = s * scale                                           # (P,2) in pixels
-        step = np.linalg.norm(np.diff(p, axis=0), axis=1)
+        step = np.linalg.norm(np.diff(p, axis=0), axis=1) if len(p) > 1 else np.zeros(0)
         run = np.concatenate([[0.0], np.cumsum(step)])
-        if run[-1] < MIN_TRAVEL * short:
+        if run[-1] < MIN_TRAVEL * short:                        # an anchor: where it is, for every frame
+            out.append(np.repeat(p[:1], length, 0))
             continue
+        moving += 1
         u = e * float(amount) * run[-1]                         # (T,) distance along the line
         out.append(np.stack([np.interp(u, run, p[:, 0]), np.interp(u, run, p[:, 1])], -1))
-    if not out:
-        raise ValueError("those lines went nowhere — drag further")
+    if not moving:
+        raise ValueError("nothing here moves — draw a line, not only anchors")
     pos = np.stack(out, 1)
     # Held inside the frame rather than fitted into it like a formula field: these were drawn in the
     # frame and only ever travel along themselves, so this is a guard, not a transform — moving what
@@ -246,10 +253,12 @@ def make(dest_dir: Path, *, kind: str = "pan", points: int = 24, length: int = 8
                  amount=amount, angle=angle, seed=seed))
     data = tracks.to_json(pos, list(range(pos.shape[1])), (width, height), (width, height))
     assert all(len(p) == length for p in data), "the node needs every track the same length"
+    # An anchor is a track like any other to the node; the page only wants the count, to say so.
+    anchors = sum(1 for p in data if p[0] == p[-1] and p[0] == p[length // 2])
     dest_dir.mkdir(parents=True, exist_ok=True)
     out = dest_dir / f"{k['id']}-{uuid.uuid4().hex[:6]}.json"
     out.write_text(json.dumps(data), encoding="utf-8")
     return {"path": str(out), "name": out.name, "field": k["id"], "label": k["label"],
-            "paths": len(data), "frames": length, "width": width, "height": height,
+            "paths": len(data), "anchors": anchors, "frames": length, "width": width, "height": height,
             "amount": round(float(amount), 4), "angle": round(float(angle), 2), "seed": int(seed),
             "source": "", "tracks": data}

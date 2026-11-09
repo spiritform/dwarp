@@ -4,6 +4,35 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **Render in the shape of your picture.** Aspect gained a **ref** button: the box takes the first
+  reference's own proportions, so none of it is cropped away. The model fits a picture into the render
+  box with a centre crop — a 4:5 photo in a 16:9 box loses its top and bottom — and until now that was
+  something to find out about rather than something to choose. 16:9, 1:1 and 9:16 still crop, and now
+  that is a decision. The button appears once DWARP knows the picture's shape: new references record
+  it, older ones learn it from the preview.
+- **“measure | field” is now “track motion | draw motion”**, and the dropdown under it says **Path**
+  rather than Field. Two things you do, named as such; *field* stopped being the right word the moment
+  you could draw the paths by hand. And the empty tracking slot no longer dead-ends: its note offers
+  *“or draw the motion yourself”*, which puts you on the canvas with your reference underneath and
+  Draw already picked. Loading a picture and finding nowhere to draw on it was the way in that was
+  missing.
+- **Click to pin.** A click on the Draw canvas, rather than a drag, leaves an **anchor**: a path that
+  holds its point for every frame, saying *this stays put*. It is the difference between moving an
+  object and moving the camera — a couple of lines and nothing else is a sparse instruction, and the
+  model spreads that motion over the whole picture, which reads as a camera move in the opposite
+  direction. Pin the walls and the floor, draw lines across the thing that should move, and the
+  instruction stops being ambiguous. Anchors show as grey rings and are counted apart from the lines;
+  a field of nothing but anchors is refused, since it asks for no motion at all.
+- **The preview crops the reference the way the model does.** WanMove fits your picture into the render
+  box with a **centre crop**, and DWARP was stretching it to fill the preview instead — so with a
+  portrait reference in a 16:9 render you were drawing on one picture while the model looked at
+  another, and a line aimed at a chair could land on the floor at the bottom edge. The backdrop is now
+  cropped exactly as the node crops it, so what you draw on is what gets rendered.
+- **A prompt box the model barely reads says so.** A workflow can declare `prompt_hint` in its manifest
+  entry; the Prompt card then dims and prints what was measured under it. WanMove is the first: four
+  renders on one seed and field showed a completely different scene prompt moving colour a little and
+  changing nothing else, and nothing at all on *fast* — where the box is now disabled outright. Dimmed
+  rather than hidden, because it still nudges colour, and typing in it brings it back.
 - **Draw the motion yourself.** The Field dropdown gained a **Draw** kind: drag across the preview and
   that line becomes a path, from where you started to where you let go, one drag per path. The picture
   underneath is the picture about to move, which is the point of drawing there rather than on a blank
