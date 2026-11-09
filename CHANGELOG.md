@@ -4,12 +4,15 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
-- **An enhanced video is a run now, not a chip.** An upscale or a smooth used to land as a file in the
-  button row, where it could not be scrubbed, compared or thumbnailed — but it is a video you want to
+- **Videos DWARP makes are runs now, not chips.** An upscale, a smooth, or the track visualiser a
+  motion graph writes used to land as a file in the button row, where none of them could be scrubbed,
+  compared or thumbnailed — but it is a video you want to
   look at, so it goes in the runs strip like Refine's does. It gets its own frames and a label naming
   what it came from: **upscale · wanmove** beside the **wanmove · render** it was made from, with the
   settings it used kept on it and the source run's own settings still behind *use settings*. The page
-  jumps to it when it finishes, the way a render jumps to itself.
+  jumps to it when it finishes, the way a render jumps to itself. WanMove's tracks visualiser arrives
+  the same way, as **tracks · wanmove**. Videos made before this stayed where they were; moving them
+  across is `runs.adopt()` on each.
 - **Enhance keeps a log.** A cloud upscale has as much to say as a render — what it sent, the size it
   asked for, the queue id, how long it has waited — and all of it was going into a field that holds
   one line. Post jobs now carry a log to the same panel renders use, with the once-a-second poll line

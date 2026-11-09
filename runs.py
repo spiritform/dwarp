@@ -78,6 +78,39 @@ def write_meta(run_id: str, **fields) -> dict:
     return meta
 
 
+def adopt(video: Path, *, came: str, verb: str, detail: str = "", rate: float = 24.0,
+          ui: dict | None = None, source: str = "", move: bool = True) -> str:
+    """Take a finished video and make it a run of its own.
+
+    Anything DWARP produces that you would want to scrub, thumbnail or compare belongs in the strip
+    rather than in a row of file chips: an upscale, a smooth, the track visualiser a motion graph
+    writes. It gets its own frames so the card has a picture and the transport works, and a label
+    naming what it came from — "upscale · wanmove" beside the "wanmove · render" that made it.
+    """
+    from engine.cloud import extract          # runs.py is imported by the engine, so this stays lazy
+
+    rid, path = new_run()
+    try:
+        dest = path / "video.mp4"
+        shutil.move(str(video), str(dest)) if move else shutil.copy2(str(video), str(dest))
+        extract(dest, path / "frames")
+        write_meta(rid, label=f"{verb} · {came}".strip(" · "), fps=float(rate),
+                   ui={**(ui or {}), "kind": verb, "source_run": source, "post": detail})
+    except BaseException:
+        shutil.rmtree(path, ignore_errors=True)    # a half-made run in the list is worse than none
+        raise
+    return rid
+
+
+def came_from(run_id: str) -> str:
+    """What to call a run in the label of something made out of it: "wanmove · render" -> "wanmove"."""
+    try:
+        label = (read_meta(run_id).get("label") or "").split(" · ")[0].strip()
+    except (RunNotFound, OSError, ValueError):
+        label = ""
+    return label or run_id
+
+
 # ------------------------------------------------------------------ frames / layers
 def output_frames(run_id: str) -> dict[int, Path]:
     path = run_dir(run_id)

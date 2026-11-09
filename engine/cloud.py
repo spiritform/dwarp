@@ -391,7 +391,13 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
 
 
 def submit(key: str, base: str, graph: dict) -> str:
-    r = _call(key, base, "/api/prompt", json.dumps({"prompt": graph}).encode(), "application/json")
+    """Queue a graph. The key goes in the body as well as the header, because an API node needs it
+    there: ComfyUI fills a node's hidden `api_key_comfy_org` input from `extra_data` (execution.py),
+    and a partner node with nothing in it refuses with "Unauthorized: Please login first to use this
+    node". The header alone authenticates the request, not the nodes inside it — which never came up
+    while every graph here ran a real model on the GPU."""
+    body = {"prompt": graph, "extra_data": {"api_key_comfy_org": key}}
+    r = _call(key, base, "/api/prompt", json.dumps(body).encode(), "application/json")
     if not isinstance(r, dict):
         raise CloudError("Comfy Cloud gave an unexpected answer to the job")
     if r.get("node_errors"):
@@ -694,10 +700,18 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     if extra.get("saver") in (detail.get("outputs") or {}):
         more = outputs(detail, extra["saver"], skip=video)
         if more:
-            (out / "post").mkdir(parents=True, exist_ok=True)
-            name = f"{extra.get('name', 'extra')}{Path(more[0]['filename']).suffix or '.mp4'}"
-            side = fetch(key, base, more[0], out / "post" / name)
-            log(f"downloaded {extra.get('name', 'extra')} ({side.stat().st_size / 2**20:.1f} MB)")
+            name = extra.get("name", "extra")
+            side = fetch(key, base, more[0], out / f"{name}{Path(more[0]['filename']).suffix or '.mp4'}")
+            log(f"downloaded {name} ({side.stat().st_size / 2**20:.1f} MB)")
+            # it is a video you would want to look at, so it joins the runs strip rather than
+            # sitting in the button bar as a file chip
+            try:
+                import runs as rr
+                rid = rr.adopt(side, came=w.get("short") or w["id"], verb=name, rate=fps,
+                               source=out.name)
+                log(f"  run {rid} · {name} · {w.get('short') or w['id']}")
+            except Exception as e:                # noqa: BLE001 - the render itself is what matters
+                log(f"  couldn't make a run of the {name}: {e}")
 
     written = extract(got, out / "frames")
     progress("done", len(written), frames, "done")

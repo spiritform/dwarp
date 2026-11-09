@@ -222,21 +222,11 @@ def promote(job: dict, made: Path, source: Path, verb: str, detail: str, rate: f
     The source run's settings ride along, so "use settings" still gets you back to what made it.
     """
     import runs as rr
-    from engine import cloud
 
-    was = rr.read_meta(source.name)
-    came = (was.get("label") or source.name).split(" · ")[0].strip() or source.name
-    rid, path = rr.new_run()
-    try:
-        shutil.move(str(made), str(path / "video.mp4"))
-        say(job, "extracting frames for the run")
-        cloud.extract(path / "video.mp4", path / "frames")
-        rr.write_meta(rid, label=f"{verb} · {came}", fps=float(rate),
-                      ui={**(was.get("ui") or {}), "kind": verb, "source_run": source.name,
-                          "post": detail})
-    except BaseException:
-        shutil.rmtree(path, ignore_errors=True)    # a half-made run in the list is worse than none
-        raise
+    came = rr.came_from(source.name)
+    say(job, "extracting frames for the run")
+    rid = rr.adopt(made, came=came, verb=verb, detail=detail, rate=rate,
+                   ui=rr.read_meta(source.name).get("ui") or {}, source=source.name)
     job["run"] = rid
     say(job, f"run {rid} · {verb} · {came}" + (f" · {detail}" if detail else ""))
     return rid
