@@ -161,6 +161,16 @@ def timing(run_id: str) -> dict | None:
             "video": job.get("video", ""), "shape": job.get("shape", ""), "shape_start": int(job.get("shape_start", 0))}
 
 
+def has_sound(run_id: str) -> bool:
+    """Does the run's mp4 carry audio? Only H3 does: its soundtrack comes down from the cloud with the
+    picture. Every other mode assembles the mp4 from frames, so there is nothing to hear."""
+    try:
+        job = json.loads((run_dir(run_id) / "job.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return job.get("family") == "h3" and job.get("h3_sound", True)
+
+
 def describe(run_id: str) -> dict:
     out, init = output_frames(run_id), init_frames(run_id)
     return {"run": run_id, "timing": timing(run_id), "layers": [
@@ -192,6 +202,7 @@ def summary(run_id: str) -> dict:
         "prompt": (meta.get("ui") or {}).get("prompt", ""),
         "video_available": bool(video), "video_modified": video.stat().st_mtime if video else None,
         "legacy": is_legacy(run_id), "fps": fps(run_id, meta),
+        "sound": bool(video) and has_sound(run_id),
         "seed": (meta.get("ui") or {}).get("seed"),
     }
 

@@ -571,11 +571,21 @@
   footer { grid-column: 2; background: #111114;   /* a shade darker than the button row above */ padding: 10px 18px; min-width: 0; }
   footer .label { margin-bottom: 6px; }
   /* the selection ring sits outside each thumbnail: room on every side so the scroller doesn't clip it */
-  .runs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 3px; margin: -4px -4px 0; min-height: 104px; }
+  .runs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 3px; margin: -4px -4px 0; min-height: 104px;
+           cursor: grab; overscroll-behavior-x: contain; }
+  .runs .thumb { cursor: pointer; }            /* the picture is for picking; the rest of the strip is a handle */
+  .runs.dragging, .runs.dragging .run, .runs.dragging .thumb { cursor: grabbing; }
+  /* The page-wide 6px bar is too fine to aim at down here. This one is the same 6px of paint inside a
+     12px hit area (the border is clipped away), so it is easy to grab without looking heavy. */
+  .runs { scrollbar-width: auto; scrollbar-color: #4a4852 transparent; }
+  .runs::-webkit-scrollbar { height: 12px; }
+  .runs::-webkit-scrollbar-thumb { background: #44424c; border: 3px solid transparent; background-clip: padding-box;
+           border-radius: 6px; min-width: 48px; }
+  .runs::-webkit-scrollbar-thumb:hover { background: #5d5b68; background-clip: padding-box; }
   .runs .empty { color: var(--faint); font-size: 12px; align-self: center; }
-  .run { flex: none; width: 124px; cursor: pointer; }
+  .run { flex: none; width: 124px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
-  .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
   .run .thumb .num { position: absolute; top: 4px; left: 4px; height: 16px; line-height: 16px; font-size: 11px; font-weight: 600;
                      color: #fff; background: rgba(0,0,0,.75); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover: dark like the ✕ */
@@ -2937,7 +2947,9 @@ const HELP = {
        job to <b>Comfy Cloud</b> and brings back the mp4. That needs an API key
        (<b>Settings → Comfy Cloud</b>, from <a href="https://platform.comfy.org/profile/api-keys" target="_blank">platform.comfy.org</a>),
        an active subscription, and it <b>spends credits per clip</b> — about three minutes for five seconds.
-       It is also the only DWARP mode whose mp4 has <b>audio</b>: H3 generates picture and sound in one pass.</p>
+       It is also the only DWARP mode whose mp4 has <b>audio</b>: H3 generates picture and sound in one pass.
+       Because of that, pressing <b>▶</b> on an H3 run plays its mp4 on the stage rather than stepping the frames,
+       so you hear it. Every other mode steps PNGs, which have nothing to play.</p>
     <h4>It references, it doesn't repaint</h4>
     <p>This is the important difference from the rest of DWARP. Warp and Motion take <i>your</i> frames and paint over
        them, so the result tracks your footage shot for shot. H3 <b>looks at</b> what you give it and makes a
@@ -3749,7 +3761,7 @@ async function showRun(runId, { follow = false } = {}) {
   const initL = desc.layers.find(l => l.id === 'init');
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
-  if (playing === 'clip') stopPlay();       // a run replaces the clip on the stage
+  if (playing === 'clip' || (playing === 'out' && switched)) stopPlay();   // a run replaces what was on the stage
   viewRun = runId; frames = newFrames; runTiming = desc.timing;
   if (singleShape() != null) shapeFrame = runTiming.shape_start;
   if (switched && (view === 'src' || view === 'mask' || view === 'shape')) view = 'out';     // a picked run opens on its result
@@ -3772,6 +3784,7 @@ async function showRun(runId, { follow = false } = {}) {
   $('mp4Link').title = still ? "Download the run's picture (PNG)" : "Download the run's mp4";
   $('mp4Link').href = still ? img(runId, 'output', frames[0]) : `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
   $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
+  $('playBtn').title = runHasSound() ? 'Play the mp4 with its sound (space)' : 'Play frames (space)';
   $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife));
   $('animateLink').classList.toggle('hide', frames.length !== 1);   // a Frame: send it on to be animated
@@ -3922,7 +3935,7 @@ function paintFrame() {
   }
   // a still is on show: the clip-playback video (black until it has a frame) must not sit over it
   const v = $('vidSrc');
-  if (v && !v.hidden && playing !== 'clip') { console.warn('DWARP: clip video was left over the stage'); v.pause(); v.hidden = true; }
+  if (v && !v.hidden && playing !== 'clip' && playing !== 'out') { console.warn('DWARP: stage video was left over the still'); v.pause(); v.hidden = true; }
   if (clipMode()) {
     $('imgOut').src = clipFrameUrl('luma');
     scrubReadout(clipSec(clipFrame), clipFrame, state.clip.source.frames);
@@ -3953,14 +3966,54 @@ $('scrubRange').oninput = e => {
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
 function stopPlay() {
-  if (playing === 'clip') stopClip(); else clearInterval(playing);
+  if (playing === 'clip') stopClip();
+  else if (playing === 'out') stopOut();
+  else clearInterval(playing);
   playing = null; $('playBtn').textContent = '▶';
+}
+function makeStageVideo() {                // one <video> over the still, shared by the clip and the run
+  $('divider').insertAdjacentHTML('beforebegin', '<video id="vidSrc" playsinline loop></video>');   // under the Save button
+  return $('vidSrc');
+}
+// Does the run on show carry its own soundtrack? Only H3 does — the cloud sends picture and audio
+// in one file. Everything else is an mp4 built from PNGs, so stepping the frames loses nothing.
+function runHasSound(id = viewRun) {
+  return !!(id && frames.length > 1 && runsCache.find(r => r.id === id)?.sound);
+}
+// … and when it does, play the file rather than the frames, or the sound never gets a chance.
+function playOut() {
+  const r = runsCache.find(r => r.id === viewRun);
+  const v = $('vidSrc') || makeStageVideo();
+  const fps = r?.fps || 24, n = frames.length;
+  const url = `/api/runs/${viewRun}/video?${runQ()}&t=${r?.video_modified || 0}`;
+  if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
+  v.muted = false; v.volume = 1; v.hidden = false;
+  const im = $('imgOut');                  // exactly over the still (the box can be wider than the image)
+  v.style.width = im.offsetWidth + 'px'; v.style.height = im.offsetHeight + 'px';
+  v.currentTime = frameIdx / fps;
+  const follow = () => {                   // transport follows the video
+    if (playing !== 'out') return;
+    frameIdx = Math.min(n - 1, Math.floor(v.currentTime * fps));
+    $('scrubRange').value = frameIdx; scrubReadout(v.currentTime, frameIdx, n);
+    v.requestVideoFrameCallback ? v.requestVideoFrameCallback(follow) : requestAnimationFrame(follow);
+  };
+  playing = 'out'; $('playBtn').textContent = '❚❚';
+  v.play().then(follow).catch(() => { setStatus('could not play the mp4 — stepping the frames instead', 'done'); stopPlay(); });
+}
+function stopOut() {
+  const v = $('vidSrc'); if (!v) return;
+  v.pause(); v.hidden = true;
+  const r = runsCache.find(x => x.id === viewRun);
+  frameIdx = Math.min(frames.length - 1, Math.floor(v.currentTime * (r?.fps || 24)));
+  $('scrubRange').value = frameIdx;
+  paintFrame();
 }
 // Clip view plays the source file itself in a <video> over the frame (stills come from ffmpeg one
 // at a time, too slow for playback); pausing hands back to the frame-exact still at that spot.
 function playClip() {
   let v = $('vidSrc');
-  if (!v) { $('divider').insertAdjacentHTML('beforebegin', '<video id="vidSrc" muted playsinline loop></video>'); v = $('vidSrc'); }   // under the Save button
+  if (!v) v = makeStageVideo();
+  v.muted = true;
   const fps = state.clip.source.fps || 24, n = state.clip.source.frames;
   const url = `/api/video/file?${qs({ path: state.clip.path })}`;
   if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
@@ -3997,6 +4050,7 @@ function togglePlay() {
   }
   if (clipMode()) { if (view === 'src') playClip(); return; }   // Diff is drawn per frame: scrub it
   if (!frames.length) return;
+  if (view === 'out' && runHasSound()) return playOut();        // H3: play the file, sound and all
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
   $('playBtn').textContent = '❚❚';
   const fps = runsCache.find(r => r.id === viewRun)?.fps || 24;    // the run's own rate, same as its mp4
@@ -4338,6 +4392,37 @@ function clearStage() {
   ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }
+// The strip is a long scroller with a thin bar at the bottom of the window, which is a small thing to
+// aim at. So it can be thrown by hand: hold anywhere BUT a thumbnail and move, and it scrolls. The
+// thumbnails stay purely for picking — one place to click, one place to grab, no guessing which.
+// The grab band is wide all the same: the two label lines under every card, the gaps and the padding.
+(() => {
+  const box = $('runs');
+  let from = 0, at = 0, down = false, moved = false;
+  box.addEventListener('pointerdown', e => {
+    if (e.button || e.target.closest('.thumb')) return;             // the picture is for picking a run
+    down = true; moved = false; from = e.clientX; at = box.scrollLeft;
+  });
+  box.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - from;
+    if (!moved && Math.abs(dx) < 5) return;                         // a click with a shaky hand is still a click
+    if (!moved) { moved = true; box.classList.add('dragging'); box.setPointerCapture(e.pointerId); }
+    box.scrollLeft = at - dx;
+  });
+  const up = e => {
+    if (moved) { box.classList.remove('dragging'); try { box.releasePointerCapture(e.pointerId); } catch {} }
+    down = false;
+  };
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+  box.addEventListener('click', e => { if (moved) { e.stopPropagation(); e.preventDefault(); } }, true);
+  // a plain wheel over the strip scrolls it sideways: no bar, no drag, no shift key
+  box.addEventListener('wheel', e => {
+    if (e.deltaX || !e.deltaY || box.scrollWidth <= box.clientWidth) return;
+    box.scrollLeft += e.deltaY; e.preventDefault();
+  }, { passive: false });
+})();
 $('runs').onclick = e => {
   const el = e.target.closest('.run'); if (!el) return;
   const id = el.dataset.id;
