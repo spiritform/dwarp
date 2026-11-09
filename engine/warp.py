@@ -160,6 +160,7 @@ class RenderJob:
     # H3 (engine/h3.py): nothing renders here, the job goes to Comfy Cloud and an mp4 with sound comes back
     h3_refs: list = field(default_factory=list)   # reference pictures, in <Picture 1>, <Picture 2> ... order
     h3_seconds: float = 5.0                       # clip length; H3 rounds up to 17n + 5 frames at 24 fps
+    h3_sound: bool = True                         # keep H3's soundtrack in the mp4 (it is made either way)
     h3_video: str = ""                            # the source clip as a reference: <Video 1>, its sound <Audio 1>
     h3_trim: list = field(default_factory=list)   # [start, end] of that clip in seconds; H3 looks at 15 s at most
 

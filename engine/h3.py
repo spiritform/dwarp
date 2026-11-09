@@ -287,6 +287,18 @@ def fetch(key: str, base: str, f: dict, dest: Path) -> Path:
         return dest
 
 
+def mute(video: Path) -> Path:
+    """The audio track out of the mp4, kept as a remux so the picture is not touched or re-encoded.
+    H3 makes picture and sound in one pass and there is no way to ask it for only the picture, so
+    this costs nothing at render time and saves nothing either — it is about what the file holds."""
+    quiet = video.with_suffix(".silent.mp4")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-c", "copy", "-an", str(quiet)],
+                   check=True)
+    video.unlink(missing_ok=True)
+    quiet.rename(video)
+    return video
+
+
 def extract(video: Path, frames_dir: Path) -> list[Path]:
     """Stills beside the mp4, so the stage can scrub the clip like any other run. The mp4 itself is left
     exactly as it arrived — rebuilding it from these would drop H3's sound."""
@@ -383,7 +395,11 @@ def render_h3(job, progress: Callable = lambda *a: None, cancelled: Callable[[],
     progress("downloading", 0, frames, "downloading the clip")
     log(f"downloading {files[0]['filename']}")
     got = fetch(key, base, files[0], out / "video.mp4")
+    keep = getattr(job, "h3_sound", True)
     log(f"downloaded video.mp4 ({got.stat().st_size / 2**20:.1f} MB, with sound)")
+    if not keep:
+        mute(got)
+        log("dropped the audio track (Sound: silent)")
 
     written = extract(got, out / "frames")
     progress("done", len(written), frames, "done")

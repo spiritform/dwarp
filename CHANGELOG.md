@@ -18,9 +18,17 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   never shown back. A render spends Comfy credits and takes a few minutes.
 - **H3's log says which part of the clip it sent** — "2.1s to 14.0s" — and says so when a trim longer than
   the 15 s H3 reads gets cut short, instead of quietly dropping the tail.
-- **Prompt template for H3.** H3 wants a sectioned brief, not style words — subjects, summary, how hard each
-  reference binds, the shot, the soundscape, the music. The **template** link in the Prompt card lays one out,
-  filled in from the clip and references you have loaded, keeping anything you had already written.
+- **Prompt templates for H3.** H3 wants a sectioned brief, not style words — subjects, summary, how hard each
+  reference binds, the shot, the soundscape, the music. The **template** picker in the Prompt card lays one out,
+  filled in from the clip and references you have loaded, keeping anything you had already written. Three to pick
+  from, and the difference between them is how hard the clip binds: **character swap** keeps your footage exactly
+  as filmed and replaces who is in it, **full restyle** redraws every surface in the reference's style, and
+  **new scene** takes only the energy and pacing.
+- **H3 Length: auto**, matching the trimmed clip — the only way to ask for a length the chips don't offer. The
+  chips never gave the length they name (H3 only makes 17n + 5 frames, so "5s" is 5.2s), so the line under them
+  now says what you will actually get.
+- **H3 Sound: keep / silent.** Picture and sound are made in one pass, so silent leaves the track out of the file
+  rather than saving time — for when you are cutting your own music over it.
 
 - **Denoise rules the whole render.** Frame Lock is a share of Denoise now, not its own separate amount:
   later frames paint at Denoise x (1 - lock), so turning Denoise down turns the whole clip down. Before

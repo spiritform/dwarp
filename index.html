@@ -268,6 +268,11 @@
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
   .cloudnote .bad { color: #ff9a8a; }
+  /* the template picker wears the "random" link's clothes */
+  .tplpick { background: none; border: 0; color: var(--accent); font: inherit; font-size: 11px;
+             cursor: pointer; padding: 0; -webkit-appearance: none; appearance: none; }
+  .tplpick:focus { outline: none; }
+  .tplpick option { background: var(--panel-2); color: var(--text); }
   .cloudnote a { color: var(--accent-2); text-decoration: none; white-space: nowrap; }
   .cloudnote a:hover { text-decoration: underline; }
   /* the optional negative prompt: a small fold under the prompt box */
@@ -722,7 +727,7 @@
 
   <section>
     <div class="card" data-card="prompt">
-    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><a id="promptTpl" class="randlink" hidden title="Lay out H3's sectioned brief, filled in from the clip and references you have loaded">template</a><span class="chev">▾</span></div>
+    <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><select id="promptTpl" class="randlink tplpick" hidden title="Lay out H3's sectioned brief, filled in from the clip and references you have loaded"></select><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="hint" id="promptHint"></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
@@ -753,6 +758,11 @@
       <input type="file" id="h3File" accept="image/*" hidden>
       <div class="sublabel">Length</div>
       <div class="seg" id="h3Secs"></div>
+      <div class="adnote" id="h3Len" style="margin:6px 0 0"></div>
+      <div class="sublabel">Sound</div>
+      <div class="seg" id="h3Sound" style="grid-template-columns:1fr 1fr">
+        <button data-v="1" title="Keep the soundtrack H3 generates — voices, effects and music, made with the picture">keep</button>
+        <button data-v="0" title="Drop the audio track, for cutting your own over it. H3 still makes the sound; it is left out of the file">silent</button></div>
       <div id="h3AspectRow"><div class="sublabel">Aspect</div>
         <div class="seg" id="h3Aspect"><button data-a="16:9">16:9</button><button data-a="1:1">1:1</button><button data-a="9:16">9:16</button></div></div>
     </div>
@@ -1294,6 +1304,7 @@ function h3Config(kind) {
       width: Math.round(aw * k), height: Math.round(ah * k), seed: state.seed,
       h3_refs: h3Refs().map(r => r.path),
       h3_seconds: seconds,
+      h3_sound: state.h3sound !== false,
       h3_video: state.clip?.path || '',
       h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
     },
@@ -1332,20 +1343,40 @@ function renderStyleRef() {
 const H3_MAX_REFS = 9;
 function h3Refs() { return (state.h3refs ||= []); }
 const H3_SECS = [5, 7, 10, 15];
-function h3Seconds() { return +state.h3secs || 5; }
+// How long the trimmed clip runs, inside what H3 will make (its shortest is ~5.2 s, its longest 15).
+function h3ClipSeconds() {
+  const d = state.clip?.source?.duration || 0;
+  if (!d) return 0;
+  return Math.min(15, Math.max(5, (state.range[1] - state.range[0]) * d));
+}
+// "auto" matches the clip, which is the only way to ask for a length the chips don't offer (6 s, say).
+function h3Seconds() {
+  if (state.h3secs === 'auto') return h3ClipSeconds() || 5;
+  return +state.h3secs || 5;
+}
 function renderH3() {
   const on = isH3();
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
   $('promptTpl').hidden = !on; $('promptRandom').hidden = on;   // H3 wants a brief, not five style words
+  if (on && !$('promptTpl').options.length) renderTplPick();
   $('prompt').classList.toggle('brief', on);
   if (!on) return;
-  const secs = modeCfg().seconds || H3_SECS, n = h3Frames(h3Seconds());
-  $('h3Secs').style.gridTemplateColumns = `repeat(${secs.length}, 1fr)`;
-  $('h3Secs').innerHTML = secs.map(v =>
-    `<button data-s="${v}" class="${v === h3Seconds() ? 'on' : ''}">${v}s</button>`).join('');
+  // The chips never give the length they name: H3 only makes 17n + 5 frames, so 5s is really 5.2s
+  // and 7s is 7.3s. The line under them says what you are actually going to get.
+  const picked = state.h3secs ?? 5, n = h3Frames(h3Seconds());
+  const chips = [...(state.clip ? ['auto'] : []), ...(modeCfg().seconds || H3_SECS)];
+  $('h3Secs').style.gridTemplateColumns = `repeat(${chips.length}, 1fr)`;
+  $('h3Secs').innerHTML = chips.map(v => {
+    const got = h3Frames(v === 'auto' ? h3ClipSeconds() || 5 : v);
+    return `<button data-s="${v}" class="${v === picked ? 'on' : ''}" title="${v === 'auto'
+      ? 'Match the trimmed clip' : `${v} seconds asked`} — ${got} frames, ${(got / H3_FPS).toFixed(1)}s">${v === 'auto' ? 'auto' : v + 's'}</button>`;
+  }).join('');
+  $('h3Len').textContent = `${n} frames · ${(n / H3_FPS).toFixed(1)}s at 24fps`
+    + (picked === 'auto' ? ' · matching the clip' : '');
   // With a clip loaded the output takes its shape, so there is nothing to pick
   $('h3AspectRow').hidden = !!state.clip;
+  [...$('h3Sound').children].forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === (state.h3sound !== false)));
   [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.h3aspect || '16:9')));
   const refs = h3Refs();
   $('h3Refs').innerHTML = refs.map((r, i) =>
@@ -1370,12 +1401,38 @@ document.addEventListener('click', e => {
 // The skeleton is built from what is actually loaded: a <Picture n> line per reference, <Video 1> only
 // when there is a clip, and the length that is selected. Whatever was already written is kept as the
 // look line, so pressing this never loses work.
-function h3Template() {
+// Three intents, one skeleton. What separates them is retention_analysis: how hard each reference
+// binds. Say nothing and H3 takes the mood and little else, which is how a street comes back as a
+// theatre stage; pin the video and it keeps your plate and swaps who is standing in it.
+const H3_RECIPES = {
+  swap: ['character swap', {
+    role: 'identity anchor — the character design, exactly',
+    video: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+         + 'attribute_transfer - everything else is restyled.',
+    look: 'The shot stays as filmed; only the subject is replaced, drawn in the style of <Picture 1>'
+        + ' and lit to match the plate.',
+  }],
+  restyle: ['full restyle', {
+    role: 'style anchor — the medium, line, palette and texture',
+    video: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
+         + 'attribute_transfer - every surface in frame is redrawn in the style of <Picture 1>,\n'
+         + 'buildings, smoke, ground and crowd included. Nothing stays photographic.',
+    look: 'The whole frame is one drawing in the style of <Picture 1> — same medium, same line'
+        + ' weight, same palette — moving with the shot.',
+  }],
+  scene: ['new scene', {
+    role: 'identity anchor',
+    video: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
+    look: '<the look: medium, palette, lens, grain>',
+  }],
+};
+function h3Template(kind) {
+  const r = H3_RECIPES[kind]?.[1] || H3_RECIPES.swap[1];
   const refs = h3Refs(), secs = h3Seconds(), had = (state.prompt || '').trim();
   const out = [];
   if (refs.length) {
-    out.push('subject_definitions:', ...refs.map((r, i) =>
-      `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: identity anchor.\n` +
+    out.push('subject_definitions:', ...refs.map((_, i) =>
+      `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: ${r.role}.\n` +
       `Features to follow exactly: ...\n` +
       `Do not carry over the background of <Picture ${i + 1}>.`), '');
   }
@@ -1383,27 +1440,37 @@ function h3Template() {
   out.push('summary:',
     `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
     'retention_analysis:',
-    ...refs.map((r, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
-    ...(state.clip ? ['<Video 1>: fully_preserved - the camera move, the blocking and the timing;'
-                     + ' attribute_transfer - everything else is restyled.'] : []),
+    ...refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
+    ...(state.clip ? [r.video] : []),
     '',
     'detailed_description:',
-    had || '<the look: medium, palette, lens, grain>',
+    had || r.look,
     '[Shot 1] Wide frame, ... At about two seconds the camera pushes in ...', '',
     'overall_soundscape:', '...', '',
     'non_diegetic_music:', '...');
   return out.join('\n');
 }
-$('promptTpl').onclick = e => {
-  e.preventDefault();
-  $('prompt').value = h3Template();          // same path the "random" link uses
+function renderTplPick() {
+  $('promptTpl').innerHTML = '<option value="">template ▾</option>' + Object.entries(H3_RECIPES)
+    .map(([k, [label]]) => `<option value="${k}">${label}</option>`).join('');
+  $('promptTpl').value = '';
+}
+$('promptTpl').onchange = e => {
+  const kind = e.target.value; if (!kind) return;
+  $('prompt').value = h3Template(kind);      // same path the "random" link uses
   $('prompt').dispatchEvent(new Event('input'));
+  renderTplPick();
   $('prompt').focus();
-  setStatus('template laid out — fill in the ... parts', 'done');
+  setStatus(`${H3_RECIPES[kind][0]} template — fill in the ... parts`, 'done');
 };
 $('h3Secs').onclick = e => {
-  const v = +e.target.dataset.s; if (!v) return;
-  state.h3secs = v; renderH3(); paintSums(); save();
+  const v = e.target.dataset.s; if (!v) return;
+  state.h3secs = v === 'auto' ? 'auto' : +v;
+  renderH3(); paintSums(); save();
+};
+$('h3Sound').onclick = e => {
+  const v = e.target.dataset.v; if (v == null) return;
+  state.h3sound = v === '1'; renderH3(); paintSums(); save();
 };
 $('h3Aspect').onclick = e => {
   const a = e.target.dataset.a; if (!a) return;
@@ -1777,6 +1844,7 @@ function paintRange() {
   $('rangeA').textContent = (a * d).toFixed(1) + 's'; $('rangeB').textContent = (b * d).toFixed(1) + 's';
   const [fa, fb] = rangeFrames();
   $('rangeLen').textContent = (a === 0 && b === 1) ? 'full clip' : `${fb - fa + 1} frames`;
+  if (isH3()) renderH3();                   // "auto" follows the trim
   const on = state.onN || 1, sfps = state.clip.source.fps || 24;
   [...$('onN').children].forEach(b => {       // each button is its own frame rate for this clip
     const n = +b.dataset.n, d = Math.floor((fb - fa) / n) + 1;
@@ -2929,6 +2997,21 @@ A fast 1940s big-band shuffle, brass stabs on the dance beats.</pre>
           a face, a costume, a product. For a look, words are often enough: the clip goes in as
           &lt;Video 1&gt; and the prompt restyles it.</li>
     </ul>
+    <h4>Two things it is good at</h4>
+    <p>The <i>retention_analysis</i> line decides which of these you get, and they are a couple of words apart.</p>
+    <p><b>Character swap</b> — keep your footage as it is and replace who is in it. The plate stays photoreal,
+       the camera move and the blocking are yours, and the subject becomes whatever the reference shows.</p>
+    <pre>retention_analysis:
+&lt;Subject 1&gt;: fully_preserved - the character design, exactly.
+&lt;Video 1&gt;: fully_preserved - the camera move, the blocking and the timing;
+attribute_transfer - everything else is restyled.</pre>
+    <p><b>Full restyle</b> — the whole frame redrawn, your clip only setting the move. Loosen the video and say
+       in <i>detailed_description</i> that the world is drawn too, not just the subject.</p>
+    <pre>retention_analysis:
+&lt;Video 1&gt;: attribute_transfer - the camera move and the blocking only;
+the whole frame is redrawn, buildings and smoke and crowd included.</pre>
+    <p>Leaving the line out altogether is the loosest setting of all: H3 takes the mood and little else, which is
+       how a street can come back as a theatre stage.</p>
     <h4>Your key</h4>
     <p>It is kept in <b>config.json</b>, which is never committed, and DWARP never shows it back — Settings only
        says whether one is set. Clear it by saving an empty field.</p>`],
@@ -4455,7 +4538,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
-  state.h3secs ??= 5; state.h3aspect ??= '16:9';
+  state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true;
   state.cam = { zoom: 1, rotate: 0, x: 0, y: 0, d3: false, yaw: 0, pitch: 0, ...(state.cam || {}) };
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
