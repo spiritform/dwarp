@@ -549,6 +549,18 @@ def build_app() -> FastAPI:
             upd["prompt_blend"] = int(body["prompt_blend"])
         if body.get("now"):                     # Live mode: a keyframe at the frame about to render
             upd["now"] = str(body["now"])
+        # Live dials: Denoise, Frame Lock (as an absolute style_next) and Source mix, from the
+        # next frame on. The engine re-derives what it caches off them.
+        for k, lo, hi in (("style", 0.0, 1.0), ("style_next", -1.0, 1.0),
+                          ("style_end", -1.0, 1.0), ("flow_blend", 0.0, 1.0)):
+            if k in body:
+                try:
+                    upd[k] = min(hi, max(lo, float(body[k])))
+                except (TypeError, ValueError):
+                    pass
+        if isinstance(body.get("layers"), list):   # Live layers: the stack, from the next frame on
+            from engine import layers as layerlib
+            upd["layers"] = layerlib.clean(body["layers"])
         if isinstance(body.get("camera"), dict):  # Live camera (Text / Image -> Video)
             cam = body["camera"]
             upd["camera"] = {k: (bool(v) if k == "cam_3d" else float(v)) for k, v in cam.items()
@@ -894,13 +906,34 @@ def build_app() -> FastAPI:
         if not layerlib.plan(stack):
             raise HTTPException(422, detail="a plate needs a layer that is not a matte")
         try:
-            return layerlib.plate(INPUTS / "plates", stack,
-                                  width=max(0, min(4096, int(body.get("width", 0)))),
-                                  height=max(0, min(4096, int(body.get("height", 0)))),
-                                  frames=max(0, min(4096, int(body.get("frames", 0)))),
-                                  fps=max(0.0, min(120.0, float(body.get("fps", 0)))))
+            # In a thread: this is ffmpeg over a whole clip, and on the loop it would hold up every
+            # other request -- including the frame thumbnails the page's own live preview runs on.
+            return await asyncio.to_thread(
+                layerlib.plate, INPUTS / "plates", stack,
+                width=max(0, min(4096, int(body.get("width", 0)))),
+                height=max(0, min(4096, int(body.get("height", 0)))),
+                frames=max(0, min(4096, int(body.get("frames", 0)))),
+                fps=max(0.0, min(120.0, float(body.get("fps", 0)))))
         except (RuntimeError, ValueError) as exc:
             raise HTTPException(422, detail=f"could not flatten the layers: {exc}") from None
+
+    @app.post("/api/layers/noise")
+    async def layers_noise(request: Request):
+        """Monochrome static as a layer. Cut to the size and length of whatever it is going over,
+        and named after that, so asking twice costs one stat()."""
+        from engine import layers as layerlib
+        body = await request.json()
+        try:
+            return await asyncio.to_thread(
+                layerlib.noise_clip, INPUTS / "noise",
+                width=max(16, min(4096, int(body.get("width", 768)))),
+                height=max(16, min(4096, int(body.get("height", 768)))),
+                frames=max(1, min(4096, int(body.get("frames", 124)))),
+                fps=max(1.0, min(120.0, float(body.get("fps", 24)))),
+                grain=float(body.get("grain", 1.0)),
+                seed=int(body.get("seed", 0)))
+        except (RuntimeError, ValueError, TypeError) as exc:
+            raise HTTPException(422, detail=f"could not make the noise: {exc}") from None
 
     @app.get("/api/masks/preview")
     def mask_preview(pattern: str = "circle", width: int = 256, height: int = 144,
@@ -921,8 +954,8 @@ def build_app() -> FastAPI:
         from engine import masks
         body = await request.json()
         try:
-            return masks.make(
-                INPUTS / "masks", pattern=str(body.get("pattern") or "circle"),
+            return await asyncio.to_thread(
+                masks.make, INPUTS / "masks", pattern=str(body.get("pattern") or "circle"),
                 width=max(16, min(4096, int(body.get("width", 848)))),
                 height=max(16, min(4096, int(body.get("height", 480)))),
                 frames=max(2, min(1024, int(body.get("frames", 124)))),

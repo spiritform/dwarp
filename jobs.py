@@ -170,11 +170,14 @@ class JobManager:
         written = render(rj, progress=progress, cancelled=lambda: job.cancel_requested,
                          log=lambda line: self._log(job, line), live=lambda: self._take_prompts(job),
                          on_keys=lambda keys, blend: self._keys(job, keys, blend))
-        if written and not job.cancel_requested:
+        if written:
+            # Stopped part-way is still rendered: the frames cost what they cost, so they get an mp4
+            # like any other run and can be played, downloaded, enhanced or fed back in.
             job.stage, job.message = "assembling", "assembling mp4"
             self._touch(job)
             assemble(str(run_path), job.payload.get("fps", 24))
-            self._log(job, f"assembled video.mp4 ({len(written)} frames)")
+            self._log(job, f"assembled video.mp4 ({len(written)} frames"
+                           f"{', stopped early' if job.cancel_requested else ''})")
         took = time.time() - t0
         m, sec = divmod(round(took), 60)
         h, m = divmod(m, 60)

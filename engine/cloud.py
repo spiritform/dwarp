@@ -44,6 +44,8 @@ REGISTRY = COMFY / "workflows.json"
 CLOUD = "https://cloud.comfy.org"
 
 TIMEOUT = 45                   # per request; a render takes minutes, but each poll is small
+UPLOAD = 900                   # a whole clip goes up in one POST, so it gets its own patience
+RETRIES = 3                    # a reset connection is weather; only /api/prompt is sent just once
 POLL = 3.0
 
 
@@ -141,6 +143,9 @@ def caps(w: dict) -> dict:
     return {"id": w["id"], "label": w.get("label") or w["id"], "model": w.get("model", ""),
             "short": w.get("short") or w["id"],
             "note": w.get("note", ""), "refs": int((w.get("refs") or {}).get("max", 0)),
+            # a workflow whose pictures mean particular things says what they are, instead of
+            # letting the panel number them Picture 1, Picture 2 and leave the rest to guesswork
+            "ref_labels": [str(x) for x in ((w.get("refs") or {}).get("labels") or [])],
             "tracks": bool(w.get("tracks")), "strength": w.get("strength") or None,
             "speed": w.get("speed") or None,
             "prompt_hint": w.get("prompt_hint") or None,
@@ -226,27 +231,47 @@ class _Redirect(urllib.error.HTTPError):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
-def _call(key: str, base: str, path: str, data: bytes | None = None, ctype: str = "", method: str = ""):
-    req = urllib.request.Request(f"{base}{path}", data=data, method=method or ("POST" if data else "GET"))
-    req.add_header("X-API-Key", key)
-    req.add_header("User-Agent", "DWARP")
-    if ctype:
-        req.add_header("Content-Type", ctype)
-    try:
-        with _opener.open(req, timeout=TIMEOUT) as r:
-            body = r.read()
-    except _Redirect:
-        raise
-    except urllib.error.HTTPError as e:
-        detail = (e.read() or b"")[:400].decode("utf-8", "replace").strip()
-        raise CloudError({
-            401: "Comfy Cloud rejected the API key — check it in Settings.",
-            402: "Comfy Cloud: out of credits.",
-            429: "Comfy Cloud: this account has no active subscription (a render needs one).",
-        }.get(e.code, f"Comfy Cloud {e.code} on {path}{': ' + detail if detail else ''}")) from e
-    except urllib.error.URLError as e:
-        raise CloudError(f"couldn't reach Comfy Cloud ({e.reason})") from e
-    return json.loads(body) if body[:1] in (b"{", b"[") else body
+def _call(key: str, base: str, path: str, data: bytes | None = None, ctype: str = "", method: str = "",
+          timeout: int = 0, tries: int = RETRIES, log: Callable[[str], None] = lambda s: None):
+    """One call to Comfy Cloud, sent again while the failure is the network rather than an answer.
+
+    A dropped or reset connection says nothing about the request, so it goes again; a 4xx is an
+    answer and is raised at once. How many tries a request may have is the caller's to decide,
+    because not all of them are safe to repeat."""
+    last = None
+    for attempt in range(1, max(1, tries) + 1):
+        req = urllib.request.Request(f"{base}{path}", data=data,        # a Request is single-use
+                                     method=method or ("POST" if data else "GET"))
+        req.add_header("X-API-Key", key)
+        req.add_header("User-Agent", "DWARP")
+        if ctype:
+            req.add_header("Content-Type", ctype)
+        try:
+            with _opener.open(req, timeout=timeout or TIMEOUT) as r:
+                body = r.read()
+            return json.loads(body) if body[:1] in (b"{", b"[") else body
+        except _Redirect:
+            raise
+        except urllib.error.HTTPError as e:
+            if e.code in (500, 502, 503, 504) and attempt < tries:      # their end, not the request
+                last = f"Comfy Cloud {e.code}"
+                log(f"  {last} on {path} — trying again ({attempt} of {tries - 1})")
+                time.sleep(2 * attempt)
+                continue
+            detail = (e.read() or b"")[:400].decode("utf-8", "replace").strip()
+            raise CloudError({
+                401: "Comfy Cloud rejected the API key — check it in Settings.",
+                402: "Comfy Cloud: out of credits.",
+                429: "Comfy Cloud: this account has no active subscription (a render needs one).",
+            }.get(e.code, f"Comfy Cloud {e.code} on {path}{': ' + detail if detail else ''}")) from e
+        except (urllib.error.URLError, OSError) as e:
+            last = getattr(e, "reason", None) or e
+            if attempt < tries:
+                log(f"  the connection dropped — trying again ({attempt} of {tries - 1})")
+                time.sleep(2 * attempt)
+                continue
+            raise CloudError(f"couldn't reach Comfy Cloud ({last})") from e
+    raise CloudError(f"couldn't reach Comfy Cloud ({last})")            # unreachable, kept honest
 
 
 def _multipart(fields: dict[str, str], name: str, file: Path) -> tuple[bytes, str]:
@@ -267,7 +292,7 @@ def upload(key: str, base: str, path: Path) -> str:
     """A picture into the account's asset store. Cloud is content-addressed, so sending the same frame
     twice is free; the name it answers with is what the graph's LoadImage asks for."""
     body, ctype = _multipart({"type": "input", "overwrite": "true"}, "image", path)
-    r = _call(key, base, "/api/upload/image", body, ctype)
+    r = _call(key, base, "/api/upload/image", body, ctype, timeout=UPLOAD)
     if not isinstance(r, dict) or not r.get("name"):
         raise CloudError(f"upload of {path.name} gave back no file name")
     return r["name"]
@@ -281,7 +306,8 @@ def _asset(r) -> dict:
     return inner if isinstance(inner, dict) else r
 
 
-def upload_video(key: str, base: str, path: Path) -> str:
+def upload_video(key: str, base: str, path: Path,
+                 log: Callable[[str], None] = lambda s: None) -> str:
     """A clip into the asset store. /api/upload/image is for pictures only, so a video goes through
     /api/assets.
 
@@ -291,7 +317,7 @@ def upload_video(key: str, base: str, path: Path) -> str:
     (`blake3:<hex>`, no extension) is the spelling in the API docs; both are accepted here."""
     body, ctype = _multipart({"tags": "input", "name": path.name,
                               "mime_type": "video/mp4"}, "file", path)
-    asset = _asset(_call(key, base, "/api/assets", body, ctype))
+    asset = _asset(_call(key, base, "/api/assets", body, ctype, timeout=UPLOAD, log=log))
     if not asset:
         raise CloudError(f"upload of {path.name} gave back no asset")
     name = asset.get("hash") or ""
@@ -403,7 +429,19 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
             del g[node_id]
 
     spec = w.get("refs") or {}
-    if spec.get("slot"):                               # auto-growing reference slots: one loader each
+    named = [str(x) for x in (spec.get("slots") or [])]
+    if named:
+        # Fixed inputs rather than an auto-growing list: the first and last frame of FL2VA are two
+        # named sockets, not slot 0 and slot 1 of the same list. A socket with no picture for it has
+        # to be removed outright, because the loader it pointed at is dropped with the examples.
+        for i, name in enumerate(refs[:len(named)]):
+            node_id = str(900 + i)
+            g[node_id] = {"class_type": "LoadImage", "inputs": {"image": name},
+                          "_meta": {"title": named[i].replace("_", " ")}}
+            main[named[i]] = [node_id, 0]
+        for empty in named[len(refs):]:
+            main.pop(empty, None)
+    elif spec.get("slot"):                             # auto-growing reference slots: one loader each
         for slot in [k for k in main if k.startswith(spec.get("clear", "ref_images."))]:
             del main[slot]
         for i, name in enumerate(refs[:int(spec.get("max", 0))]):
@@ -459,7 +497,8 @@ def submit(key: str, base: str, graph: dict) -> str:
     node". The header alone authenticates the request, not the nodes inside it — which never came up
     while every graph here ran a real model on the GPU."""
     body = {"prompt": graph, "extra_data": {"api_key_comfy_org": key}}
-    r = _call(key, base, "/api/prompt", json.dumps(body).encode(), "application/json")
+    # The one call that must not be repeated: a second /api/prompt is a second job and a second bill.
+    r = _call(key, base, "/api/prompt", json.dumps(body).encode(), "application/json", tries=1)
     if not isinstance(r, dict):
         raise CloudError("Comfy Cloud gave an unexpected answer to the job")
     if r.get("node_errors"):
@@ -528,17 +567,26 @@ def outputs(detail: dict, saver: str = "", skip: str = "") -> list[dict]:
     return video or found
 
 
-def fetch(key: str, base: str, f: dict, dest: Path) -> Path:
+def fetch(key: str, base: str, f: dict, dest: Path,
+          log: Callable[[str], None] = lambda s: None) -> Path:
     """Two steps on purpose: read where the file lives, then fetch it with no API key attached."""
     q = urllib.parse.urlencode({"filename": f["filename"], "subfolder": f.get("subfolder", ""),
                                 "type": f.get("type", "output")})
     try:
-        body = _call(key, base, f"/api/view?{q}")
+        body = _call(key, base, f"/api/view?{q}", timeout=UPLOAD, log=log)
         dest.write_bytes(body if isinstance(body, bytes) else json.dumps(body).encode())
         return dest
     except _Redirect as r:
-        with urllib.request.urlopen(r.url_to, timeout=TIMEOUT * 4) as got:   # signed URL, no headers
-            dest.write_bytes(got.read())
+        for attempt in range(1, RETRIES + 1):
+            try:
+                with urllib.request.urlopen(r.url_to, timeout=UPLOAD) as got:  # signed URL, no headers
+                    dest.write_bytes(got.read())
+                return dest
+            except (urllib.error.URLError, OSError) as e:
+                if attempt == RETRIES:
+                    raise CloudError(f"the file was ready but the download failed ({e})") from e
+                log(f"  the download dropped — trying again ({attempt} of {RETRIES - 1})")
+                time.sleep(2 * attempt)
         return dest
 
 
@@ -620,7 +668,7 @@ def upscale_cloud(wid: str, src: Path, dest: Path, params: dict | None = None, *
         log(f"  {w['limits']}")
 
     progress("sending the clip")
-    stored = upload_video(key, base, src)
+    stored = upload_video(key, base, src, log=log)
     log(f"  sent as {stored}")
     if cancelled():
         raise CloudError("cancelled")
@@ -628,6 +676,8 @@ def upscale_cloud(wid: str, src: Path, dest: Path, params: dict | None = None, *
     graph = graph_of(w)
     node, field = w["input"]
     graph[str(node)]["inputs"][field] = stored
+    if w.get("seed"):        # fresh every run, so asking again is another roll and not the cloud's cache
+        graph[str(w["seed"][0])]["inputs"][w["seed"][1]] = secrets.randbelow(2 ** 31)
     for c in w.get("controls") or []:
         if c.get("node"):                 # a control with no node feeds the size below, not the graph
             graph[str(c["node"])]["inputs"][c["input"]] = values[c["id"]]
@@ -657,7 +707,7 @@ def upscale_cloud(wid: str, src: Path, dest: Path, params: dict | None = None, *
     progress("downloading the clip")
     log(f"downloading {files[0]['filename']}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    got = fetch(key, base, files[0], dest)
+    got = fetch(key, base, files[0], dest, log=log)
     log(f"downloaded {dest.name} ({got.stat().st_size / 2**20:.1f} MB)")
     return got
 
@@ -779,7 +829,7 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
         raise CloudError("the cloud render finished but wrote no file")
     progress("downloading", 0, frames, "downloading the clip")
     log(f"downloading {files[0]['filename']}")
-    got = fetch(key, base, files[0], out / "video.mp4")
+    got = fetch(key, base, files[0], out / "video.mp4", log=log)
     keep = getattr(job, "h3_sound", True) or not w.get("sound")
     log(f"downloaded video.mp4 ({got.stat().st_size / 2**20:.1f} MB"
         f"{', with sound' if w.get('sound') else ''})")

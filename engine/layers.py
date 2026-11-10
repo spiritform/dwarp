@@ -37,6 +37,16 @@ DEFAULTS = {"mode": "normal", "opacity": 1.0, "blur": 0.0, "matte": False,
 # size comes out the same when it is flattened four times larger.
 BLUR_SPAN = 0.04
 
+# Rec. 709 luma, spelled out rather than left to format=gray. ffmpeg picks its matrix from the
+# input's colour tags -- BT.601 for an untagged SD clip -- while the panel's live preview computes
+# 0.2126/0.7152/0.0722 in a canvas. On a drawn black and white matte the two agree because 0 and 255
+# are 0 and 255 either way; on a colour clip used as a matte they would not, and the preview would
+# quietly stop predicting the render. So both ends are pinned to the same coefficients.
+LUMA709 = ("colorchannelmixer="
+           "rr=0.2126:rg=0.7152:rb=0.0722:"
+           "gr=0.2126:gg=0.7152:gb=0.0722:"
+           "br=0.2126:bg=0.7152:bb=0.0722")
+
 
 def _blur(blur: float, width: int, height: int) -> str:
     sigma = max(0.0, float(blur)) * min(width, height) * BLUR_SPAN
@@ -97,26 +107,31 @@ def clean(layers) -> list[dict]:
     return out
 
 
-def plan(layers) -> list[tuple]:
-    """(drawn layer, its matte or None) bottom-up -- the order they get composited in.
+def pair_index(stack) -> list[tuple]:
+    """(drawn layer's index, its matte's index or None) bottom-up, over an already-clean stack.
 
     A matte layer is never drawn. It belongs to the layer directly below it in the panel, which is
-    the After Effects rule and the reason the matte can sit in the stack and be looked at rather
-    than hiding inside a slot.
+    the After Effects rule and the reason a matte can sit in the stack and be looked at rather than
+    hiding inside a slot. Indices rather than the dicts themselves, because the per-frame compositor
+    keeps a bundle of extracted frames per position and dict identity does not survive a clean().
     """
-    stack = clean(layers)
     pairs = []
     for i, L in enumerate(stack):
         if L["matte"]:
             continue
-        above = stack[i - 1] if i > 0 else None
-        pairs.append((L, above if above and above["matte"] else None))
+        pairs.append((i, i - 1 if i > 0 and stack[i - 1]["matte"] else None))
     pairs.reverse()                            # the last entry in the panel is the base
     # A matte on the base has nothing underneath to reveal, so it is not a matte, it is a hole. It
     # also used to leave an unconsumed filter output and take the whole flatten down with it.
     if pairs:
         pairs[0] = (pairs[0][0], None)
     return pairs
+
+
+def plan(layers) -> list[tuple]:
+    """(drawn layer, its matte or None) bottom-up -- the order they get composited in."""
+    stack = clean(layers)
+    return [(stack[a], stack[m] if m is not None else None) for a, m in pair_index(stack)]
 
 
 def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: float = 24.0) -> Path:
@@ -161,7 +176,7 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
             # levels then clipping the softness straight back off
             steps.append(f"[{put(matte)}:v]fps={fps:.6f},"
                          f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-                         f"crop={width}:{height},setsar=1,format=gray,"
+                         f"crop={width}:{height},setsar=1,{LUMA709},format=gray,"
                          f"lutyuv=y='{lut}'{_blur(matte['blur'], width, height)},format=gbrp[m{n}]")
 
     chain = "[s0]"
@@ -278,3 +293,154 @@ def plate(dest_dir: Path, layers, *, width: int = 0, height: int = 0, frames: in
         flatten(stack, out, width=width, height=height, frames=frames, fps=fps)
     return {"path": str(out), "name": out.name, "width": width, "height": height,
             "frames": frames, "fps": round(fps, 3), "layers": len(pairs)}
+
+
+# ------------------------------------------------------------------ live: composited per frame
+# The flatten above makes one clip and is what the cloud uploads. The painting modes do not upload
+# anything, so they can do better: keep every layer as frames and composite the one being painted,
+# at the moment it is painted. That is what lets a slider move while a render runs -- drag opacity
+# at frame 40 and frames 41 onward are composited differently, the same way Live camera works.
+#
+# The blend formulas are the separable ones from the compositing spec, which is also what a browser
+# canvas computes -- so what the panel previews is what this paints. ffmpeg agrees with them on
+# every mode here except soft light, where its own definition differs by a hair.
+def _blend(a, b, mode: str):
+    """Bottom `a` and top `b` as float arrays in 0..1."""
+    import numpy as np
+    if mode == "normal":
+        return b
+    if mode == "multiply":
+        return a * b
+    if mode == "screen":
+        return a + b - a * b
+    if mode == "overlay":
+        return np.where(a <= 0.5, 2 * a * b, 1 - 2 * (1 - a) * (1 - b))
+    if mode == "hardlight":
+        return np.where(b <= 0.5, 2 * a * b, 1 - 2 * (1 - a) * (1 - b))
+    if mode == "softlight":
+        d = np.where(a <= 0.25, ((16 * a - 12) * a + 4) * a, np.sqrt(np.maximum(a, 0)))
+        return np.where(b <= 0.5, a - (1 - 2 * b) * a * (1 - a), a + (2 * b - 1) * (d - a))
+    if mode == "difference":
+        return np.abs(a - b)
+    if mode == "exclusion":
+        return a + b - 2 * a * b
+    if mode == "lighten":
+        return np.maximum(a, b)
+    if mode == "darken":
+        return np.minimum(a, b)
+    if mode == "addition":
+        return a + b
+    return b
+
+
+class FrameStack:
+    """Every layer as frames at render size, and the composite of any one of them on demand.
+
+    Each layer goes through the engine's own frame extraction, so the range, the every-nth and the
+    render size are whatever the job says -- a layer is read exactly the way the clip would be. A
+    layer shorter than the render loops, which is what the flatten does too.
+    """
+
+    def __init__(self, job, out: Path, extract, log=lambda s: None):
+        from copy import copy
+        self.stack = clean(getattr(job, "layers", None) or [])
+        self.pairs = pair_index(self.stack)
+        if not self.pairs:
+            raise ValueError("a plate needs at least one layer that is not a matte")
+        self.dir = Path(out) / "src"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.frames: dict[int, list] = {}
+        for k, L in enumerate(self.stack):
+            one = copy(job)
+            one.video = L["path"]
+            self.frames[k] = extract(one, Path(out) / "layers" / f"{k}")
+            log(f"  {Path(L['path']).name} \u00b7 {len(self.frames[k])} frames"
+                + (" \u00b7 matte" if L["matte"] else f" \u00b7 {L['mode']} {L['opacity'] * 100:.0f}%"))
+        base = self.frames[self.pairs[0][0]]
+        self.paths = [self.dir / f"{i:06d}.jpg" for i in range(len(base))]
+        self.done: dict[int, str] = {}
+
+    def _frame(self, k: int, i: int):
+        from PIL import Image
+        got = self.frames[k]
+        return Image.open(got[i % len(got)]).convert("RGB")
+
+    def write(self, i: int, stack=None) -> Path:
+        """Composite frame `i` with the settings as they stand, unless that is already on disk."""
+        import numpy as np
+        from PIL import Image, ImageFilter
+        live = clean(stack) if stack else self.stack
+        # A live edit moves settings; it cannot add or remove a layer, because the frames for one
+        # were never extracted. A stack of a different shape is simply not this stack.
+        if len(live) != len(self.stack):
+            live = self.stack
+        # A live edit changes settings, never which files are in the stack, so the frames already
+        # extracted still line up. The signature is every setting but the paths.
+        want = repr([{k: v for k, v in L.items() if k != "path"} for L in live])
+        if self.done.get(i) == want and self.paths[i].is_file():
+            return self.paths[i]
+        soft = lambda im, b, w, h: im.filter(ImageFilter.GaussianBlur(b * min(w, h) * BLUR_SPAN)) if b > 0 else im
+        pairs = self.pairs                     # positions never change, only the settings do
+        base_L = live[pairs[0][0]]
+        img = self._frame(pairs[0][0], i)
+        w, h = img.size
+        acc = np.asarray(soft(img, base_L["blur"], w, h), dtype=np.float32) / 255.0
+        acc *= base_L["opacity"]                     # nothing under the base: it fades to black
+        for n in range(1, len(pairs)):
+            a, mk = pairs[n]
+            L, M = live[a], (live[mk] if mk is not None else None)
+            top = np.asarray(soft(self._frame(a, i), L["blur"], w, h), np.float32) / 255.0
+            mixed = np.clip(_blend(acc, top, L["mode"]), 0.0, 1.0)
+            mixed = acc + (mixed - acc) * L["opacity"]
+            if M:
+                mi = self._frame(mk, i)
+                m = np.asarray(soft(mi, 0.0, w, h).convert("RGB"), np.float32) / 255.0
+                lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
+                b, wt = M["black"], M["white"]
+                lum = np.where(abs(wt - b) < 1e-6, (lum > b).astype(np.float32),
+                               np.clip((lum - b) / (wt - b if abs(wt - b) > 1e-6 else 1), 0, 1))
+                lum = lum ** (math.log(0.5) / math.log(min(0.99, max(0.01, M["mid"]))))
+                if M["invert"]:
+                    lum = 1.0 - lum
+                if M["blur"] > 0:                    # feather after the levels, as the flatten does
+                    lum = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(
+                        ImageFilter.GaussianBlur(M["blur"] * min(w, h) * BLUR_SPAN)), np.float32) / 255.0
+                mixed = acc + (mixed - acc) * lum[..., None]
+            acc = mixed
+        Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)
+        self.done[i] = want
+        return self.paths[i]
+
+
+# ------------------------------------------------------------------ a generated layer
+def noise_clip(dest_dir: Path, *, width: int, height: int, frames: int, fps: float = 24.0,
+               grain: float = 1.0, seed: int = 0) -> dict:
+    """Monochrome static, as a layer you can stack like any other clip.
+
+    Injecting noise is a different lever from raising Denoise. Denoise asks the model to invent
+    more; noise changes the pixels it is looking at -- and with the warp carrying paint forward, the
+    grain becomes structure the next frame elaborates. Its softness is the layer's own blur dial, so
+    there is one kind here rather than six: fine static, blurred into clouds if you want clouds.
+
+    Named after what is in it, like everything else in this file, so the same ask is made once.
+    """
+    width, height = max(16, int(width)) & ~1, max(16, int(height)) & ~1
+    frames, fps = max(1, int(frames)), max(1.0, float(fps))
+    grain = min(1.0, max(0.05, float(grain)))
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    key = f"noise|{width}x{height}|{frames}|{fps:.4f}|{grain:.3f}|{int(seed)}"
+    out = dest_dir / f"noise-{hashlib.sha1(key.encode()).hexdigest()[:6]}.mp4"
+    if not (out.is_file() and out.stat().st_size):
+        # the noise filter rather than geq: a per-pixel expression is minutes at 1440 square
+        cmd = ["ffmpeg", "-v", "error", "-y",
+               "-f", "lavfi", "-i", f"color=c=gray:s={width}x{height}:r={fps:.4f}",
+               "-vf", f"noise=alls={int(round(grain * 100))}:allf=t+u,format=yuv420p",
+               "-frames:v", str(frames),
+               "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", str(out)]
+        done = subprocess.run(cmd, capture_output=True)
+        if done.returncode or not out.is_file():
+            lines = [l.strip() for l in done.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+            raise RuntimeError(lines[-1] if lines else "ffmpeg wrote no noise")
+    return {"path": str(out), "name": out.name, "width": width, "height": height,
+            "frames": frames, "fps": round(fps, 3), "grain": round(grain, 3)}

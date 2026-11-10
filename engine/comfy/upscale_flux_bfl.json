@@ -1,14 +1,20 @@
 {
   "1": {
     "class_type": "LoadVideo",
-    "inputs": { "file": "" }
+    "inputs": {
+      "file": ""
+    }
   },
   "2": {
-    "class_type": "ClarityCrystalVideoUpscaleNode",
+    "class_type": "FluxVideoUpscaleNodeV2",
     "inputs": {
-      "model": "crystal-video-upscaler",
-      "model.video": ["1", 0],
-      "model.scale_factor": 2
+      "video": ["1", 0],
+      "target_resolution": "1080p",
+      "mode": "creative",
+      "prompt": "",
+      "auto_downscale": true,
+      "safety_tolerance": 2,
+      "seed": 42
     }
   },
   "3": {

@@ -366,7 +366,7 @@
   #h3Refs .clip-empty.slim svg, #h3Vids .clip-empty.slim svg { width: 13px; height: 13px; }
   #h3Vids .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #h3Vids .clip-empty svg { width: 18px; height: 18px; }
-  body.runDrag #h3Vids { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #h3Vids, body.dragging #h3Vids { background: rgba(255,106,61,.14); border-radius: 8px; }
   /* The same card the video contexts wear. The tag was faint grey type beside a 38px thumbnail,
      which is not where your eye goes -- and <Picture 1> is what the prompt calls it. */
   #h3Refs .ref { flex: 0 0 calc(50% - 3px); min-width: 0; position: relative;
@@ -389,36 +389,65 @@
     align-items: center; gap: 6px; border-radius: 8px; color: var(--faint); cursor: pointer; text-align: center; }
   #h3Refs .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #h3Refs .clip-empty svg { width: 18px; height: 18px; }
-  body.runDrag #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #h3Refs, body.dragging #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
   /* Layers: one stacked source per row, the matte sitting in the stack where you can see it */
   #layers { display: flex; flex-direction: column; gap: 6px; }
-  /* The dials get the card's full width underneath, instead of a third of it beside a thumbnail:
-     a slider you cannot aim is worse than one more row. */
-  #layers .lay { position: relative; display: flex; flex-direction: column; gap: 6px;
+  /* Square thumbnail down the left, everything else stacked beside it: the row is a picture and
+     its settings, which is how you read a stack -- by the pictures, top to bottom. */
+  #layers .lay { position: relative; display: flex; gap: 8px; align-items: stretch;
                  background: #25242b; border-radius: 8px; padding: 6px; }
-  #layers .top { display: flex; gap: 8px; align-items: center; min-width: 0; }
-  /* Every dial in the stack sits on the same three columns -- name, bar, number -- so a long label
-     cannot push one row's slider out of line with the next one's. */
-  #layers .dials { display: grid; grid-template-columns: 46px 1fr 34px; gap: 5px 7px;
-                   align-items: center; }
-  #layers .dials .lv { justify-self: start; }
-  #layers .dials .pct { justify-self: end; }
-  /* select, chips and the delete are one row of controls, so they are one height */
-  #layers select, #layers .chip, #layers .x { height: 24px; box-sizing: border-box; border: 0;
-    border-radius: 6px; font: inherit; flex: none; }
-  #layers select { padding: 0 6px; font-size: 11px; flex: 1 1 0; min-width: 0; }
-  #layers .chip { padding: 0 8px; font-size: 10px; }
+  /* Three rows: what it is, how strongly, how softly. The floor is the tile's width, so the
+     picture beside them is square and every row in the stack is the same height. */
+  #layers .side { flex: 1 1 0; min-width: 0; min-height: 90px;
+                  display: flex; flex-direction: column; gap: 7px; }
+  /* One row of values, dragged rather than aimed at. The fill behind the text is the proportion,
+     so nothing is lost by not having a track -- and two fit where one slider used to go. */
+  #layers .dials { display: flex; gap: 7px; align-items: stretch; }
+  #layers .num { flex: 1 1 0; min-width: 0; height: 32px; border-radius: 6px; box-sizing: border-box;
+                 padding: 0 8px; display: flex; align-items: center; justify-content: space-between;
+                 gap: 5px; cursor: ew-resize; user-select: none; touch-action: none;
+                 background: linear-gradient(90deg, #46434f 0 var(--f),
+                                             #2b2a31 var(--f)); }
+  #layers .num:hover { background: linear-gradient(90deg, #524e5e 0 var(--f),
+                                                   #322f3a var(--f)); }
+  #layers .num b { font-size: 9px; font-weight: 500; letter-spacing: .04em; color: var(--dim);
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #layers .num i { font-size: 12px; font-style: normal; color: #f1eff4; flex: none; }
+  #layers .num.dragging b, #layers .num.dragging i { color: var(--accent-2); }
+  /* The levels bar is painted with the curve it makes: black up to the black point, white from the
+     white point, the ramp between them. Dragging the grey handle slides where the half-way value
+     lands, which is the gamma -- the same thing the engine's lut is built from. */
+  #layers .lvl { position: relative; flex: 2 1 0; min-width: 0; height: 32px; border-radius: 6px;
+                 cursor: ew-resize; touch-action: none;
+                 background: linear-gradient(90deg, #121117 0, #121117 var(--b),
+                                             #e9e8ee var(--w), #e9e8ee 100%); }
+  #layers .lvl .h { position: absolute; top: 0; width: 6px; height: 32px; margin-left: -3px;
+                    border-radius: 3px; box-shadow: 0 0 0 2px #25242b; }
+  #layers .lay:hover .lvl .h { box-shadow: 0 0 0 2px #2d2c35; }
+  #layers .lvl .hb { background: #0b0a0f; }
+  #layers .lvl .hm { background: var(--accent); }
+  #layers .lvl .hw { background: #fff; }
+  /* select, chips, the eye and the delete are one row of controls, so they are one height */
+  #layers select, #layers .chip, #layers .x, #layers .eye { height: 22px; box-sizing: border-box;
+    border: 0; border-radius: 6px; font: inherit; flex: none; }
+  #layers select { padding: 0 5px; font-size: 11px; flex: 1 1 0; min-width: 0; }
+  #layers .chip { padding: 0 7px; font-size: 10px; }
+  /* matte as a mark rather than a word: the dropdown next to it is the thing you read */
+  #layers .chip.ico { width: 22px; padding: 0; display: inline-flex; align-items: center;
+                      justify-content: center; }
+  #layers .chip.ico svg { width: 12px; height: 12px; }
   #layers .lay.drag { opacity: .35; }
   #layers .lay.over { background: #34333b; }
   /* the one under the pointer, so you can see which row a slider belongs to without it shouting */
   #layers .lay:hover { box-shadow: inset 0 0 0 2px #35343d; }
-  /* Only the grip drags. The whole row used to, which meant you could not move a slider without
-     picking the layer up instead. */
-  #layers .grip { color: var(--faint); font-size: 12px; letter-spacing: -2px; flex: none; padding: 2px;
-                  cursor: grab; user-select: none; }
-  #layers .grip:active { cursor: grabbing; }
-  #layers .lay.base .grip { cursor: default; }
-  #layers .tile { position: relative; width: 66px; aspect-ratio: 16 / 9; border-radius: 5px; flex: none;
+  /* The thumbnail is the handle: drag it to reorder, double-click it to replace what is in it.
+     Only it drags -- the whole row used to, which meant you could not move a slider without picking
+     the layer up instead. */
+  #layers .tile { cursor: grab; }
+  #layers .tile:active { cursor: grabbing; }
+  #layers .lay.base .tile { cursor: pointer; }
+  #layers .tile { position: relative; align-self: stretch; width: 90px;
+                  border-radius: 5px; flex: none;
                   overflow: hidden; background: #1b1a20; display: flex; align-items: center;
                   justify-content: center; color: var(--faint); }
   #layers .tile img, #layers .tile video { position: absolute; inset: 0; width: 100%; height: 100%;
@@ -427,30 +456,46 @@
   #layers .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: rgba(16,15,20,.86);
                   color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-align: center;
                   padding: 2px 0; line-height: 1; }
-  #layers .ctl { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; align-items: center; }
+  #layers .hd { display: flex; gap: 5px; align-items: center; min-width: 0; height: 22px; }
+  #layers .ctl { display: flex; gap: 5px; align-items: center; min-width: 0; }
+  /* where the blend mode would be, when there is no blend mode to choose */
+  #layers .mt { flex: 1 1 0; min-width: 0; height: 22px; box-sizing: border-box; border-radius: 6px;
+                background: #2b2a31; display: flex; align-items: center; padding: 0 8px;
+                font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--accent-2);
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* the source has no blend row to fill, so its two sit in the middle rather than at the top */
+  #layers .lay.base .side { justify-content: center; }
   #layers .row { display: flex; gap: 6px; align-items: center; min-width: 0; }
   #layers select { background: #2b2a31; color: var(--text); }
-  #layers input[type=range] { flex: 1 1 0; min-width: 0; }
-  #layers .pct { font-size: 10px; color: var(--dim); text-align: right; }
-  #layers .lv { font-size: 9px; color: var(--faint); }
-  #layers .nm { font-size: 11px; color: #c9c7cf; flex: 1; min-width: 0; overflow: hidden;
+  #layers input[type=range] { width: 100%; min-width: 0; height: 16px; display: block; }
+  #layers .pct { font-size: 9px; line-height: 13px; color: var(--dim); flex: none; }
+  #layers .lv { font-size: 9px; line-height: 13px; color: var(--faint); overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  #layers .nm { font-size: 11px; color: #c9c7cf; flex: 1 1 0; min-width: 0; overflow: hidden;
                 text-overflow: ellipsis; white-space: nowrap; }
   #layers .chip { background: #2b2a31; color: var(--dim); cursor: pointer; white-space: nowrap; }
   #layers .chip.on { color: var(--text); box-shadow: inset 0 0 0 2px var(--accent); }
   #layers .chip:hover { color: var(--text); }
-  /* Quiet until the row is under the pointer, but it keeps its place: a control that appears and
-     shoves the rest of the row along is worse than one that is simply quiet. */
-  #layers .x { width: 24px; padding: 0; background: #2b2a31; color: var(--dim); cursor: pointer;
-               font-size: 10px; font-weight: 700; visibility: hidden; }
-  #layers .lay:hover .x { visibility: visible; }
+  /* Quiet until the row is under the pointer, but they keep their place: a control that appears
+     and shoves the rest of the row along is worse than one that is simply quiet. The eye is the
+     exception -- once it is off it has to stay visible, or nothing says why the layer is gone. */
+  #layers .x, #layers .eye { width: 22px; padding: 0; background: #2b2a31; color: var(--dim);
+               cursor: pointer; font-size: 10px; font-weight: 700;
+               display: inline-flex; align-items: center; justify-content: center; }
   #layers .x:hover { background: var(--bad); color: #fff; }
+  #layers .eye svg { width: 13px; height: 13px; }
+  #layers .eye:hover { color: var(--text); }
+  #layers .eye.off { color: var(--accent); }
+  /* A hidden layer stays where it is, with everything it was set to, and simply stops counting. */
+  #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
+  #layers .lay.off .chip, #layers .lay.off .nm { opacity: .38; }
   #layerAdds { display: flex; gap: 6px; margin-top: 6px; }
   #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
     display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
     border-radius: 8px; color: var(--dim); cursor: pointer; white-space: nowrap; }
   #layerAdds .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #layerAdds .clip-empty svg { width: 13px; height: 13px; }
-  body.runDrag #layers { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #layers, body.dragging #layers { background: rgba(255,106,61,.14); border-radius: 8px; }
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
   .cloudnote .bad { color: #ff9a8a; }
@@ -898,10 +943,12 @@
   @keyframes ghost { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
   .seg.idle { opacity: .45; pointer-events: none; }
-  body.runDrag #clipBox, body.runDrag #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }   /* a run dragged off the stage: where it can land */
-  body.dragging::after { content: "drop a video or image"; position: fixed; pointer-events: none;   /* drops reach what's under it (the style ref slot) */
-     inset: 0; display: grid; place-items: center;
-     background: rgba(255,106,61,.12); border: 3px dashed var(--accent); color: var(--accent-2); font-size: 22px; z-index: 10; }
+  /* Dragging anything droppable -- a file off the desktop or a run off the strip -- lights the
+     slots that can take it. There is no window-wide dropzone: with a source, references, layers and
+     video contexts all wanting video, "anywhere" is not an answer to where it goes. */
+  body.runDrag #clipBox, body.dragging #clipBox,
+  body.runDrag #trackSlot, body.dragging #trackSlot,
+  body.runDrag #styleRef, body.dragging #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }
 </style>
 </head>
 <body class="intro">
@@ -1060,6 +1107,14 @@
       <input type="range" id="style" min="0" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
+    <div class="slider" id="rampRow" style="margin-top:-4px">
+      <div class="slider-head">
+        <b title="Denoise climbs (or falls) across the clip instead of holding still: the model keeps more of the source at the start and invents more by the end. Frame Lock keeps its share, so it rides along.">ramp to</b>
+        <span id="styleEndV"></span>
+      </div>
+      <input type="range" id="styleEnd" min="0" max="1" step="0.01">
+      <div class="ends"><span id="rampNote"></span><a href="#" id="rampOff" class="randlink">off</a></div>
+    </div>
     <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
       <button data-f="fresh" title="Boil: every frame is repainted from its source with its own noise, so the strokes boil like hand-painted animation">Boil</button>
@@ -1133,6 +1188,7 @@
     <div id="layerAdds">
       <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
+      <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
     </div>
     <div class="adnote" id="layerNote" style="margin:10px 0 0"></div>
     </div></div>
@@ -1593,6 +1649,7 @@ function paintT2V() {
   $('t2vLenV').textContent = `${state.size}px · ${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} frames`;
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
+  renderRamp();
   paintKeys(); updateEst();
 }
 // H3's whole job: references, a prompt, a length and a seed. Everything else DWARP sends is about
@@ -1630,6 +1687,30 @@ function camJob() {
   const c = state.cam;
   return { cam_zoom: +(1 + c.zoom / 100).toFixed(4), cam_rotate: c.rotate, cam_x: c.x / 100, cam_y: c.y / 100,
            cam_3d: !!c.d3, cam_yaw: c.d3 ? c.yaw : 0, cam_pitch: c.d3 ? c.pitch : 0 };
+}
+// Live layers: while a render runs, the stack it is painting from is composited frame by frame, so
+// a slider moved now lands on the frames still to come. Debounced, because a drag is many events
+// and the engine only reads this once per frame anyway.
+var layerTimer = null;
+function pushLayers() {
+  if (!live || isH3() || curVideo() !== live.video) return;
+  clearTimeout(layerTimer);
+  layerTimer = setTimeout(() => live && api(`/api/jobs/${live.id}/prompts`, { method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ layers: layerJob() }) }).catch(() => {}), 150);
+}
+// Live dials: Denoise, Frame Lock and Source mix, while a render runs. The loop reads all three
+// per frame (style_next is re-derived the moment one of them moves), so a drag lands on the frames
+// still to come and is recorded in job.json beside the camera and prompt edits.
+var dialTimer = null;
+function pushDials() {
+  if (!live || isH3() || curVideo() !== live.video) return;
+  clearTimeout(dialTimer);
+  dialTimer = setTimeout(() => live && api(`/api/jobs/${live.id}/prompts`, { method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ style: state.style, style_next: nextStyle(),
+                           style_end: rampOn() ? state.styleEnd : -1,
+                           flow_blend: +(1 - state.srcMix).toFixed(3) }) }).catch(() => {}), 150);
 }
 // Live camera: while a Text / Image -> Video render runs, the sliders steer it (the engine eases in)
 var camTimer = null;
@@ -1699,7 +1780,7 @@ function comfySize() {
 // panel is built from that rather than from anything written here, so a new graph is a JSON file and no
 // page edit. WF_FALLBACK is only what the controls read before the list has arrived.
 var CLOUD_WF = [];                                    // var: read by functions above this line
-var WF_FALLBACK = { id: '', label: 'Comfy Cloud', short: 'comfy', note: '', refs: 9, video: true,
+var WF_FALLBACK = { id: '', label: 'Comfy Cloud', short: 'comfy', note: '', refs: 9, ref_labels: [], video: true,
                     tracks: false, speed: null, sound: true, megapixels: 1.03, multiple: 32,
                       seconds: [5, 7, 10, 15], fps: 24, snap: 17, min_frames: 124, max_seconds: 15.1 };
 function wf() {
@@ -1839,10 +1920,14 @@ function renderH3() {
   $('h3Aspect').style.gridTemplateColumns = `repeat(${refShape() ? 4 : 3},1fr)`;
   [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === h3Aspect()));
   const refs = h3Refs();
+  // Most workflows just number their pictures; one whose slots mean particular things (FL2VA's
+  // opening and closing frame) says so instead, and the manifest is where that is written.
+  const refName = i => (w.ref_labels || [])[i] || `PICTURE ${i + 1}`;
   $('h3Refs').innerHTML = refs.map((r, i) =>
-    `<div class="ref" data-i="${i}" draggable="true" title="${r.name} — drag to reorder; the number is what the prompt calls it"><span class="tile"><img src="/api/image/file?${qs({ path: r.path })}" alt="" draggable="false"><b class="band">PICTURE ${i + 1}</b></span><button class="x" title="Remove">✕</button></div>`).join('')
+    `<div class="ref" data-i="${i}" draggable="true" title="${r.name} — drag to reorder; the number is what the prompt calls it"><span class="tile"><img src="/api/image/file?${qs({ path: r.path })}" alt="" draggable="false"><b class="band">${refName(i)}</b></span><button class="x" title="Remove">✕</button></div>`).join('')
     + (refs.length >= w.refs ? '' :
-      `<div class="adds${refs.length ? '' : ' wide'}"><div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add picture' : 'a picture, or a frame off the stage'}</div></div>`);
+      `<div class="adds${refs.length ? '' : ' wide'}"><div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${(w.ref_labels || [])[refs.length] ? (w.ref_labels[refs.length] + '').toLowerCase()
+          : refs.length ? 'add picture' : 'a picture, or a frame off the stage'}</div></div>`);
   renderH3Vids(); renderLayers();
   paintClipKey(); paintVidKey();     // again, now the slots that decide the colours have been read
   // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
@@ -2437,6 +2522,30 @@ const H3_RECIPES = {
            + '<the palette: four flat colours, warm sepia, acid neon …>, moving with the shot.',
     },
   }],
+  journey: ['first → last', {
+    wf: 'pika_h3_fl2va',                     // the only brief that workflow offers, and only there
+    subjects: false,                         // the pictures are moments, not characters to hold
+    role: 'the frame the shot lands on',
+    // Replaces retention_analysis, because what is preserved here is a pair of instants, and the
+    // model is told exactly where on the clock each one sits.
+    align: (refs, secs) => [
+      '<Picture 1> is the first frame: it aligns with the 0.00-second mark of the target video.',
+      ...(refs.length > 1
+        ? [`<Picture 2> is the last frame: it aligns with the ${(+secs).toFixed(2)}-second mark.`]
+        : ['<Picture 2> is missing: add a second picture for the frame it should close on.']),
+      'Both are fully_preserved - the shot opens exactly on one and settles exactly into the other.',
+    ],
+    video: {
+      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
+      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
+    },
+    look: {
+      ref: 'The shot begins exactly on <Picture 1>. At about one second ... At about two seconds ...'
+         + ' It settles into the composition of <Picture 2> and holds.',
+      words: 'The shot begins on <the opening frame>. At about one second ... At about two seconds ...'
+           + ' It settles into <the closing frame> and holds.',
+    },
+  }],
   smash: ['context smasher', {
     wf: 'h3_context_smash',                  // the only brief that workflow offers, and only there
     role: 'look anchor — palette and texture only',
@@ -2509,7 +2618,7 @@ function h3Template(kind) {
   }
   const kept = k => h3Filled(prev[k]) || '...';
   const out = [];
-  if (refs.length) {
+  if (refs.length && r.subjects !== false) {
     out.push('subject_definitions:', ...refs.map((_, i) =>
       `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: ${r.role}.\n` +
       `${feats[i + 1] || H3_FEAT + ' ...'}\n` +
@@ -2521,8 +2630,8 @@ function h3Template(kind) {
     h3Filled(prev.summary)
       || `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
     'retention_analysis:',                     // the recipe itself: always rewritten, it is what you picked
-    ...refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
-    ...(state.clip ? [r.video[cut]] : []),
+    ...(r.align ? r.align(refs, secs) : refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`)),
+    ...(state.clip && wf().video ? [r.video[cut]] : []),
     '',
     ...h3ContextLines(),
     'detailed_description:',
@@ -2685,7 +2794,7 @@ async function makeMatte(pattern, at) {
     const row = { path: r.path, name: r.name, mask: r.pattern, matte: true };
     if (at >= 0 && layers()[at]) Object.assign(layers()[at], row);
     else layers().unshift(layerDefaults(row));
-    renderLayers(); paintSums(); save(); toSource();
+    renderLayers(); paintSums(); save(); stageSource();
     setStatus(`${r.label} matte · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
   } catch (e) {
     setStatus('could not draw that matte: ' + e.message, 'bad');
@@ -2729,7 +2838,7 @@ function layers() { return (state.layers ||= []); }
 // to reveal -- turning it down fades it to black, which is what it is for.
 function baseLayer() { return (state.baseLayer ||= { opacity: 1, blur: 0 }); }
 function layerDefaults(L) {
-  const d = Object.assign({ mode: 'normal', opacity: 1, blur: 0, matte: false,
+  const d = Object.assign({ mode: 'normal', opacity: 1, blur: 0, matte: false, hidden: false,
                             black: 0, mid: 0.5, white: 1, invert: false }, L);
   if (!BLEND_MODES.includes(d.mode)) d.mode = 'normal';   // a mode the preview cannot show is not one
   // A drawn matte is already black and white, so it shows no levels -- and therefore carries none.
@@ -2740,18 +2849,119 @@ function layerDefaults(L) {
 // The layer a matte belongs to: the one directly below it, which is the After Effects rule and the
 // reason a matte can sit in the stack and be looked at rather than hiding inside a slot.
 function matteFor(i) { const a = layers()[i - 1]; return a && a.matte ? a : null; }
-function drawnLayers() { return layers().filter(L => !L.matte); }
+function drawnLayers() { return layers().filter(L => !L.matte && !L.hidden); }
 function layersOn() { return !state.t2v; }
 // What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
-  if (!layersOn() || (!layers().length && plain)) return [];
-  const stack = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L));
+  if (!layersOn()) return [];
+  // An eye that is off takes the layer out of the job, which is the only list anything reads:
+  // the live preview, the server's plate and the render all come through here.
+  const stack = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L)).filter(L => !L.hidden);
+  if (!stack.length && plain) return [];   // all of them hidden is the clip on its own, not a flatten
   if (state.clip) stack.push({ path: state.clip.path, mode: 'normal', matte: false,
                                opacity: b.opacity, blur: b.blur });
   const drawn = stack.filter(L => !L.matte);
   return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
 }
+// The grey handle sits where it does because of what it means: an input at that point comes out
+// half way, which is exactly the gamma the engine's lut is built from. So its position is
+// black + mid * (white - black), and dragging it is dragging the gamma.
+const lvlRead = (b, m, w) =>
+  `${Math.round(b * 100)}\u00b7${Math.round(m * 100)}\u00b7${Math.round(w * 100)}`;
+function paintLvl(bar, L) {
+  if (!bar || !L) return;
+  const b = L.black ?? 0, m = L.mid ?? 0.5, w = L.white ?? 1, g = b + m * (w - b);
+  bar.style.setProperty('--b', (b * 100).toFixed(2) + '%');
+  bar.style.setProperty('--w', (w * 100).toFixed(2) + '%');
+  const at = { black: b, mid: g, white: w };
+  bar.querySelectorAll('.h').forEach(h => h.style.left = (at[h.dataset.h] * 100).toFixed(2) + '%');
+  const read = bar.closest('.dial')?.querySelector('.pct');
+  if (read) read.textContent = lvlRead(b, m, w);
+}
+// A value box carries its own number: the fill is the proportion and the text is the value, so
+// setting it is one place rather than three.
+function paintNum(el, v) {
+  const n = Math.round((v || 0) * 100);
+  el.style.setProperty('--f', n + '%');
+  el.querySelector('i').textContent = n + (el.dataset.unit || '');
+}
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1 };
+// Drag sideways to change it: 1 per 2 px, Shift for quarters, the same feel as the seed field.
+$('layers').addEventListener('pointerdown', e => {
+  const el = e.target.closest('.num');
+  if (!el) return;
+  const which = el.dataset.lv, k = el.dataset.k;
+  const L = which === 'base' ? baseLayer() : layers()[+which];
+  if (!L) return;
+  e.preventDefault();
+  stageSource();
+  const from = L[k] ?? NUM_DEFAULT[k] ?? 0, x0 = e.clientX;
+  let moved = false;
+  const move = ev => {
+    const dx = ev.clientX - x0;
+    if (!moved && Math.abs(dx) < 3) return;
+    moved = true; el.classList.add('dragging');
+    const step = (ev.shiftKey ? 0.25 : 1) / 100;
+    L[k] = Math.min(1, Math.max(0, +(from + Math.round(dx / 2) * step).toFixed(4)));
+    paintNum(el, L[k]);
+    needPaint(); needPlate(); pushLayers();
+  };
+  const up = () => {
+    el.classList.remove('dragging');
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', up);
+    try { el.releasePointerCapture(e.pointerId); } catch {}
+    if (moved) { paintSums(); save(); }
+  };
+  el.setPointerCapture(e.pointerId);
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+});
+const LVL_GAP = 0.02;                      // black and white may meet, but not cross
+$('layers').addEventListener('pointerdown', e => {
+  const bar = e.target.closest('.lvl');
+  if (!bar) return;
+  const L = layers()[+bar.dataset.lvl];
+  if (!L) return;
+  e.preventDefault();
+  stageSource();
+  const box = bar.getBoundingClientRect();
+  const at = ev => Math.min(1, Math.max(0, (ev.clientX - box.left) / box.width));
+  const start = at(e);
+  // Grabbing a handle takes that one; grabbing the bar takes whichever is nearest, so a click
+  // anywhere on it does the obvious thing instead of nothing.
+  const here = { black: L.black ?? 0, white: L.white ?? 1 };
+  here.mid = here.black + (L.mid ?? 0.5) * (here.white - here.black);
+  const key = e.target.dataset.h
+    || ['black', 'mid', 'white'].reduce((a, k) =>
+         Math.abs(here[k] - start) < Math.abs(here[a] - start) ? k : a, 'black');
+  const move = ev => {
+    const v = at(ev);
+    if (key === 'black') L.black = Math.min(v, (L.white ?? 1) - LVL_GAP);
+    else if (key === 'white') L.white = Math.max(v, (L.black ?? 0) + LVL_GAP);
+    else {
+      const span = (L.white ?? 1) - (L.black ?? 0);
+      L.mid = span > 0 ? Math.min(0.99, Math.max(0.01, (v - (L.black ?? 0)) / span)) : 0.5;
+    }
+    paintLvl(bar, L);
+    needPaint(); needPlate(); pushLayers();
+  };
+  const up = () => {
+    bar.removeEventListener('pointermove', move);
+    bar.removeEventListener('pointerup', up);
+    bar.removeEventListener('pointercancel', up);
+    try { bar.releasePointerCapture(e.pointerId); } catch {}
+    paintSums(); save();
+  };
+  bar.setPointerCapture(e.pointerId);
+  bar.addEventListener('pointermove', move);
+  bar.addEventListener('pointerup', up);
+  bar.addEventListener('pointercancel', up);
+  move(e);
+});
 function layerTile(L) {
   if (L.mask) {
     const [pw, ph] = maskPreviewSize();
@@ -2767,56 +2977,75 @@ function renderLayers() {
   if (!layersOn()) return;
   const rows = layers().slice(0, LAYER_MAX);
   // One dial as three cells of the grid above, so the columns are the grid's and not the row's.
-  const dial = (i, k, label, v, title, unit = '') => `
-      <span class="lv" title="${title}">${label}</span>
-      <input type="range" min="0" max="100" value="${Math.round((v || 0) * 100)}" data-lv="${i}" data-k="${k}">
-      <span class="pct">${Math.round((v || 0) * 100)}${unit}</span>`;
-  const lv = (L, i, k, title) =>
-    dial(i, k, k, L[k] ?? (k === 'white' ? 1 : k === 'mid' ? 0.5 : 0), title);
+  // One value: a name, the number, and the proportion as the fill behind them. Drag it sideways.
+  const dial = (i, k, label, v, title, unit = '') => {
+    const n = Math.round((v || 0) * 100);
+    return `<span class="num" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
+          title="${title} \u2014 drag sideways to change it, double-click for its default">
+        <b>${label}</b><i>${n}${unit}</i></span>`;
+  };
+  // Three numbers on one track: black point, the grey that bends everything between, white point.
+  const levels = (i, L) => {
+    const b = L.black ?? 0, m = L.mid ?? 0.5, w = L.white ?? 1;
+    return `<span class="dial"><span class="dh">
+        <span class="lv" title="Black point, the bend between, and white point: below the first the layer is fully out, above the last fully in">levels</span>
+        <span class="pct">${lvlRead(b, m, w)}</span></span>
+      <span class="lvl" data-lvl="${i}" style="--b:${(b * 100).toFixed(2)}%;--w:${(w * 100).toFixed(2)}%">
+        <i class="h hb" data-h="black" title="Below this, fully out"></i>
+        <i class="h hm" data-h="mid" title="Where the half-way value lands"></i>
+        <i class="h hw" data-h="white" title="Above this, fully in"></i>
+      </span></span>`;
+  };
   $('layers').innerHTML = rows.map((raw, i) => {
     const L = layerDefaults(raw);
-    return `<div class="lay${L.matte ? ' is-matte' : ''}" data-i="${i}" title="${L.name || ''}">
-      <span class="top">
-        <span class="grip" draggable="true" title="Drag to reorder">&#9776;</span>
-        <span class="tile">${layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
+    return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
+      <span class="tile" draggable="true" data-swap="${i}"
+            title="Drag to reorder \u00b7 double-click to put a different video or picture in it">${
+        layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
+      <span class="side">
+        <span class="hd">
+          <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
+          ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
+          <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
+          <button class="x" title="Remove">\u2715</button>
+        </span>
         <span class="ctl">${L.matte ? `
-          <span class="nm">luma matte \u2192 the layer below</span>
-          <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Swap what is in for what is out">invert</button>
+          <span class="mt" title="This layer is a luma matte for the one below it: its brightness is that layer's alpha">LUMA MATTE</span>
+          <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Invert: swap what is in for what is out">invert</button>
           <button class="chip" data-unmatte="${i}" title="Put it back to an ordinary layer with a blend mode, in colour">rgb</button>`
         : `<select data-mode="${i}" title="How this layer is laid over what is under it">${
-            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>
-          <button class="chip" data-matte="${i}" title="Use this layer as a luma matte for the layer below it: its brightness becomes that layer's alpha">matte</button>`}
-          <button class="x" title="Remove">✕</button>
+            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>`}
         </span>
-      </span>
-      <span class="dials">${L.matte ? `
-        ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
-        ${L.mask ? '' : `
-        ${lv(L, i, 'black', 'Below this, the layer is fully out')}
-        ${lv(L, i, 'mid', 'Bends everything in between')}
-        ${lv(L, i, 'white', 'Above this, the layer is fully in')}`}` : `
-        ${dial(i, 'opacity', 'opacity', L.opacity, 'How strongly this layer is laid over what is under it', '%')}
-        ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}`}
+        <span class="dials">${L.matte ? `
+          ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
+          ${L.mask ? '' : levels(i, L)}` : `
+          ${dial(i, 'opacity', 'opacity', L.opacity, 'How strongly this layer is laid over what is under it', '%')}
+          ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}`}
+        </span>
       </span></div>`;
   }).join('')
     + (state.clip ? `<div class="lay base" title="${state.clip.name}">
-      <span class="top">
-        <span class="grip" style="opacity:.3" title="The clip is always the bottom of the stack">&#9776;</span>
-        <span class="tile"><img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="" draggable="false"><b class="band">SOURCE</b></span>
-        <span class="ctl"></span>
-      </span>
-      <span class="dials">
-        ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
-        ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
+      <span class="tile" data-swap="base"
+            title="The clip, always the bottom of the stack \u00b7 double-click to load a different one"><img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="" draggable="false"><b class="band">SOURCE</b></span>
+      <span class="side">
+        <span class="hd"><span class="nm">${state.clip.name}</span></span>
+        <span class="dials">
+          ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
+          ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
+        </span>
       </span></div>` : '');
+  $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
   needPlate();
   if (typeof applyView === 'function') applyView();
   const drawn = drawnLayers().length + (state.clip ? 1 : 0);
+  const b = baseLayer(), faded = b.opacity !== 1 || !!b.blur;
   $('layerNote').innerHTML = !rows.length
-    ? 'The clip on its own. Add a layer and the stack is composited here, at the render\'s size and length, before any of it is uploaded.'
+    ? (faded
+      ? `The source on its own, faded or softened before anything else sees it — composited here at the render's size and length.`
+      : `The clip on its own. Add a layer and the stack is composited here, at the render's size and length, before any of it is uploaded.`)
     : `${drawn} layer${drawn > 1 ? 's' : ''} flattened into one clip before upload — what the model gets is the arrangement itself, not a description of it.`;
 }
 // With a stack on, the thing being rendered is not the clip -- it is the clip with everything laid
@@ -2844,18 +3073,26 @@ function needPlate(now) {
         repaintSource();
       })
       .catch(e => { PLATE = null; setStatus('could not composite the layers: ' + e.message, 'bad'); });
-  }, now ? 0 : 400);
+  }, now ? 0 : 900);   // a flatten is ffmpeg over the whole clip: not once per nudge
 }
 // Touching the stack while a run is on the stage shows you nothing: the thing you are adjusting is
 // the source. Cheap to call on every slider event -- it only does anything when it has to.
-function toSource() {
+// While this is true the stage belongs to the render: the frames coming out are the thing worth
+// watching, and the stack is live anyway, so a slider moved now lands on the frames still to come.
+// Nothing to do with the layers may reach for the stage until it is false.
+function rendering() {
+  return !!job && !['completed', 'cancelled', 'failed'].includes(job.state);
+}
+function stageSource() {                   // not the older toSource(): that one is the Frame scrub
   if (!state.clip || state.t2v) return;
+  if (rendering()) return;
   if (clipMode() && view === 'src') return;
   view = 'src'; showClip();
 }
 // What the Source tab is looking at: the plate when there is one, the clip when there is not.
 function sourcePath() { return PLATE ? PLATE.path : (state.clip ? state.clip.path : ''); }
 function repaintSource() {
+  if (rendering()) return;        // showClip() drops viewRun, which would take the Output tab with it
   if (typeof showClip === 'function' && clipMode()) showClip();
   if (typeof paintPlate === 'function') paintPlate();
 }
@@ -2864,7 +3101,7 @@ function repaintSource() {
 // same loop DepthDiff runs for its mask.
 var plateImgs = {}, plateLens = {}, plateWait = {}, plateLast = {};
 function plateLive() {
-  return !!$('cvPlate') && clipMode() && view === 'src' && layerJob().length > 1
+  return !!$('cvPlate') && clipMode() && view === 'src' && layerJob().length > 0
          && playing !== 'clip';
 }
 function layerFrame(L, n) {
@@ -2877,7 +3114,7 @@ function layerFrame(L, n) {
   plateWait[key] = true;
   if (!len && !plateLens[L.path]) {                  // how long it is, so the loop above is right
     api(`/api/video/probe?${qs({ path: L.path })}`).then(p => {
-      plateLens[L.path] = Math.max(1, (p.source && p.source.frames) || 1); paintPlate();
+      plateLens[L.path] = Math.max(1, (p.source && p.source.frames) || 1); paintPlate();   // a late frame redraws
     }).catch(() => { plateLens[L.path] = 1; });
   }
   const img = new Image();
@@ -2889,7 +3126,12 @@ function layerFrame(L, n) {
 // The matte's brightness as alpha, through its levels. Same reckoning as the lut the engine builds.
 var BLUR_SPAN = 0.04;                      // matches engine/layers.py
 const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
+// Kept by everything it depends on: the frame, the levels, the feather, the size. An opacity drag
+// touches none of those, so the per-pixel pass below runs once rather than once per pointer event.
+var matteCache = new Map();
 function matteAlpha(M, img, w, h) {
+  const ck = [img.src, M.black, M.mid, M.white, M.invert, M.blur, w, h].join('|');
+  if (matteCache.has(ck)) return matteCache.get(ck);
   const t = document.createElement('canvas'); t.width = w; t.height = h;
   const x = t.getContext('2d', { willReadFrequently: true });
   x.drawImage(img, 0, 0, w, h);
@@ -2910,14 +3152,31 @@ function matteAlpha(M, img, w, h) {
     const bx = b.getContext('2d');
     bx.filter = `blur(${blurPx(M.blur, w, h).toFixed(2)}px)`;
     bx.drawImage(t, 0, 0);
-    return b;
+    return keepMatte(ck, b);
   }
-  return t;
+  return keepMatte(ck, t);
 }
-var plateDrawn = '';
-function paintPlate() {
+function keepMatte(ck, cv) {
+  if (matteCache.size > 5) matteCache.delete(matteCache.keys().next().value);
+  matteCache.set(ck, cv);
+  return cv;
+}
+// A drag sends far more events than the screen has frames. So a repaint is asked for rather than
+// done: the work lands once per frame, after the pointer has finished moving for that frame.
+var plateRaf = 0, plateDrawn = '';
+function needPaint() {
+  if (plateRaf) return;
+  plateRaf = requestAnimationFrame(() => { plateRaf = 0; paintPlate(true); });
+}
+function paintPlate(soft) {
   if (!plateLive()) return;
   const stack = layerJob().map(L => layerDefaults(L));
+  // Asked for by a drag: if neither the stack nor the frame has moved since the last one, the
+  // picture would come out identical. Anything that asks outright still draws -- the stage may have
+  // been showing something else entirely.
+  const drawn = JSON.stringify(stack) + '|' + clipFrame;
+  if (soft && drawn === plateDrawn) return;
+  plateDrawn = drawn;
   // bottom-up, the same order the engine composites in; a matte belongs to the layer below it
   const pairs = [];
   stack.forEach((L, i) => {
@@ -2965,30 +3224,33 @@ function paintPlate() {
 function addLayer(res, opts) {
   if (layers().length >= LAYER_MAX) return setStatus(`a stack takes ${LAYER_MAX} layers`, 'bad');
   layers().unshift(layerDefaults(Object.assign({ path: res.path, name: res.name }, opts || {})));
-  renderLayers(); paintSums(); save(); toSource();
+  renderLayers(); paintSums(); save(); stageSource();
   setStatus(`${res.name} added to the stack`);
 }
+// The blend dropdown is all that is left here: the values are dragged, not typed into.
 $('layers').addEventListener('input', e => {
-  const t = e.target, which = t.dataset.op ?? t.dataset.mode ?? t.dataset.lv;
+  const t = e.target, which = t.dataset.mode;
   if (which == null) return;
-  toSource();
+  stageSource();
   const L = which === 'base' ? baseLayer() : layers()[+which];
   if (!L) return;
-  if (t.dataset.mode != null) L.mode = t.value;
-  if (t.dataset.op != null) { L.opacity = +t.value / 100; t.nextElementSibling.textContent = t.value + '%'; }
-  if (t.dataset.lv != null) {
-    L[t.dataset.k] = +t.value / 100;
-    t.nextElementSibling.textContent = t.value + (t.dataset.k === 'opacity' ? '%' : '');
-  }
+  L.mode = t.value;
   paintPlate();                     // instant: the frames are already here
   needPlate();                      // and the server's copy, for when it is rendered
+  pushLayers();                     // and the render, if one is running right now
   paintSums(); save();
 });
 $('layers').onclick = e => {
   const row = e.target.closest('.lay');
-  if (e.target.closest('[data-inv],[data-matte],[data-unmatte],button.x')) toSource();
+  if (e.target.closest('[data-inv],[data-matte],[data-unmatte],[data-eye],button.x')) stageSource();
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    const L = layers()[+eye.dataset.eye]; L.hidden = !L.hidden;
+    renderLayers(); paintPlate(); pushLayers(); paintSums(); save();
+    return;
+  }
   const inv = e.target.closest('[data-inv]'), mk = e.target.closest('[data-matte]');
-  if (inv) { const L = layers()[+inv.dataset.inv]; L.invert = !L.invert; return (renderLayers(), save()); }
+  if (inv) { const L = layers()[+inv.dataset.inv]; L.invert = !L.invert; renderLayers(); save(); return pushLayers(); }
   if (mk) {
     const L = layerDefaults(layers()[+mk.dataset.matte]);
     layers()[+mk.dataset.matte] = Object.assign(L, { matte: true });
@@ -3008,15 +3270,62 @@ $('layerAdds').onclick = e => {
   const add = e.target.closest('[data-add]');
   if (!add) return;
   if (add.dataset.add === 'matte') return toggleMaskLib(true, -1);
+  if (add.dataset.add === 'noise') return addNoise();
   $('layerFile').click();
 };
+// Static, cut to whatever it is going over. A different lever from Denoise: that asks the model to
+// invent more, this changes the pixels it is looking at -- and with the warp carrying paint forward
+// the grain becomes structure the next frame elaborates.
+async function addNoise() {
+  const b = maskBody('circle');              // the size and length the plate will be
+  try {
+    setStatus('making the noise…', 'live');
+    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
+    addLayer(r, { noise: true, mode: 'overlay', opacity: 0.25 });
+    setStatus(`noise · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
+  } catch (e) {
+    setStatus('could not make the noise: ' + e.message, 'bad');
+  }
+}
+// Double-clicking a thumbnail asks for a file for THAT slot rather than a new layer on top; the
+// picker is the same one, so this is which row asked, remembered until it answers.
+var LAYER_SWAP = null;
+$('layers').addEventListener('dblclick', e => {
+  const num = e.target.closest('.num');
+  if (num) {
+    const L = num.dataset.lv === 'base' ? baseLayer() : layers()[+num.dataset.lv];
+    if (!L) return;
+    L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
+    paintNum(num, L[num.dataset.k]);
+    paintPlate(); needPlate(); pushLayers(); paintSums(); save();
+    return;
+  }
+  const tile = e.target.closest('[data-swap]');
+  if (!tile) return;
+  e.preventDefault();
+  LAYER_SWAP = tile.dataset.swap;
+  $('layerFile').click();
+});
 $('layerFile').onchange = e => {
-  const file = e.target.files[0]; e.target.value = '';
+  const file = e.target.files[0], swap = LAYER_SWAP; e.target.value = ''; LAYER_SWAP = null;
   if (!file) return;
   const image = /^image\//.test(file.type);
   if (!image && !/^video\//.test(file.type)) return setStatus('a layer is a video or a picture', 'bad');
+  if (swap === 'base') return uploadFile(file);       // the source slot, by its own route
   api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
-    .then(r => addLayer(r, { image })).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+    .then(r => {
+      if (swap == null) return addLayer(r, { image });
+      const L = layers()[+swap];
+      if (!L) return addLayer(r, { image });          // it went away while the picker was open
+      // Keep how it is being used -- blend mode, opacity, matte, levels -- and change only what is
+      // in it. Replacing the picture in a layer is not the same as starting the layer again.
+      delete L.mask;
+      Object.assign(L, { path: r.path, name: r.name, image });
+      renderLayers(); paintPlate(); pushLayers(); paintSums(); save(); stageSource();
+      setStatus(`${r.name} \u2192 layer ${+swap + 1}`);
+    })
+    .catch(err => setStatus('upload failed: ' + err.message, 'bad'));
 };
 $('layers').addEventListener('dragover', e => e.preventDefault());
 $('layers').addEventListener('drop', e => {
@@ -3243,7 +3552,7 @@ function listDrag(host, list, sel = '.ref', after = renderH3) {
 listDrag($('h3Vids'), h3Vids);
 listDrag($('h3Refs'), h3Refs);
 // The stack: the order is the composite, so dragging one past another is the edit.
-listDrag($('layers'), layers, '.lay', () => { renderLayers(); toSource(); });
+listDrag($('layers'), layers, '.lay', () => { renderLayers(); stageSource(); });
 $('h3Vids').addEventListener('dragover', e => e.preventDefault());
 $('h3Vids').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
@@ -3572,13 +3881,13 @@ function paintSums() {
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   const lay = drawnLayers().length;
   set('layers', !layersOn() || !layers().length ? ''
-    : [`${lay + (state.clip ? 1 : 0)} layers`,
+    : [`${lay + (state.clip ? 1 : 0)} layer${lay + (state.clip ? 1 : 0) === 1 ? '' : 's'}`,
        layers().some(L => L.matte) && 'matted',
        drawnLayers().filter(L => L.mode && L.mode !== 'normal').map(L => L.mode)[0]]
       .filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
-    (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+    (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -3987,12 +4296,25 @@ let dragDepth = 0;
 addEventListener('dragenter', e => { if (e.dataTransfer?.types.includes('Files')) { dragDepth++; document.body.classList.add('dragging'); } });
 addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
 addEventListener('dragover', e => e.preventDefault());
+// The source slot, now a target of its own rather than the place everything unclaimed fell into.
+$('clipBox').addEventListener('dragover', e => e.preventDefault());
+$('clipBox').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run) return void (run.clip || runAsInput(run));         // the clip onto itself: nothing to do
+  const f = droppedMedia(e);
+  if (f) uploadFile(f); else setStatus('the source takes a video or an image', 'bad');
+});
+const droppedMedia = e => [...(e.dataTransfer?.files || [])].find(
+  f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|avi|m4v|png|jpe?g|webp|bmp)$/i.test(f.name));
+// The last word on a drop that reached no slot: say where it could have gone, and change nothing.
+// Dropping on the page used to replace the source clip, which is a large thing to do by accident.
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
   const run = runDragData(e);
-  if (run) { if (e.target.closest('aside') && !run.clip) runAsInput(run); return; }   // back on the stage, or the clip onto itself: nothing
-  const f = [...(e.dataTransfer?.files || [])].find(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|avi|m4v|png|jpe?g|webp|bmp)$/i.test(f.name));
-  if (f) uploadFile(f); else setStatus('that is not a video or image file', 'bad');
+  if (run) return void (run.clip || setStatus('drop it on a slot \u2014 Source, a reference, a layer, '
+                                              + 'a video context or Motion', 'bad'));
+  if (droppedMedia(e)) setStatus('drop it on a slot \u2014 Source, a reference or a layer', 'bad');
 });
 
 // ---------------------------------------------------------------- controls
@@ -4309,8 +4631,30 @@ $('prompt').oninput = e => {
   else state.prompt = e.target.value;
   paintKeys(); save();
 };
-$('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); save(); };
-$('styleNext').oninput = e => { state.frameLock = +(+e.target.value).toFixed(2); $('styleNextV').textContent = state.frameLock.toFixed(2); save(); };
+$('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); renderRamp(); save(); pushDials(); };
+// Denoise over the clip: null is a flat line, a number is where it ends up. The slider under Denoise
+// is the end of the ramp; "off" puts it back to flat.
+function rampOn() { return typeof state.styleEnd === 'number'; }
+function renderRamp() {
+  const on = rampOn(), v = on ? state.styleEnd : Math.min(1, +(state.style + 0.25).toFixed(2));
+  $('styleEnd').value = v;
+  $('styleEndV').textContent = on ? v.toFixed(2) : 'off';
+  $('styleEndV').style.opacity = on ? '' : '.5';
+  $('rampOff').hidden = !on;
+  $('rampNote').textContent = on
+    ? `${(+state.style).toFixed(2)} at the first frame \u2192 ${v.toFixed(2)} at the last`
+    : 'drag to make Denoise climb across the clip';
+  $('rampRow').hidden = isH3() || adOn();
+}
+$('styleEnd').oninput = e => {
+  state.styleEnd = +(+e.target.value).toFixed(2);
+  renderRamp(); paintSums(); save(); pushDials();
+};
+$('rampOff').onclick = e => {
+  e.preventDefault();
+  state.styleEnd = null; renderRamp(); paintSums(); save(); pushDials();
+};
+$('styleNext').oninput = e => { state.frameLock = +(+e.target.value).toFixed(2); $('styleNextV').textContent = state.frameLock.toFixed(2); save(); pushDials(); };
 $('styleNext').ondblclick = () => { state.frameLock = 0.35; renderControls(); save(); };
 $('srcMode').onclick = e => {
   const m = e.target.dataset.s; if (!m || m === srcKind()) return;
@@ -4327,7 +4671,7 @@ $('frameMode').onclick = e => {
   else { if (state.ad.on) { state.ad.on = false; applyModelDefaults(); } state.fresh = f === 'fresh'; }
   renderControls(); setControlTabs(); save();
 };
-$('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); };
+$('srcMix').oninput = e => { state.srcMix = +e.target.value; $('srcMixV').textContent = state.srcMix.toFixed(2); save(); pushDials(); };
 $('cnSel').onclick = e => {
   const c = e.target.dataset.c; if (!c) return;
   if (c === 'off') { state.cn[state.mode] = 'off'; renderControls(); save(); return; }   // off: both nets off
@@ -4557,6 +4901,7 @@ async function buildConfig(kind) {
     // The stack, topmost first, the clip its base. The engine flattens it to a clip-shaped mp4 and
     // paints that instead, so trim, range and fps all behave exactly as they did.
     layers: layerJob(),
+    style_end: rampOn() ? state.styleEnd : -1,   // -1 = Denoise holds still
     checkpoint: checkpointPath(),
     family: state.mode,
     prompt: withLook(state.prompt),
@@ -5640,7 +5985,14 @@ async function startJob(kind) {
       setBusy(true, lastUseful() || snap.message || snap.stage || 'working…');
     if (snap.frame !== prevFrame && snap.frame > 0) {
       setBusy(false);
-      if (!jumped && snap.run_id) { jumped = true; viewRun = snap.run_id; }   // it has started: show it (once)
+      // It has started: show it (once). showRun only moves the view off the clip when the run it is
+      // given is a *different* one, and the run id was already claimed above when the job was
+      // labelled -- so a render begun from the Source tab used to leave the stage on the source and
+      // quietly paint frames nobody was looking at.
+      if (!jumped && snap.run_id) {
+        jumped = true; viewRun = snap.run_id;
+        if (view === 'src' || view === 'mask') view = 'out';
+      }
       times.push(Date.now());
       // the stage follows the render only while it's the run on show: picking another run browses freely
       if (snap.run_id && viewRun === snap.run_id) showRun(snap.run_id, { follow: true });
@@ -5721,7 +6073,11 @@ async function showRun(runId, { follow = false } = {}) {
   if (playing === 'clip' || (playing === 'out' && switched)) stopPlay();   // a run replaces what was on the stage
   viewRun = runId; frames = newFrames; runTiming = desc.timing;
   if (singleShape() != null) shapeFrame = runTiming.shape_start;
-  if (switched && (view === 'src' || view === 'mask' || view === 'shape')) view = 'out';     // a picked run opens on its result
+  // A picked run opens on its result -- and so does one being followed, however long ago the stage
+  // claimed its id. `switched` alone was not enough: a job claims its run as soon as it is labelled,
+  // so by the first frame this is already the run on show and a render begun from the Source tab
+  // painted into a view nobody was looking at.
+  if ((switched || follow) && (view === 'src' || view === 'mask')) view = 'out';
   setControlTabs(desc.layers.filter(l => l.id.startsWith('control_')));
   if (!frames.length) return;
   // following a render jumps to each new frame, unless it's playing: then the loop just grows
@@ -6646,6 +7002,9 @@ $('enhGo').onclick = async () => {
   const body = u ? { cloud: u.id, params: cloudParams(u) }
                  : { upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo, interp: p.interp || 'rife' };
   try {
+    // A cloud upscale sends the run's mp4 up, and a run that was stopped part-way has frames but no
+    // mp4 yet. Build it first rather than refusing: the frames are rendered either way.
+    if (u) await ensureMp4(runId);
     postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body) });
   } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }

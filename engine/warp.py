@@ -179,6 +179,8 @@ class RenderJob:
     # h3_video stays the first of them, so every run made before this still renders.
     h3_videos: list = field(default_factory=list)  # more clips, in <Video 2..n> order
     h3_trims: list = field(default_factory=list)   # [start, end] per extra clip, [] for all of it
+    # Denoise at the last frame, if it should climb (or fall) across the clip; -1 holds it still.
+    style_end: float = -1.0
     # A layer stack, topmost first: {path, mode, opacity, matte, black, mid, white, invert}. When
     # there is one it is flattened to a single clip before upload (engine/layers.py) and that clip
     # becomes <Video 1>, so the arrangement is in the pixels rather than in the prompt.
@@ -189,6 +191,9 @@ class RenderJob:
         d = dict(d)
         d["controlnets"] = [ControlSpec(**c) for c in d.get("controlnets", [])]
         return RenderJob(**d)
+
+
+from engine import layers as layerlib   # noqa: E402  (pure stdlib + PIL, nothing heavy)
 
 
 # ------------------------------------------------------------------ frames
@@ -1039,20 +1044,6 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if job.family in ("comfy", "h3"):          # rendered on Comfy Cloud, so nothing loads here at all
         from engine.cloud import render_cloud   # ("h3" is what the mode was called before it had workflows)
         return render_cloud(job, progress, cancelled, log)
-    # A layer stack stands in for the clip: it is flattened to one mp4 the shape of its own base, so
-    # everything downstream -- trim, range, fps, every size decision -- behaves as it did before and
-    # the only difference is what the frames have in them.
-    if getattr(job, "layers", None):
-        from engine import layers as layerlib
-        stack = layerlib.clean(job.layers)
-        if stack and layerlib.plan(stack):
-            progress("flattening the layers", 0, 1, "compositing the stack")
-            plate = layerlib.flatten_like_base(stack, Path(job.out_dir) / "plate.mp4")
-            for L, m in layerlib.plan(stack):
-                log(f"  {Path(L['path']).name} · {L['mode']} {L['opacity'] * 100:.0f}%"
-                    + (f" · matted by {Path(m['path']).name}" if m else ""))
-            log(f"  plate · {plate.stat().st_size / 2**20:.1f} MB")
-            job.video = str(plate)
     fetch_known(job, log, progress)            # first use: models DWARP can download, before anything loads
     if job.motion:                             # Motion: AnimateDiff instead of the frame-by-frame warp
         from engine.animatediff import render_ad
@@ -1060,6 +1051,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     device = torch.device("cuda")
     out = Path(job.out_dir)
     (out / "frames").mkdir(parents=True, exist_ok=True)
+    stack = live_stack = None                  # the layer stack, composited frame by frame if there is one
     (out / "src").mkdir(exist_ok=True)
     (out / "debug").mkdir(exist_ok=True)
     for c in job.controlnets:                   # the hints each frame was steered by, for the viewer
@@ -1102,7 +1094,15 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             + " per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
     else:
         progress("extracting", 0, 0, "extracting frames")
-        src_paths = extract_frames(job, out / "src")
+        # A layer stack is not flattened up front here. Every layer is kept as frames and the one
+        # being painted is composited at the moment it is painted, so a slider can still move while
+        # the render runs -- the same channel Live camera and Live prompt come down.
+        if getattr(job, "layers", None) and layerlib.plan(layerlib.clean(job.layers)):
+            progress("extracting", 0, 0, "extracting the layers")
+            stack = layerlib.FrameStack(job, out, extract_frames, log)
+            src_paths = stack.paths
+        else:
+            src_paths = extract_frames(job, out / "src")
         total = len(src_paths)
         log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
 
@@ -1140,6 +1140,17 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     last_cond = None
     union = type(getattr(pipe, "controlnet", None)).__name__ == "ControlNetUnionModel"
     written, prev_src, prev_out, first_out, prev_smask = [], None, None, None, None
+    # Denoise can climb across the clip (job.style_end): the model keeps more of the source at
+    # the start and invents more by the end. Frame Lock is a share of Denoise, so it rides the
+    # same ratio rather than staying pinned to where it was at frame 0.
+    lock_ratio = (job.style_next / job.style) if job.style_next >= 0 and job.style > 0 else None
+
+    def denoise_at(n: int, count: int) -> float:
+        if job.style_end < 0 or count < 2:
+            return job.style
+        return round(job.style + (job.style_end - job.style) * (n / (count - 1)), 4)
+
+    style_now = job.style
     style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
     # Text / Image -> Video: later frames repaint the moved previous frame at Frame Lock's strength when one is
     # given (a high Denoise every frame compounds: colour and contrast cook); -1 = Denoise throughout
@@ -1152,10 +1163,41 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
             f"colour match {job.color_match}")
     for i, sp in enumerate(src_paths):
+        if stack:
+            stack.write(i, live_stack)          # the stack as it stands, not as it was at the start
+        if job.style_end >= 0:                  # a ramp: this frame's Denoise, and its Frame Lock
+            style_now = denoise_at(i, len(src_paths) or 1)
+            style_next = (round(style_now * lock_ratio, 4) if lock_ratio is not None
+                          else round(style_now * 0.65, 3))
+            t2v_next = style_next if job.style_next >= 0 else style_now
+        else:
+            style_now = job.style
         if cancelled():
             log("cancelled")
             break
         upd = live()
+        # The three dials the loop already reads per frame, or nearly: Denoise, Frame Lock and
+        # Source mix. style_next is worked out once before the loop, so it is worked out again here.
+        if upd and any(k in upd for k in ("style", "style_next", "style_end", "flow_blend")):
+            for k in ("style", "style_next", "style_end", "flow_blend"):
+                if k in upd:
+                    setattr(job, k, float(upd[k]))
+            style_next = job.style_next if job.style_next >= 0 else round(job.style * 0.65, 3)
+            t2v_next = job.style_next if job.style_next >= 0 else job.style
+            lock_ratio = (job.style_next / job.style) if job.style_next >= 0 and job.style > 0 else None
+            edits.append({"from_frame": i, **{k: getattr(job, k)
+                                              for k in ("style", "style_next", "style_end", "flow_blend")
+                                              if k in upd}})
+            (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
+            log(f"live from frame {i + 1}: denoise {job.style}, next {style_next}, "
+                f"source mix {1 - job.flow_blend:.2f}")
+        if upd and upd.get("layers") is not None and stack:
+            live_stack = layerlib.clean(upd.pop("layers"))
+            edits.append({"from_frame": i, "layers": live_stack})
+            (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
+            drawn = layerlib.plan(live_stack)
+            log(f"live layers from frame {i + 1}: "
+                + ", ".join(f"{L['mode']} {L['opacity'] * 100:.0f}%" for L, _ in drawn[1:]))
         if upd and upd.get("camera"):             # Live camera: new targets; the 3D switch flips at once
             cam = {k: v for k, v in upd.pop("camera").items() if k in CAM_KEYS}
             cam_target.update(cam)
@@ -1281,7 +1323,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             # Follow: the inside also gets enough to re-form at the shape's new size
             ring = (smask - prev_smask).clamp(0, 1) if prev_smask is not None else torch.zeros_like(smask)
             ring = gaussian_blur((ring * 4).clamp(0, 1), 6)
-            base_s = job.style if i == 0 or job.fresh else t2v_next if t2v else style_next
+            base_s = style_now if i == 0 or job.fresh else t2v_next if t2v else style_next
             top = max(base_s, 0.5 + 0.5 * max(job.shape_repaint, job.shape_follow))
             if job.shape_nudge > 0:             # Text mode: what the mask grows into was black, and a black start
                 # leaks through (new growth came out dim, then stayed dim): start it neutral grey instead
@@ -1310,7 +1352,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         strength = (1.0 if blank else   # Nudge: the shape shows through
                     max(grow, 1.001 / job.steps) if grow is not None else
                     # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                    max(job.style if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, 1.001 / job.steps))
+                    max(style_now if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, 1.001 / job.steps))
         strength = min(strength, 1.0)       # float32 maths (a mask's peak) can land at 1.0000001: diffusers refuses > 1
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.

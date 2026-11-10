@@ -2,8 +2,126 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-10
+
+- **Flattening the layers no longer freezes the whole server.** The plate is ffmpeg over the
+  entire clip, and it was running inside the request's own thread — so while it composited, DWARP
+  answered nothing else: the frame thumbnails the live preview is built from never arrived (the
+  layers simply never appeared over the source), the status sat on "compositing the layers", and
+  reloading the page spun. It runs beside the server now instead of in front of it. The same goes
+  for the noise clip and the colour masks.
+- **The plate waits a moment longer before it rebuilds.** Nudging a dial used to queue a full
+  flatten 400 ms later, so a drag could start several of them; it is 900 ms now. The preview in
+  the browser is the live one and is unaffected.
+- **Dragging a value box keeps up with the pointer.** Every pointer event was compositing the
+  stack, running the matte's levels over every pixel in the browser, encoding a frame and handing
+  it back to the stage — more work than the screen has frames for, so the picture ran behind your
+  hand. A repaint is asked for rather than done (one per frame at most), the same arrangement is
+  never drawn twice, and a matte's alpha is kept until something it depends on actually changes.
+- **The value boxes are grey, not orange.** The fill is a step up from the track rather than a
+  wash of accent colour, and the text sits lighter on it. Orange is for the box you are dragging.
+- **Layer rows: a square thumbnail down the left, everything else beside it.** The dropdown and
+  both dials now stack to the right of the picture instead of below it, which takes about 25 px off
+  every row — a five-layer stack fits on screen without scrolling. The dials keep their shared
+  grid, so they still line up down the whole stack.
+- **The source on its own is a stack of one.** Fading or blurring the clip with no layers over it
+  always rendered, and the stage did catch up once the server had composited a plate — but the
+  instant in-browser preview was gated on there being two layers to combine, so dragging the slider
+  sat still for the best part of a second before anything moved. It responds as you drag now, the
+  same as every other arrangement.
+- **A layer row is a picture and three rows.** The name, then how it is laid down, then what it is
+  set to — with a 90 px thumbnail as tall as all three. The file name finally has somewhere to
+  live: it was only ever a tooltip, which is no help in telling two clips apart at a glance. A matte
+  puts LUMA MATTE where the blend mode would be, with invert and rgb beside it, so it is the same
+  three rows and the same height as everything else.
+- **Opacity and blur are draggable value boxes, side by side.** Drag one sideways to change it the
+  way the seed field already works (1 per 2 px, Shift for quarters), double-click for its default.
+  The proportion is the fill behind the text, so nothing is lost by not having a track — and two
+  of them fit on the row a single slider used to take.
+- **Black, mid and white are one levels bar.** Three handles on a single track, painted with the
+  curve they make: solid black up to the black point, solid white from the white point, the ramp
+  in between. The grey handle is the gamma — it sits where the half-way value lands, which is
+  exactly what the engine builds its lut from, so dragging it is dragging the curve. A matte row is
+  now feather + levels, the same height as opacity + blur.
+- **The eye and the delete stay visible.** They were appearing on hover, which meant a hidden layer
+  looked like a dimmed one with no explanation unless you went looking.
+- **The thumbnail is the handle.** The drag grip is gone and the picture does its job: drag the
+  thumbnail to reorder, double-click it to put a different video or picture in that slot. Swapping
+  this way keeps how the layer is being used — blend mode, opacity, blur, matte and its levels —
+  and changes only what is in it, which is not the same as deleting the layer and adding another.
+  Double-clicking SOURCE loads a different clip.
+- **matte is a mark, not a word.** Between it and the grip, the blend dropdown gets about 45 px
+  back, which is the difference between reading "difference" and reading "differe…".
+- **An eye on every layer.** Next to the remove ✕, and hidden means hidden everywhere: out of the
+  live preview, out of the server's plate and out of the render. The layer keeps its place and all
+  its settings, the row dims, and the eye stays showing while it is off so something says why the
+  picture changed. Hide every layer and the clip renders on its own with no flatten at all.
+- **No more window-wide dropzone.** Dropping a video anywhere on the page replaced the source
+  clip, and a run dragged off the strip did the same anywhere in the panel. That was fair when the
+  source was the only place a video could go — it now competes with references, layers, video
+  contexts and Motion, so missing a slot by twenty pixels quietly threw away the clip you had
+  loaded. Every drop has to land on the slot it is meant for now, the source among them, and any
+  drag — a file off the desktop or a run off the strip — lights up the slots that can take it. A
+  drop that lands nowhere says where it could have gone and changes nothing.
+- **H3 · First → Last.** A second H3 workflow on Comfy Cloud, built on MiniMax-H3's FL2VA model
+  with Pika's matching Flex adapter. Give it two pictures — Reference 1 is the frame the shot opens
+  on, Reference 2 the frame it closes on — and the prompt describes the journey between them. Both
+  ends are held, so a shot lands exactly where you want it instead of wherever the model drifts to.
+  Five to fifteen seconds, with sound, same six steps and native 1344×768 as Pika Flex. It brings
+  a brief of its own, **first → last**, which states on the clock where each picture sits and leaves
+  you the timed description to fill in. The References card names the two slots FIRST FRAME and LAST
+  FRAME rather than numbering them, which a workflow can now ask for in the manifest.
+- **A render you stopped part-way is a render.** Cancelling used to skip assembling the mp4, so
+  those runs could not be played, downloaded, enhanced or dragged back in as a source — Enhance
+  simply said “this run has no mp4 to upscale” and left you with no way to make one. The frames
+  cost what they cost, so now they are assembled like any other run's, and the log says it stopped
+  early. Enhance also builds the mp4 itself before a cloud upscale, which fixes the runs already
+  sitting there without one.
+- **A dropped connection no longer throws away a paid cloud job.** Every call to Comfy Cloud is
+  now sent again when the failure is the network rather than an answer — a reset connection, a
+  timeout, a 502 — with the one exception of `/api/prompt`, because a second of those is a second
+  job and a second bill. A 4xx still fails at once, as it should. Uploads and downloads also stop
+  sharing the 45-second budget meant for a status poll: a whole clip goes up in one POST and now
+  gets fifteen minutes, and the finished file gets the same on the way back. Before this, a single
+  blip while polling a running job lost the job — the cloud finished it and billed for it, and
+  DWARP had already given up.
+- **Flux Video Upscale joins them, with two minds.** Black Forest Labs' super-resolution as a
+  fourth cloud upscaler: **creative** restores and invents fine detail, **precise** only
+  sharpens what is already there, and a prompt steers what gets invented. Target 1080p, 2K or 4K.
+  It takes 1–20 seconds of video and renders at 24 fps whatever went in, so a clip rendered on
+  twos or threes comes back retimed — that is in its limits line. Upscale graphs can now declare
+  a `seed` the way render graphs do, and it is rolled fresh every run, so asking again is another
+  roll rather than the cloud's cache.
+- **Topaz Astra 2 replaces Clarity Crystal in the cloud upscalers.** Clarity restored what was
+  already there and nothing more, which is the wrong instinct for a render that was painted rather
+  than filmed. Astra 2 enlarges to 1080p or 4K and rebuilds as it goes, with a **Creative** slider
+  saying how far it may invent, a **Realism** pull (leave it at 0 on a stylised clip) and an
+  optional scene **Prompt** — setting the prompt caps the clip at 450 frames. Still a partner API
+  node, so it bills per call rather than against GPU time, and it keeps the frame count, the fps
+  and the sound. FlashVSR and Wan 2.2 Creative are unchanged.
+
 ## 2026-11-09
 
+- **Denoise can climb across the clip.** A **ramp to** slider under Denoise: the model keeps more of
+  the source at the start and invents more by the end, so a shot drifts out of itself as it runs
+  rather than hallucinating evenly throughout. Frame Lock is a share of Denoise, so it rides the
+  same ratio instead of staying pinned to where it was at frame 0 — at 0.40 → 0.85 with lock 0.6,
+  the carried-paint strength climbs 0.24 → 0.51 alongside it. Off by default, and `off` puts it back.
+- **Denoise, Frame Lock and Source mix are live too.** The loop already read Source mix per frame
+  and Denoise for the first one; Frame Lock's derived value is simply re-derived the moment any of
+  them moves. So all three ride the same channel as the prompt, the camera and the stack, and land
+  on the frames still to come — recorded in `job.json` beside every other live edit.
+- **Live layers: move a slider while the render runs and the frames still to come follow.** The
+  painting modes no longer flatten the stack up front — every layer is kept as frames and the one
+  being painted is composited at the moment it is painted, which costs **11 ms** against roughly two
+  seconds of diffusion. So the stack arrives on the same channel Live camera and Live prompt come
+  down: drag opacity at frame 40 and frames 41 onward are composited differently, recorded in
+  `job.json` as a live edit like any other. A layer cannot be added or removed mid-render, since the
+  frames for it were never extracted; the settings are what moves.
+
+  The blend maths is the separable set from the compositing spec, which is what a browser canvas
+  computes too — so what the panel previews is what the engine paints. The cloud path still
+  pre-flattens, because there the plate is the thing that gets uploaded.
 - **The source is a layer too.** It has its own opacity and blur. Nothing sits under it, so turning
   its opacity down cannot reveal anything — it scales the channels instead, which is a fade to
   black, and that is the useful thing about it. The engine does the same with `colorchannelmixer`
