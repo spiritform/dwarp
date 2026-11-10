@@ -4,6 +4,166 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **The source is a layer too.** It has its own opacity and blur. Nothing sits under it, so turning
+  its opacity down cannot reveal anything — it scales the channels instead, which is a fade to
+  black, and that is the useful thing about it. The engine does the same with `colorchannelmixer`
+  rather than an alpha blend, so the preview and the render agree.
+- **One grid down the whole stack.** Every dial sits on the same three columns — name, bar, number —
+  so `opacity` and `feather` and `white` cannot push each other's sliders out of line, however long
+  the word is. The select, the chips and the delete share one height and one row; the delete stays
+  quiet until the row is under the pointer but keeps its place, since a control that appears and
+  shoves the rest of the row along is worse than one that is simply quiet.
+- **Blur per layer, and the dials moved under the thumbnail.** Opacity and blur get the card's full
+  width in their own rows rather than a third of it squeezed beside a picture — a slider you cannot
+  aim is worse than one more row. A matte gets **feather** instead, applied after its levels so a
+  hard-edged pattern can be softened without the levels clipping the softness straight back off.
+  Blur is stored as a share of the frame, not a number of pixels, so what you judge in a 480px
+  preview is what the flatten makes at 1440. The base row says **SOURCE** and has dropped its
+  caption; a thumbnail at the bottom of a stack does not need telling it is at the bottom.
+- **The stack previews live on the stage**, the way DepthDiff's mask does: each layer's frame is
+  fetched once and kept, and the composite is rebuilt in the browser on every change — **4–6 ms** to
+  redraw, so an opacity slider moves the picture under your hand. Play, and it plays the server's
+  plate instead, because twenty-four composites a second is what the flatten is for; pausing and
+  scrubbing hand straight back to the local one, which is never a few hundred milliseconds behind
+  whatever you last moved.
+
+  The blend modes are now only the eleven a browser canvas and ffmpeg both have and agree on. A mode
+  the preview cannot show is a mode that would make the preview lie, so ffmpeg's `vividlight`,
+  `pinlight`, `phoenix` and the rest are out and a saved layer wearing one falls back to `normal`.
+- **Layers: a stack of sources flattened into one clip before anything is rendered.** Its own card
+  below Style, in every mode that paints from a clip. Each layer has a blend mode (ffmpeg's eighteen
+  Photoshop modes) and an opacity, and a black and white layer can be set as a **luma matte** for the
+  layer below it — it is not drawn itself, its brightness becomes that layer's alpha, and Black / Mid
+  / White shape an arbitrary grey clip into a usable matte. The matte sits in the stack where you can
+  see it rather than hiding inside a slot, which is the After Effects rule and the right one. Drag to
+  reorder; the clip is the base underneath it all.
+
+  In the cloud the stack flattens at the render's size and length and becomes the reference. In the
+  painting modes it flattens to the shape of its own base — the clip — and stands in for it, so trim,
+  range, fps and every size decision downstream behave exactly as they did and the only difference is
+  what the frames have in them.
+
+  This replaces the colour masks, and it replaces them because they were measured and they do not
+  work: handing H3 a mask video and explaining the colour code in the brief makes the model **paint
+  the mask**. A test render with a brief that said in as many words that the mask's own colours must
+  never appear came back 50% pure red and 50% pure green by its middle frame. A mask is a thing to
+  composite with, not a thing to describe — so the mask library now draws in black and white, is
+  called **Mattes**, and the patterns are cut to the size and length of whatever they are matting.
+- **The reference pictures are cards too, the same size as the video contexts.** `<Picture 1>` was
+  faint grey type beside a 38px thumbnail, which is not where your eye goes — and that tag is what
+  the prompt calls it. Same card, same `PICTURE 1` band across the foot of the picture, same delete
+  box, two across. The filename moved to the tooltip, where it is still there when you want it.
+- **The log says how much video actually went up.** A video context has no trim of its own, so the
+  window it asks for is H3's whole 15 s ceiling — and printing *that* made a 5-second mask look like
+  it was being stretched to fifteen next to a 5-second generation. Nothing was: trimming past the end
+  of a file just stops at the end. It now probes what came out and prints that.
+- **Picking a mask was taking twelve seconds, every single time.** Two reasons, both silly. The file
+  was written under a random id, so a pattern you had already chosen was drawn again from nothing on
+  every pick — it is named after the request now (pattern, size, length, amount), and asking for the
+  same mask twice is a `stat()`. And every frame was painted at the full render size: a megapixel of
+  flat colour per frame, 380 MB of raw video pushed through a pipe for one 5-second clip. These are
+  flat regions with hard edges, so they are painted at a whole-number fraction of the size and scaled
+  back up with nearest-neighbour, which reproduces hard edges exactly — anything smoother would
+  invent colours along every edge that are neither red nor green, and the colour *is* the instruction.
+  **12.1 s → 0.50 s on a first draw, 1 ms on a repeat.** Needs a restart to take effect.
+- **One delete control.** The ✕ on a run card, a library card and a video slot were three
+  slightly different black circles at three sizes. They are one subtle rounded box with a small bold
+  ✕ now, and the ones that sit on a panel rather than on a picture wear the same glyph without the box.
+- **The colour strip under the mask tile is gone**, and its chip says `colour mask` rather than
+  `Circle · library`. Every slot wears its colour on its own frame now, so the strip was a second
+  reading of the same thing in a place that invited you to read it as part of the pattern.
+- **Each slot is framed in its colour, with its tag across the foot of the picture.** `<Video 3>` in
+  small green type under a thumbnail is something you have to go and read; a green frame round the
+  frame with VIDEO 3 on it is not. The label sits on a dark band in white, not on the colour itself —
+  white on `#19d23c` is hard to read, and the mask colours are not up for changing: those pixels are
+  the instruction the model reads, and the brief says "green is `<Video 3>`" in words, so the word has
+  to match the pixel. The clip card wears one too, which also gave it its meta line back — the tag
+  used to wrap `440×768 · 24 fps · 124 frames` onto two rows. The mask's own frame is a bright
+  neutral grey: it hands the colours out rather than being one of the things aimed.
+- **The colour key follows you down to the prompt box.** Which colour means which video is the whole
+  technique, and it was only legible on the cards — which sit above the prompt and scroll away exactly
+  when you are writing the line that uses them. The same bands now sit above the box you type in.
+  Click one and it drops the tag in at the cursor in its exact form, `<Video 2>` with the brackets,
+  because that is the string the model matches on and VIDEO 2 on a band is not it.
+- **A workflow with one brief arrives with it chosen.** Picking Context Smasher already writes the
+  brief into the box, so "no template" sitting over the top of it was never true — and after a reload
+  it said so again, because the pick was read off the dropdown rather than remembered. It is saved
+  with everything else now, and an explicit choice (including no template) sticks.
+- **Every picture of a mask is 16:9 now.** They used to be drawn in the shape of the render, on the
+  grounds that a mask is a map of the frame — but a portrait render turned the library into a row of
+  thin strips with no pattern readable in any of them. The mask that actually renders is still drawn
+  at the render's own size; this is only the picture of it, and one shape means one cached preview per
+  pattern instead of one per render size.
+- **In Comfy the prompt sits below Model.** The clip, the reference pictures and the video contexts
+  are one argument — the slots are named against the clip and the prompt calls them all by tag — and
+  a prompt box between the clip card and those slots meant the source video was off the top of the
+  panel while you filled them in. The other modes keep the order they had.
+- **Opening the mask library a moment too early no longer tells you to restart the server.** The list
+  arrives with the rest of boot; before it lands it is empty, which is not the same thing as a server
+  too old to draw them. It says it is looking, and fills in when the list turns up.
+- **Context Smash is now Context Smasher**, and its video slots look like what they are. Each one is
+  a card with a frame of the video in it — a loaded clip showed a grey film icon before, so the only
+  way to know which video was in which slot was to read the filename. The card is outlined in the
+  colour the mask sends its way, and so is the clip card, since the clip is `<Video 1>`: one glance
+  says red is the clip and green is the other one, instead of a legend to go and find. The empty slot
+  wears the colour it is about to take, so you can see where a video will land before you drop it in.
+- **The slots sit side by side, and you can drag one past another.** The order they are in is what
+  hands the colours out — first colour to the first video that is not the mask — so reordering is how
+  you re-aim the mask, and until now the only way to do it was to remove both and add them back the
+  other way round. The tags renumber as you drop, and the status line says what the colours mean
+  afterwards, because a brief you have already written still names the old numbers.
+- **A mask tile that lost its source no longer sits black for ever.** A video element does not retry
+  on its own; if the request was dropped while the server was busy the tile stayed empty until the
+  page was reloaded, which is the thing these tiles were brought in to fix. It asks once more.
+- **The console window says something.** uvicorn's own banner is logged below the level the server
+  runs at, so start-up was a black window with a cursor in it — indistinguishable from the hang it
+  used to be while torch loaded. It now prints when it starts and prints the address when it is up.
+- **Nothing loads a deep-learning framework to read a filename.** Listing your LoRAs meant importing
+  `engine/warp.py`, which imports torch — so asking "which LoRAs do I have?" paid for a cold CUDA DLL
+  load first: **50 s** on the first call, 533 ms on the second. The scanning helpers moved to a new
+  `modelscan.py` that imports nothing heavier than the standard library, and the engine re-exports
+  them so the render path is untouched. Embeddings were the stubborn case — a `.pt` file is a pickle,
+  and the obvious reader is `torch.load` — so they now go through the same shape-only unpickler that
+  already read `.ckpt` files, with every tensor stubbed out and no code from the file run. Checked
+  against `torch.load` on all 12 embeddings on disk: same answer every time.
+- **A folder is walked once per session**, not once per question, keyed on the folder's own mtime so
+  adding a file still shows up. Second call to any of these dropped from seconds to 5–350 ms.
+- **The page asks only for what it is about to show.** The model folders are no longer read at
+  start-up; each list is fetched by the control that paints it — the Style card asks for LoRAs and
+  embeddings, the Model row for checkpoints, Motion for its modules. In Comfy Cloud mode those cards
+  are hidden, so none of it is ever read. Start-up also stopped asking the server whether each
+  preset's checkpoint exists (seven round-trips feeding a flag nothing read) and stopped making
+  `/api/config` walk every checkpoint just to count them — Settings asks for the total when it opens.
+- **A cloud workflow stops pretending it has a prompt timeline.** The keyframe lane sat under the
+  prompt box in Comfy mode, where there is one prompt and nothing to travel along. The code already
+  said so — but the lane had no `hidden` of its own, so it was on screen from the first paint, and
+  nothing called `paintKeys` on the way into a cloud workflow. It starts hidden now and is shown by
+  the one function that knows whether it applies. H3's brief box also opens shorter: 300px of empty
+  monospace pushed everything under it off the panel.
+- **The workflow's help is a grey disc at the end of its row**, instead of an orange link wedged in
+  among the words.
+- **DWARP opens in seconds instead of minutes.** `run.bat` used to sit on a black terminal long
+  enough to look broken, and it was: `post.py` imports torch, torch loads its CUDA DLLs, and off a
+  cold disk that is minutes — all of it before the port could be bound, so nothing would answer.
+  Nothing the page asks for at start-up touches a tensor (which upscalers are on disk, whether
+  RIFE's weights are there, what job is running), so torch now waits for the first thing that
+  actually needs one, and warms on a background thread meanwhile. **Ready to answer in 26s instead
+  of about 222s**, and `/api/post/options` went from 12.7s to nothing.
+- **The page stops asking one question at a time.** Seven independent lookups ran in a row while the
+  panel sat empty — cold, `/api/loras` and `/api/post/options` alone were 8s and 13s. They go out
+  together now and cost the slowest one.
+- **A library for the colour masks, so you can see one before you pick it.** The row used to wear two
+  colour swatches, which are the *legend* and not the mask — Circle, Wipe, Split and Orbit all drew
+  the same two stripes, so the only way to find out what a pattern did was to render with it. The
+  pattern chip now opens a grid of every mask actually moving, drawn in the frame shape you are
+  rendering, and the slot's own tile loops the mask you chose. The swatches stay behind it, so a mask
+  whose file has gone still says which videos it speaks for.
+- **Split is half and half, and the blobs stop eating each other.** Split opened near 20/80 and closed
+  near 80/20, sweeping straight past the middle, so a frame you asked to halve started lopsided — it
+  now holds about a half each way throughout. Blobs sent both discs along one path at different
+  speeds, so they met and blue (drawn second) swallowed green: *"<Video 3> only"* for those frames, at
+  exactly the moments that read as keyframes. They now ride opposite ends of one ellipse and can
+  never touch.
 - **H3 · Context Smash, with the mask already in the slot.** H3 reads up to three whole videos as
   context at once and the prompt names them — `<Video 1>`, `<Video 2>`, `<Video 3>` — so three
   unrelated clips come back blended. DWARP wired one of those slots; now a workflow of its own opens

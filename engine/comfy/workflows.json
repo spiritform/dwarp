@@ -85,7 +85,8 @@
     },
     {
       "id": "h3_context_smash",
-      "label": "H3 · Context Smash",
+      "label": "H3 · Context Smasher",
+      "hidden": true,
       "short": "smash",
       "model": "MiniMax-H3 + Pika H3 Flex adapter",
       "note": "Several whole videos in H3’s context at once, named in the prompt. Up to three videos and nine pictures go in; what comes out borrows from all of them. The trick is to make one of the videos a flat colour mask and tell the prompt which colour means which video — that is what decides where each context lands and when. 5-15 s, with sound.",

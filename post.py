@@ -8,6 +8,9 @@ A cloud upscale (start_cloud) is the same job in the same slot, with the work ha
 Cloud instead: the run's mp4 goes up, a bigger one comes back into the same post folder and shows
 as the same chip. It holds no GPU here, so unlike the local one it can run while a render does.
 """
+from __future__ import annotations
+
+import functools
 import glob
 import hashlib
 import os
@@ -21,9 +24,39 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn.functional as F
 from PIL import Image
+
+
+class _LazyTorch:
+    """torch, loaded the moment something actually needs it.
+
+    Importing torch pulls its CUDA DLLs in, which costs minutes off a cold disk. Nothing the page
+    asks this module for while it is starting — which upscalers are on disk, whether RIFE's weights
+    are there, what job is running — touches a tensor, so the import waits for the first thing that
+    does. Annotations are strings here (see the __future__ import), so they do not count either.
+    """
+
+    def __init__(self, name: str, binding: str) -> None:
+        self._name, self._binding = name, binding
+
+    def __getattr__(self, attr: str):
+        import importlib
+        module = importlib.import_module(self._name)
+        globals()[self._binding] = module        # every later lookup skips this shim entirely
+        return getattr(module, attr)
+
+
+torch = _LazyTorch("torch", "torch")
+F = _LazyTorch("torch.nn.functional", "F")
+
+
+def _inference(fn):
+    """`@torch.inference_mode()`, without importing torch merely to decorate something."""
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        with torch.inference_mode():
+            return fn(*args, **kwargs)
+    return wrapped
 
 HERE = Path(__file__).resolve().parent
 RIFE_WEIGHTS = HERE / "models" / "rife" / "rife49.pth"
@@ -336,13 +369,13 @@ def _upscaler(path: str):
     return _models[key]
 
 
-@torch.inference_mode()
+@_inference
 def _interp(a: torch.Tensor, b: torch.Tensor, t: float) -> torch.Tensor:
     return _rife()(a, b, timestep=t, scale_list=[8, 4, 2, 1], training=False,
                    fastmode=True, ensemble=False).clamp(0, 1)
 
 
-@torch.inference_mode()
+@_inference
 def _inbetweens(a: torch.Tensor, b: torch.Tensor, n: int, interp: str) -> list:
     """The n - 1 frames between a and b, in order. RIFE takes each time directly. FILM does best near
     the middle of its pair, so each new frame comes from the two closest frames already made (the
@@ -367,7 +400,7 @@ def _inbetweens(a: torch.Tensor, b: torch.Tensor, n: int, interp: str) -> list:
     return [made[k] for k in range(1, n)]
 
 
-@torch.inference_mode()
+@_inference
 def _upscale(x: torch.Tensor, path: str, scale: int) -> torch.Tensor:
     """Tiled model upscale, then resize to exactly `scale`x if the model's factor differs."""
     desc, half = _upscaler(path)

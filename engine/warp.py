@@ -27,6 +27,11 @@ from typing import Callable
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+# On-disk scanning lives in modelscan, which imports no torch: listing a folder of LoRAs should
+# not load CUDA. Re-exported here so everything that already imports them from the engine still can.
+from modelscan import (EMBED_EXTS, embedding_family, embedding_files,  # noqa: F401
+                       lora_family)
 from PIL import Image
 
 
@@ -174,6 +179,10 @@ class RenderJob:
     # h3_video stays the first of them, so every run made before this still renders.
     h3_videos: list = field(default_factory=list)  # more clips, in <Video 2..n> order
     h3_trims: list = field(default_factory=list)   # [start, end] per extra clip, [] for all of it
+    # A layer stack, topmost first: {path, mode, opacity, matte, black, mid, white, invert}. When
+    # there is one it is flattened to a single clip before upload (engine/layers.py) and that clip
+    # becomes <Video 1>, so the arrangement is in the pixels rather than in the prompt.
+    layers: list = field(default_factory=list)
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":
@@ -799,38 +808,6 @@ def load_pipeline(job: RenderJob, device, dtype=torch.float16):
     return pipe
 
 
-EMBED_EXTS = (".pt", ".safetensors", ".bin")
-
-
-def embedding_files(dirs) -> dict[str, Path]:
-    """Embedding name (the file name, as typed in a prompt) -> file, first folder wins."""
-    found: dict[str, Path] = {}
-    for d in dirs:
-        d = Path(d)
-        if d.is_dir():
-            for f in sorted(d.rglob("*")):
-                if f.suffix.lower() in EMBED_EXTS and f.stem not in found:
-                    found[f.stem] = f
-    return found
-
-
-def lora_family(f: Path) -> str | None:
-    """What a LoRA was trained for, from a cross-attention layer's input width (the text features):
-    768 = SD 1.5, 1024 = SD 2.x, 2048 = SDXL. Reads only the safetensors header. None = not an SD LoRA
-    (Flux, video models…) or unreadable."""
-    try:
-        with open(f, "rb") as fh:
-            n = int.from_bytes(fh.read(8), "little")
-            header = json.loads(fh.read(n)) if 0 < n < 100_000_000 else {}
-    except (OSError, ValueError):
-        return None
-    for k, v in header.items():
-        low = k.lower()
-        if "attn2" in low and ("to_k" in low or "k_proj" in low) and ("lora_down" in low or "lora_a" in low)                 and isinstance(v, dict) and len(v.get("shape", [])) == 2:
-            return {768: "sd15", 1024: "sd2", 2048: "sdxl"}.get(v["shape"][1])
-    return None
-
-
 def load_lora(pipe, path: str) -> None:
     """pipe.load_lora_weights, with one fix: transformers 5 dropped CLIPTextModel's `text_model` level
     (CLIPTextModelWithProjection, SDXL's second encoder, kept it),
@@ -871,26 +848,6 @@ def apply_lora(pipe, job: RenderJob, log) -> None:
     if job.lora:
         pipe.set_adapters(["style"], [job.lora_weight])
         log(f"LoRA {Path(job.lora).stem} at {job.lora_weight}")
-
-
-def embedding_family(f: Path) -> str | None:
-    """What an embedding was trained for, from its vector width: 768 = SD 1.5, 1024 = SD 2.x, clip_g /
-    clip_l pairs = SDXL. None if unreadable. Only the tensors' shapes matter; files are small."""
-    try:
-        if f.suffix.lower() == ".safetensors":
-            from safetensors import safe_open
-            with safe_open(str(f), "pt") as st:
-                keys = list(st.keys())
-                if any("clip_g" in k for k in keys):
-                    return "sdxl"
-                widths = {st.get_slice(k).get_shape()[-1] for k in keys}
-        else:
-            d = torch.load(str(f), map_location="cpu", weights_only=True)
-            d = d.get("string_to_param", d) if isinstance(d, dict) else {}
-            widths = {v.shape[-1] for v in d.values() if hasattr(v, "shape")}
-    except Exception:
-        return None
-    return "sd15" if widths == {768} else "sd2" if widths == {1024} else None
 
 
 def load_embeddings(pipe, job: RenderJob, texts, log) -> None:
@@ -1082,6 +1039,20 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     if job.family in ("comfy", "h3"):          # rendered on Comfy Cloud, so nothing loads here at all
         from engine.cloud import render_cloud   # ("h3" is what the mode was called before it had workflows)
         return render_cloud(job, progress, cancelled, log)
+    # A layer stack stands in for the clip: it is flattened to one mp4 the shape of its own base, so
+    # everything downstream -- trim, range, fps, every size decision -- behaves as it did before and
+    # the only difference is what the frames have in them.
+    if getattr(job, "layers", None):
+        from engine import layers as layerlib
+        stack = layerlib.clean(job.layers)
+        if stack and layerlib.plan(stack):
+            progress("flattening the layers", 0, 1, "compositing the stack")
+            plate = layerlib.flatten_like_base(stack, Path(job.out_dir) / "plate.mp4")
+            for L, m in layerlib.plan(stack):
+                log(f"  {Path(L['path']).name} · {L['mode']} {L['opacity'] * 100:.0f}%"
+                    + (f" · matted by {Path(m['path']).name}" if m else ""))
+            log(f"  plate · {plate.stat().st_size / 2**20:.1f} MB")
+            job.video = str(plate)
     fetch_known(job, log, progress)            # first use: models DWARP can download, before anything loads
     if job.motion:                             # Motion: AnimateDiff instead of the frame-by-frame warp
         from engine.animatediff import render_ad

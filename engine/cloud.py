@@ -36,6 +36,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from engine import layers
+
 HERE = Path(__file__).resolve().parent
 COMFY = HERE / "comfy"
 REGISTRY = COMFY / "workflows.json"
@@ -299,6 +301,18 @@ def upload_video(key: str, base: str, path: Path) -> str:
         raise CloudError("Comfy Cloud stored the clip but gave back no content hash, so the graph "
                          f"can't name it: {json.dumps(asset)[:300]}")
     return name
+
+
+def seconds_of(path: Path) -> float:
+    """How long an mp4 actually is. The trim is what was *asked* for -- a video context has no trim,
+    so the ask is H3's whole 15 s ceiling -- and saying that in the log reads as though a 5 s mask
+    were being stretched to fifteen. What went up is what the log should say."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                              "-of", "default=nw=1:nk=1", str(path)], capture_output=True, text=True)
+        return max(0.0, float(out.stdout.strip()))
+    except (ValueError, OSError):
+        return 0.0
 
 
 def has_audio(path: Path) -> bool:
@@ -677,16 +691,34 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
                                 list(getattr(job, "h3_trims", None) or []) + [[]] * 9)]
     sources = [(p, t) for p, t in sources if p][:max_vids] if vspec else []
     source = sources[0][0] if sources else ""
-    if not refs and not sources:
+    # A layer stack is flattened to one clip here, before anything is uploaded, and that clip is
+    # the reference. The arrangement stops being a sentence the model has to believe and becomes
+    # pixels, which is a thing the model can simply see.
+    stack = layers.clean(getattr(job, "layers", None) or []) if vspec else []
+    if not refs and not sources and not stack:
         raise CloudError(f"{name} needs a source clip, or a picture in a Reference slot.")
 
     frames = frame_count(getattr(job, "h3_seconds", 5.0), length)
     width, height = fit_size(job.width, job.height, w.get("size"))
     fps = float(length.get("fps", 24))
+    drawn = layers.plan(stack)
     parts = ([f"{len(refs)} reference{'s' if len(refs) > 1 else ''}"] if refs else []) + \
-            ([f"{len(sources)} video contexts"] if len(sources) > 1 else ["the source clip"] if sources else [])
+            ([f"a plate of {len(drawn)} layer{'s' if len(drawn) > 1 else ''}"] if stack else
+             [f"{len(sources)} video contexts"] if len(sources) > 1 else
+             ["the source clip"] if sources else [])
     log(f"{name} on Comfy Cloud · {width}x{height} · {frames} frames "
         f"({frames / fps:.1f}s) · {' + '.join(parts)}")
+
+    if stack:
+        progress("uploading", 0, frames, "flattening the layers")
+        for L, m in drawn:
+            log(f"  {Path(L['path']).name} · {L['mode']} {L['opacity'] * 100:.0f}%"
+                + (f" · matted by {Path(m['path']).name}" if m else ""))
+        plate = layers.flatten(stack, out / "comfy_plate.mp4",
+                               width=width, height=height, frames=frames, fps=fps)
+        log(f"  plate · {plate.stat().st_size / 2**20:.1f} MB, {frames / fps:.1f}s")
+        sources = [(str(plate), [0.0, round(frames / fps, 3)])]
+        source = str(plate)
 
     progress("uploading", 0, frames, "sending the references")
     names = []
@@ -702,10 +734,11 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
         a, span, clipped = trim_span(trim, limit)
         seg = clip_segment(path, trim, out / f"comfy_reference{k}.mp4", limit)
         sound = has_audio(seg) and bool(vspec.get("audio"))
+        got = seconds_of(seg) or span            # what actually went up, not what was asked for
         stored = upload_video(key, base, seg)
         videos.append((stored, sound))
-        log(f"  <Video {k}> {Path(path).name} · {a:.1f}s to {a + span:.1f}s"
-            f"{f' (cut to the {limit:.0f} s it looks at)' if clipped else ''} "
+        log(f"  <Video {k}> {Path(path).name} · {a:.1f}s to {a + got:.1f}s"
+            f"{f' (cut to the {limit:.0f} s it looks at)' if clipped and got > limit - 0.1 else ''} "
             f"· {seg.stat().st_size / 2**20:.1f} MB"
             f"{f', with its sound as <Audio {k}>' if sound else ', no sound track'}")
         log(f"     stored as {stored}")     # the content name the graph asks LoadVideo for

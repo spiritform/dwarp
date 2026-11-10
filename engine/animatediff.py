@@ -19,6 +19,8 @@ from typing import Callable
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+from modelscan import animatelcm_lora  # noqa: F401  (no torch: see modelscan)
 from PIL import Image
 
 from engine.warp import (_CACHE, Annotators, RenderJob, camera_move, diff_mask, encode_prompts, extract_frames, load_lora, load_rgb,
@@ -42,15 +44,6 @@ def is_lcm(path: str) -> bool:
 def is_animatelcm(path: str) -> bool:
     """AnimateLCM motion module: LCM sampler, few steps, low CFG, plus its spatial LoRA on the UNet."""
     return "lcm" in Path(path).name.lower()
-
-
-def animatelcm_lora(motion: str) -> str | None:
-    """AnimateLCM's spatial LoRA (AnimateLCM_sd15_t2v_lora), looked for in the models root's loras."""
-    for root in (Path(motion).parents[1] / "loras", Path(__file__).resolve().parents[1] / "models"):
-        hit = next((p for p in sorted(root.rglob("*.safetensors")) if re.search(r"animatelcm.*lora", p.name, re.I)), None)
-        if hit:
-            return str(hit)
-    return None
 
 
 def lightning_steps(path: str) -> int:

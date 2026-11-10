@@ -36,14 +36,23 @@ class _ShapeUnpickler(pickle.Unpickler):
         return None
 
 
-def ckpt_index(path: Path) -> dict:
-    """{'keys': {weight name: shape}, 'global_step': int | None} for a zip-format .ckpt; {} if unreadable."""
+def zip_pickle(path: Path):
+    """What is inside a zip-format torch file, with every tensor replaced by its shape tuple.
+
+    No torch, and no code out of the file runs: _ShapeUnpickler stubs every class it does not know
+    and turns _rebuild_tensor_v2 into its size. None if the file is not a zip or cannot be read.
+    """
     try:
         with zipfile.ZipFile(path) as z:
             name = next(n for n in z.namelist() if n.endswith("/data.pkl") or n == "data.pkl")
-            obj = _ShapeUnpickler(z.open(name)).load()
+            return _ShapeUnpickler(z.open(name)).load()
     except Exception:
-        return {}
+        return None
+
+
+def ckpt_index(path: Path) -> dict:
+    """{'keys': {weight name: shape}, 'global_step': int | None} for a zip-format .ckpt; {} if unreadable."""
+    obj = zip_pickle(path)
     if not isinstance(obj, dict):
         return {}
     sd = obj.get("state_dict", obj)

@@ -4,6 +4,11 @@
 """
 from __future__ import annotations
 
+# The console window is empty until uvicorn binds, and a silent black window reads as a hang --
+# which is exactly what it looked like while torch was being imported at start-up. Say something.
+if __name__ == "__main__":
+    print("DWARP starting…", flush=True)
+
 import argparse
 import asyncio
 import json
@@ -22,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import modelscan  # noqa: E402
 import post  # noqa: E402
 import runs  # noqa: E402
 import shapelib  # noqa: E402
@@ -30,6 +36,27 @@ from jobs import TERMINAL, JobManager  # noqa: E402
 from models import list_checkpoints  # noqa: E402
 from engine import cloud  # noqa: E402
 from engine.cloud import api_key as h3_key  # noqa: E402
+
+
+# Long enough for the page's own start-up questions to get the disk first. Warming torch straight
+# away made the first load slower than it needed to be: reading a few hundred model filenames off a
+# spinning disk and loading torch's DLLs off the same one are not friends.
+WARM_AFTER = 20.0
+
+
+def warm() -> None:
+    """Pull torch in while the server is already answering.
+
+    post.py leaves torch until something actually needs a tensor (see post._LazyTorch), which is
+    what lets the port bind in seconds instead of minutes. That only moves the cost, so it is spent
+    here, on a background thread, against the odds that you enhance something before it lands.
+    Failures are silent: this is a head start, not a requirement.
+    """
+    try:
+        import torch        # noqa: F401
+    except Exception:
+        pass
+
 
 INPUTS = HERE / "inputs"
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".gif"}
@@ -168,17 +195,22 @@ def build_app() -> FastAPI:
         this — no references slot in a manifest means no References card — so dropping a graph into
         engine/comfy/ and naming it in workflows.json is the whole job of adding one."""
         try:
-            return {"workflows": [cloud.caps(w) for w in cloud.workflows("render")]}
+            # "hidden" parks a graph without deleting it: out of the picker, still in the
+            # manifest and still renderable by id, so a direct submit can keep testing it.
+            return {"workflows": [cloud.caps(w) for w in cloud.workflows("render")
+                                  if not w.get("hidden")]}
         except cloud.CloudError as e:
             return {"workflows": [], "error": str(e)}
 
     @app.get("/api/config")
-    def get_config():
+    def get_config(count: bool = False):
+        """`count` walks the checkpoints folder to total them. Settings asks for that; start-up does
+        not, and it used to pay for the walk anyway on a call it makes before the page can paint."""
         c, root = config(), settings()["models_root"]
-        ckpts = list_checkpoints(f"{root}/checkpoints")
         return {"models_root": root, "own_models": (HERE / "models").as_posix(),
                 "embeddings_dir": c.get("embeddings_dir", ""), "loras_dir": c.get("loras_dir", ""),
-                "checkpoints": len(ckpts), "root_ok": os.path.isdir(root),
+                "checkpoints": len(list_checkpoints(f"{root}/checkpoints")) if count else None,
+                "root_ok": os.path.isdir(root),
                 # H3 renders on Comfy Cloud. Whether a key is set, never the key: it is a live
                 # credential, so it goes into config.json (gitignored) and is never read back out.
                 "comfy_key": bool(h3_key(c)), "comfy_key_env": bool(h3_key({}))}
@@ -225,11 +257,10 @@ def build_app() -> FastAPI:
     def loras():
         """LoRAs from DWARP's own models/loras (a hand-picked set), each with the family it was trained for;
         ones for other model types (Flux, video…) are left out."""
-        from engine.warp import lora_family
         seen, out = set(), []
         for folder in lora_dirs():
-            for f in sorted(folder.rglob("*.safetensors")) if folder.is_dir() else []:
-                if f.stem not in seen and (fam := lora_family(f)):
+            for f in modelscan.lora_files(folder):
+                if f.stem not in seen and (fam := modelscan.lora_family(f)):
                     seen.add(f.stem)
                     out.append({"name": f.stem, "path": f.as_posix(), "family": fam})
         return {"loras": sorted(out, key=lambda e: e["name"].lower())}
@@ -237,9 +268,8 @@ def build_app() -> FastAPI:
     @app.get("/api/embeddings")
     def embeddings():
         """Embeddings by name (what a prompt types), with the model family they were trained for."""
-        from engine.warp import embedding_family, embedding_files
-        out = [{"name": name, "family": fam} for name, f in embedding_files(embedding_dirs()).items()
-               if (fam := embedding_family(f))]
+        out = [{"name": name, "family": fam} for name, f in modelscan.embedding_files(embedding_dirs()).items()
+               if (fam := modelscan.embedding_family(f))]
         return {"embeddings": sorted(out, key=lambda e: e["name"].lower())}
 
     _sys = {"t": 0.0, "v": None}
@@ -287,7 +317,6 @@ def build_app() -> FastAPI:
             return list(found.values())
         # SD 1.5 motion modules only: not SDXL ones, the v3 adapter (a LoRA) or SparseCtrl. The page picks from
         # these by name (TemporalDiff, v2, AnimateLCM); AnimateLCM also needs its spatial LoRA.
-        from engine.animatediff import animatelcm_lora
         skip = re.compile(r"sdxl|adapter|sparsectrl", re.I)
         modules = [m for m in scan(HERE / "models" / "animatediff", root / "animatediff_models")
                    if not skip.search(m["name"])]
@@ -298,7 +327,7 @@ def build_app() -> FastAPI:
             if name not in have:                  # not on disk: listed anyway, downloads on first use
                 modules.append({"name": Path(name).stem, "path": (HERE / "models" / "animatediff" / name).as_posix(),
                                 "fetch": downloads.size(name)})
-        lcm = animatelcm_lora(str(root / "animatediff_models" / "x"))
+        lcm = modelscan.animatelcm_lora(str(root / "animatediff_models" / "x"))
         return {"modules": modules,
                 "loras": scan(HERE / "models" / "animatediff_motion_lora", root / "animatediff_motion_lora"),
                 "lcm_lora": lcm or str(HERE / "models" / "loras" / "AnimateLCM_sd15_t2v_lora.safetensors"),
@@ -848,6 +877,43 @@ def build_app() -> FastAPI:
         from engine import masks
         return {"patterns": masks.PATTERNS, "colours": masks.NAMES}
 
+    @app.post("/api/layers/plate")
+    async def layers_plate(request: Request):
+        """The layer stack composited into one clip, so the stage can show what will actually be
+        rendered rather than the clip that happens to be at the bottom of it.
+
+        Named after what is in it (every path, mode, opacity, level and mtime), so the same stack is
+        flattened once and moving a slider back finds the old plate still there.
+        """
+        from engine import layers as layerlib
+        body = await request.json()
+        stack = layerlib.clean(body.get("layers") or [])
+        for L in stack:
+            if not os.path.isfile(L["path"]):
+                raise HTTPException(404, detail=f"no layer at {L['path']}")
+        if not layerlib.plan(stack):
+            raise HTTPException(422, detail="a plate needs a layer that is not a matte")
+        try:
+            return layerlib.plate(INPUTS / "plates", stack,
+                                  width=max(0, min(4096, int(body.get("width", 0)))),
+                                  height=max(0, min(4096, int(body.get("height", 0)))),
+                                  frames=max(0, min(4096, int(body.get("frames", 0)))),
+                                  fps=max(0.0, min(120.0, float(body.get("fps", 0)))))
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(422, detail=f"could not flatten the layers: {exc}") from None
+
+    @app.get("/api/masks/preview")
+    def mask_preview(pattern: str = "circle", width: int = 256, height: int = 144,
+                     amount: float = 1.0):
+        """One pattern as a small loop, for the picker. A mask you cannot see before you pick it is
+        a guess, and the swatches never showed the shape. Drawn once, then read off disk."""
+        from engine import masks
+        try:
+            out = masks.preview(INPUTS / "masks" / "_preview", pattern, width, height, amount)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not draw that preview: {exc}") from None
+        return FileResponse(out, media_type="video/mp4", headers={"Cache-Control": "max-age=3600"})
+
     @app.post("/api/masks")
     async def make_mask(request: Request):
         """One colour mask, drawn at the size and length of the render it is for. Flat colour and
@@ -943,8 +1009,12 @@ def main():
     args = parser.parse_args()
     import uvicorn
     app = build_app()
+    warming = Timer(WARM_AFTER, warm)            # torch loads once the page has had the disk
+    warming.daemon = True                        # never hold up a ctrl-c on account of a head start
+    warming.start()
     if not args.no_browser:
         Timer(1.2, lambda: webbrowser.open(f"http://{args.host}:{args.port}")).start()
+    print(f"DWARP  →  http://{args.host}:{args.port}   (ctrl-c to stop)", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

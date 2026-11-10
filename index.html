@@ -73,6 +73,13 @@
   .card-body .slider-head b, .card-body .sublabel { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: #c9c7cf; }
   .card-body > .sublabel:first-child, .card-body > .seg:first-child { margin-top: 0; }
   .card-head .randlink { margin-left: 10px; font-size: 11px; }
+  /* the workflow's help: a grey disc at the end of its row, rather than an orange link wedged in
+     among the words. A fill, no stroke, like every other state in here. */
+  #h3WfLabel { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .wfhelp { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #34333b;
+            color: #c9c7cf; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+            text-decoration: none; cursor: help; }
+  .wfhelp:hover { background: var(--accent); color: #fff; }
   .card-head .sum + .randlink { margin-left: 10px; }
   .hint { color: var(--faint); font-size: 11px; margin: -4px 0 8px; }
   .hint:empty { display: none; }
@@ -105,7 +112,8 @@
   .clip-top > div { min-width: 0; }
   .clip-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .clip-meta { color: var(--dim); font-size: 11px; margin-top: 2px; }
-  .clip-del { flex: none; align-self: flex-start; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .clip-del { flex: none; align-self: flex-start; background: none; border: 0; color: var(--faint);
+               cursor: pointer; font-size: 10px; font-weight: 700; padding: 3px 5px; }
   .clip-del:hover { color: #ff9a8a; }
   .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: 5px; overflow: hidden;
            display: flex; background: #000; touch-action: none; }
@@ -282,25 +290,76 @@
   .levels .pt.w { border-bottom-color: #fff; }
   #styleRefCtl[hidden] { display: none; }
   /* H3: the reference pictures, same slot as a style ref but a row of them */
-  #h3Refs, #h3Vids { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #h3Refs { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 8px; }
+  /* The video contexts sit side by side. Which colour the mask hands a slot, and the order they are
+     stacked in, are the two things that decide where each context lands - and a column of thin rows
+     with a filename on it showed neither. A card is a picture of the video, wearing its colour. */
+  #h3Vids { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; margin-top: 8px; }
   #h3Vids .ref, #h3Vids .clip-empty { font-size: 11px; }
-  #h3Vids .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
-  #h3Vids .tile { width: 38px; height: 38px; border-radius: 5px; flex: none; overflow: hidden;
-                  display: flex; background: #1b1a20; color: var(--faint); align-items: center; justify-content: center; }
-  #h3Vids .tile svg { width: 16px; height: 16px; }
+  #h3Vids .ref { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative;
+                 background: #25242b; border-radius: 8px; padding: 6px; cursor: grab; }
+  #h3Vids .ref.drag { opacity: .35; }                       /* the one in your hand */
+  #h3Vids .ref.over { background: #34333b; }                /* where it would land */
+  #h3Vids .tile { width: 100%; aspect-ratio: 16 / 9; border-radius: 5px; overflow: hidden;
+                  position: relative; display: flex; background: #1b1a20; color: var(--faint);
+                  align-items: center; justify-content: center; }
+  /* the colour this slot wears in the mask, as the frame of the picture it stands for: the answer to
+     "which video does green mean?" should not be a line of legend you have to go and read */
+  #h3Vids .clip-empty.keyed { box-shadow: inset 0 0 0 2px var(--key); }
+  #h3Vids .tile.keyed::after, .clip-thumb.keyed::before { content: ""; position: absolute; inset: 0;
+    border-radius: inherit; box-shadow: inset 0 0 0 2px var(--key); pointer-events: none; z-index: 4; }
+  /* the clip is <Video 1>, so it wears a colour too -- one coloured slot and one plain one reads as
+     a bug, not as a key */
+  .clip-thumb.keyed::before { border-radius: 6px; }
+  .clip-meta .vtag { font-weight: 600; }
+  #h3Vids .tile svg { width: 18px; height: 18px; }
+  #h3Vids .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* The tag lives in the picture, on a band of its own colour along the foot of it: a word of grey
+     under a frame is something to go and read, a thick red bar saying VIDEO 1 is not. A mask has no
+     colour of its own -- it is the thing handing them out -- so its band is plain. */
+  /* Dark band, label in the slot's colour. White on #19d23c is hard to read, and the mask colours
+     themselves are not up for changing: they are the instruction the model reads, and the brief says
+     "green is <Video 3>" in words -- the word has to match the pixel. So the colour stays exactly
+     where it is and the label moves off it. The frame around the tile still carries it. */
+  #h3Vids .tile .band, #h3Refs .tile .band, .clip-thumb .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    background: rgba(16,15,20,.86); color: #fff; text-align: center; line-height: 1;
+    font-weight: 700; }
+  #h3Vids .tile .band, #h3Refs .tile .band { font-size: 9px; letter-spacing: .06em; padding: 3px 0; }
+  .clip-thumb .band { font-size: 8px; padding: 2px 0; }
   #h3Vids .ref .tag { font-size: 10px; color: var(--faint); flex: none; }
-  #h3Vids .ref span.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
-  #h3Vids .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
+  #h3Vids .ref span.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                         font-size: 11px; color: #c9c7cf; }
+  #h3Vids .ref > button.x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; padding: 0;
+    border-radius: 5px; background: rgba(14,13,18,.62); color: #cfcdd6; z-index: 5; display: none;
+    font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
+  #h3Vids .ref:hover > button.x { display: block; }
+  #h3Vids .ref > button.x:hover { background: var(--bad); color: #fff; }
+  #h3Vids .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 10px; font-weight: 700; padding: 4px 8px; }
   #h3Vids .ref button:hover { color: #ff9a8a; }
   #h3Vids .ref select { background: #2b2a31; color: var(--text); border: 0; border-radius: 6px;
                         padding: 4px 6px; font: inherit; font-size: 11px; flex: 1; min-width: 0; }
   /* a colour band per video the mask speaks for: stretched, since the tile centres its icon */
   #h3Vids .tile i { flex: 1; align-self: stretch; display: block; }
+  /* the mask itself, looping, instead of swatches: every two-colour pattern wore the same two
+     stripes, so the tile said which videos it spoke for and nothing about what it did */
+  #h3Vids .tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* the pattern picker: the chip a filename gets, but it opens the library */
+  #h3Vids .ref button.pick { flex: 1; min-width: 0; background: #2b2a31; color: var(--text); border: 0;
+    border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 11px; text-align: left; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #h3Vids .ref button.pick:hover { background: #34333b; color: var(--text); }
+  /* the colour-mask library: the Shape library's grid, in the frame shape you are rendering */
+  #maskLib .sl-card .thumb { aspect-ratio: 16 / 9; }
+  #maskLib .sl-card .note { display: block; font-size: 10px; color: var(--faint); line-height: 1.35;
+                            white-space: normal; margin-top: 2px; }
   #h3Vids .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
                         align-items: center; gap: 6px; border-radius: 8px; color: var(--dim); cursor: pointer; text-align: center; }
   /* once a slot is filled the next one is a line, not a landing strip */
   #h3Refs .clip-empty.slim, #h3Vids .clip-empty.slim { flex-direction: row; padding: 8px 10px; gap: 7px; }
-  #h3Vids .adds { display: flex; gap: 6px; }      /* a video or a mask: the same move, two sources */
+  /* a video or a mask: the same move, two sources. Alongside a card they stack; on their own,
+     with the row to themselves, they sit side by side as two landing strips. */
+  #h3Vids .adds { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+  #h3Vids .adds.wide { flex-direction: row; }
   #h3Vids .adds .clip-empty { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
   #h3Vids .mini { display: flex; width: 13px; height: 13px; border-radius: 2px; overflow: hidden; flex: none; }
   #h3Vids .mini i { flex: 1; align-self: stretch; }
@@ -308,24 +367,102 @@
   #h3Vids .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #h3Vids .clip-empty svg { width: 18px; height: 18px; }
   body.runDrag #h3Vids { background: rgba(255,106,61,.14); border-radius: 8px; }
-  #h3Refs .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
-  /* the picture's own shape, not a square crop of it: this chip and the Motion canvas below are two
-     views of the same reference, and they should not disagree about what you loaded */
-  #h3Refs .ref img { height: 38px; width: auto; max-width: 68px; object-fit: contain; background: #1b1a20;
-                     border-radius: 5px; flex: none; }
-  #h3Refs .ref .tag { font-size: 10px; color: var(--faint); flex: none; }
-  #h3Refs .ref span.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
-  #h3Refs .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
-  #h3Refs .ref button:hover { color: #ff9a8a; }
+  /* The same card the video contexts wear. The tag was faint grey type beside a 38px thumbnail,
+     which is not where your eye goes -- and <Picture 1> is what the prompt calls it. */
+  #h3Refs .ref { flex: 0 0 calc(50% - 3px); min-width: 0; position: relative;
+                 background: #25242b; border-radius: 8px; padding: 6px; cursor: grab; }
+  #h3Refs .ref.drag { opacity: .35; }
+  #h3Refs .ref.over { background: #34333b; }
+  #h3Refs .tile { display: block; position: relative; width: 100%; aspect-ratio: 16 / 9;
+                  border-radius: 5px; overflow: hidden; background: #1b1a20; }
+  #h3Refs .ref img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  #h3Refs .ref > button.x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; padding: 0;
+    border: 0; border-radius: 5px; background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; z-index: 5;
+    display: none; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
+  #h3Refs .ref:hover > button.x { display: block; }
+  #h3Refs .ref > button.x:hover { background: var(--bad); color: #fff; }
+  /* the add row is a card too, so it lines up with them rather than spanning the whole panel */
+  #h3Refs .adds { flex: 0 0 calc(50% - 3px); min-width: 0; }
+  #h3Refs .adds .clip-empty.slim { justify-content: center; }
+  #h3Refs .adds.wide { flex: 1 1 100%; }
   #h3Refs .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
     align-items: center; gap: 6px; border-radius: 8px; color: var(--faint); cursor: pointer; text-align: center; }
   #h3Refs .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #h3Refs .clip-empty svg { width: 18px; height: 18px; }
   body.runDrag #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
+  /* Layers: one stacked source per row, the matte sitting in the stack where you can see it */
+  #layers { display: flex; flex-direction: column; gap: 6px; }
+  /* The dials get the card's full width underneath, instead of a third of it beside a thumbnail:
+     a slider you cannot aim is worse than one more row. */
+  #layers .lay { position: relative; display: flex; flex-direction: column; gap: 6px;
+                 background: #25242b; border-radius: 8px; padding: 6px; }
+  #layers .top { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  /* Every dial in the stack sits on the same three columns -- name, bar, number -- so a long label
+     cannot push one row's slider out of line with the next one's. */
+  #layers .dials { display: grid; grid-template-columns: 46px 1fr 34px; gap: 5px 7px;
+                   align-items: center; }
+  #layers .dials .lv { justify-self: start; }
+  #layers .dials .pct { justify-self: end; }
+  /* select, chips and the delete are one row of controls, so they are one height */
+  #layers select, #layers .chip, #layers .x { height: 24px; box-sizing: border-box; border: 0;
+    border-radius: 6px; font: inherit; flex: none; }
+  #layers select { padding: 0 6px; font-size: 11px; flex: 1 1 0; min-width: 0; }
+  #layers .chip { padding: 0 8px; font-size: 10px; }
+  #layers .lay.drag { opacity: .35; }
+  #layers .lay.over { background: #34333b; }
+  /* the one under the pointer, so you can see which row a slider belongs to without it shouting */
+  #layers .lay:hover { box-shadow: inset 0 0 0 2px #35343d; }
+  /* Only the grip drags. The whole row used to, which meant you could not move a slider without
+     picking the layer up instead. */
+  #layers .grip { color: var(--faint); font-size: 12px; letter-spacing: -2px; flex: none; padding: 2px;
+                  cursor: grab; user-select: none; }
+  #layers .grip:active { cursor: grabbing; }
+  #layers .lay.base .grip { cursor: default; }
+  #layers .tile { position: relative; width: 66px; aspect-ratio: 16 / 9; border-radius: 5px; flex: none;
+                  overflow: hidden; background: #1b1a20; display: flex; align-items: center;
+                  justify-content: center; color: var(--faint); }
+  #layers .tile img, #layers .tile video { position: absolute; inset: 0; width: 100%; height: 100%;
+                  object-fit: cover; display: block; }
+  #layers .tile svg { width: 16px; height: 16px; }
+  #layers .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: rgba(16,15,20,.86);
+                  color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-align: center;
+                  padding: 2px 0; line-height: 1; }
+  #layers .ctl { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; align-items: center; }
+  #layers .row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  #layers select { background: #2b2a31; color: var(--text); }
+  #layers input[type=range] { flex: 1 1 0; min-width: 0; }
+  #layers .pct { font-size: 10px; color: var(--dim); text-align: right; }
+  #layers .lv { font-size: 9px; color: var(--faint); }
+  #layers .nm { font-size: 11px; color: #c9c7cf; flex: 1; min-width: 0; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  #layers .chip { background: #2b2a31; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  #layers .chip.on { color: var(--text); box-shadow: inset 0 0 0 2px var(--accent); }
+  #layers .chip:hover { color: var(--text); }
+  /* Quiet until the row is under the pointer, but it keeps its place: a control that appears and
+     shoves the rest of the row along is worse than one that is simply quiet. */
+  #layers .x { width: 24px; padding: 0; background: #2b2a31; color: var(--dim); cursor: pointer;
+               font-size: 10px; font-weight: 700; visibility: hidden; }
+  #layers .lay:hover .x { visibility: visible; }
+  #layers .x:hover { background: var(--bad); color: #fff; }
+  #layerAdds { display: flex; gap: 6px; margin-top: 6px; }
+  #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
+    display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
+    border-radius: 8px; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  #layerAdds .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #layerAdds .clip-empty svg { width: 13px; height: 13px; }
+  body.runDrag #layers { background: rgba(255,106,61,.14); border-radius: 8px; }
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
   .cloudnote .bad { color: #ff9a8a; }
   #tplRow { margin-bottom: 8px; }
+  /* The same bands the slots wear, beside the box you type in. Which colour is which video is the
+     whole technique, and it was only legible on the cards -- which sit above the prompt and scroll
+     away exactly when you are writing the line that uses them. */
+  .vidkey { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
+  .vidkey b { font-size: 9px; font-weight: 700; letter-spacing: .06em; line-height: 1; cursor: pointer;
+              padding: 4px 6px; border-radius: 4px; background: #232228; color: #fff;
+              box-shadow: inset 0 0 0 2px var(--key, #9a98a3); }
+  .vidkey b:hover { background: #2e2d35; }
   .cloudnote a { color: var(--accent-2); text-decoration: none; white-space: nowrap; }
   .cloudnote a:hover { text-decoration: underline; }
   /* the optional negative prompt: a small fold under the prompt box */
@@ -512,7 +649,7 @@
   .stage-foot #liveBtn.on { color: var(--text); background: rgba(255,106,61,.2); }
   .stage-foot #liveBtn.on::before { color: var(--accent); }
   #prompt.sent { background: rgba(255,106,61,.16); }
-  #prompt.brief { min-height: 300px; font: 11.5px/1.6 ui-monospace, Consolas, monospace; }
+  #prompt.brief { min-height: 210px; font: 11.5px/1.6 ui-monospace, Consolas, monospace; }
   .stage-foot .spacer { flex: 1; }
   .stage-foot #footInfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
@@ -649,8 +786,11 @@
                      color: #fff; background: rgba(0,0,0,.75); padding: 0 5px; border-radius: 3px; display: none; }   /* the run number, on hover: dark like the ✕ */
   .run:hover .thumb .num { display: block; }
   .run.on .thumb { border-color: var(--accent); }
-  .run .x { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; border: 0;   /* the number's height */
-            background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 9px; line-height: 16px; padding: 0; }
+  /* The delete control, wherever it sits on a picture -- a run card, a library card, a video slot.
+     One subtle rounded box with a small bold x, rather than three not-quite-matching black circles. */
+  .run .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 5px; border: 0;
+            background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; display: none;
+            font-size: 10px; font-weight: 700; line-height: 17px; padding: 0; text-align: center; }
   .run .x:hover { background: var(--bad); color: #fff; }
   .run:hover .x { display: block; }
   .run.sel .thumb { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }
@@ -742,8 +882,9 @@
   .sl-card.on .thumb { box-shadow: 0 0 0 2px var(--accent); }
   .sl-card b { display: block; font-size: 11px; font-weight: 600; margin-top: 5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sl-card .tag { position: absolute; bottom: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.75); color: var(--dim); padding: 1px 5px; border-radius: 3px; z-index: 1; }
-  .sl-card .x { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; border: 0; z-index: 1;
-                background: rgba(0,0,0,.75); color: #ddd; cursor: pointer; display: none; font-size: 10px; line-height: 18px; padding: 0; }
+  .sl-card .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 5px; border: 0; z-index: 1;
+                background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; display: none;
+                font-size: 10px; font-weight: 700; line-height: 17px; padding: 0; text-align: center; }
   .sl-card:hover .x, .sl-card .x.armed { display: block; }
   .sl-card .x:hover, .sl-card .x.armed { background: var(--bad); color: #fff; }
   .sl-head h4 { margin: 18px 0 10px; }
@@ -793,7 +934,7 @@
     </div></div>
   </section>
 
-  <section>
+  <section id="promptSec">
     <div class="card" data-card="prompt">
     <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
     <div class="card-body">
@@ -802,10 +943,11 @@
       <div class="sublabel" style="margin:0 0 4px">Start from</div>
       <select class="model" id="promptTpl" title="Lay out H3's sectioned brief, filled in from the clip and the references you have loaded. Switching rewrites the brief and keeps what you typed into it; no template strips the sections away and leaves your own lines."></select>
     </div>
+    <div class="vidkey" id="vidKey" hidden></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
     <div class="hint" id="promptWeak" style="margin:6px 0 2px"></div>
     <div class="keywrap">
-    <div class="keys" id="keys" title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it (drag the first past others to reorder)"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
+    <div class="keys" id="keys" hidden title="Prompt keyframes: hover to scrub, click to add one, click one to edit its prompt, drag one to move it (drag the first past others to reorder)"><div class="marks" id="keyMarks"></div><i class="ghost" id="keyGhost"></i><div class="peek" id="keyPeek"><img alt=""><span></span></div></div>
     <div class="keybar" id="keyBar" hidden>
       <b id="keyWhich"></b>
       <div class="slider" title="How many source frames each new prompt takes to morph in (0 = hard cut)">
@@ -819,13 +961,13 @@
     </div></div>
   </section>
 
-  <section>
+  <section id="modelSec">
     <div class="card" data-card="model">
     <div class="card-head"><span class="title">Model</span><span class="sum" id="sum_model"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="seg mode" id="mode"></div>
     <div id="h3Box" hidden>
-      <div class="sublabel" id="h3WfLabel" style="margin-top:10px">Workflow<a href="#" data-help="h3" class="randlink" style="margin-left:6px" title="What this workflow is and how to drive it">?</a></div>
+      <div class="sublabel" id="h3WfLabel" style="margin-top:10px">Workflow<a href="#" data-help="h3" class="wfhelp" title="What this workflow is and how to drive it">?</a></div>
       <select class="model" id="h3Wf" title="Which graph runs on Comfy Cloud. Each one takes its own inputs, so the controls below follow what you pick."></select>
       <div class="cloudnote" id="h3Note"></div>
       <div class="sublabel" id="h3SpeedLabel">Speed</div>
@@ -983,6 +1125,20 @@
     </div></div>
   </section>
 
+  <section id="layersBox" hidden>
+    <div class="card" data-card="layers">
+    <div class="card-head" title="Stack the sources into one picture before any of it is uploaded: a blend mode, an opacity, and a black and white layer that can act as a luma matte for the layer below it"><span class="title">Layers</span><span class="sum" id="sum_layers"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div id="layers"></div>
+    <div id="layerAdds">
+      <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
+      <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
+    </div>
+    <div class="adnote" id="layerNote" style="margin:10px 0 0"></div>
+    </div></div>
+    <input type="file" id="layerFile" accept="video/*,image/*" hidden>
+  </section>
+
   <section id="guideBox">
     <div class="card" data-card="guidance">
     <div class="card-head" title="ControlNet holds the shapes, DepthDiff picks where to repaint"><span class="title">Guidance</span><span class="sum" id="sum_guidance"></span><span class="chev">▾</span></div>
@@ -1114,6 +1270,7 @@
     <div class="helppanel" id="setPanel" hidden></div>
     <div class="helppanel" id="runsPanel" hidden></div>
     <div class="helppanel" id="shapeLib" hidden></div>
+    <div class="helppanel" id="maskLib" hidden></div>
     <input type="file" id="shapeLibFile" accept="image/*,video/*" multiple hidden>
     <div class="helppanel enh" id="enh" hidden>
       <button class="logbtn close" id="enhClose">✕</button>
@@ -1246,11 +1403,37 @@ const TEST = { frames: 5, nth: 2 };   // test size comes from the mode
 let INFO, PRESETS, CKPT_DIR, MODES, CHECKPOINTS = [];
 var CFG_HAS_KEY = false;                    // is a Comfy Cloud API key set? (never the key itself)
 var EMBEDS = [];                           // [{name, family}] from the embeddings folder
+// ---- Ask for a list when something is about to show it, not before
+// Reading the model folders is the slowest thing start-up did, and in Comfy mode none of it is ever
+// on screen: renderControls hides the style, render, guidance and shape cards whenever isH3(). So
+// each list is fetched by the control that paints it, once per session, and that control repaints
+// when it lands. A list nobody looks at is never asked for.
+var ONCE = {};                             // url -> promise, so two callers share one fetch
+const fetchOnce = (url, fallback) => ONCE[url] ||= api(url).catch(() => fallback);
+// `take` stores what came back, `repaint` draws it. The ONCE guard is what stops the repaint from
+// asking again: fetchOnce fills ONCE synchronously, before anything awaits.
+function need(url, fallback, take, repaint) {
+  if (ONCE[url]) return;
+  fetchOnce(url, fallback).then(r => { take(r); repaint(); paintSums(); });
+}
+var LORAS_READY = false, EMBEDS_READY = false, CKPT_READY = false, MOTION_READY = false;
+const needLoras = () => need('/api/loras', { loras: [] },
+  r => { LORAS = r.loras || []; LORAS_READY = true; }, renderLora);
+const needEmbeds = () => need('/api/embeddings', { embeddings: [] },
+  r => { EMBEDS = r.embeddings || []; EMBEDS_READY = true; }, renderEmbed);
+const needMotion = () => need('/api/motion', { modules: [], loras: [], lcm_lora: null },
+  r => { MOTION = r; MOTION_READY = true; }, renderMotion);
+const needCkpts = () => need('/api/checkpoints', { checkpoints: [] },
+  r => { CHECKPOINTS = r.checkpoints || []; CKPT_READY = true; },
+  () => { renderMode(); renderPresets(); if (!$('enh').hidden) paintRefine(); });
+
 var LORAS = [];                            // [{name, path, family}] from models/loras
 const loraOn = (mode = state.mode) => LORAS.some(l => l.path === state.lora && l.family === mode) ? state.lora : '';
 function renderLora() {
+  if (!isH3()) needLoras();                // the Style card is hidden in Comfy mode: never asked for
   const list = LORAS.filter(l => l.family === state.mode);
-  $('lora').innerHTML = (list.length ? '<option value="">none</option>' : '<option value="">none — add some to models/loras</option>') +
+  $('lora').innerHTML = (list.length ? '<option value="">none</option>'
+      : `<option value="">${LORAS_READY ? 'none — add some to models/loras' : 'loading…'}</option>`) +
     list.map(l => `<option value="${l.path}">${l.name}</option>`).join('');
   $('lora').disabled = !list.length;
   $('lora').value = loraOn();
@@ -1435,6 +1618,9 @@ function h3Config(kind) {
       h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
       h3_videos: h3Vids().slice(0, vidRoom()).map(v => v.path),   // <Video 2..n>: whole, as context
       h3_trims: [],
+      // The stack, topmost first, with the clip as its base. When there is one the engine flattens
+      // it to a single clip before upload and that clip becomes <Video 1>.
+      layers: layerJob(),
     },
     total: h3Frames(seconds), size: state.size, fps: wf().fps,
   };
@@ -1534,16 +1720,34 @@ function h3Seconds() {
   if (state.h3secs === 'auto') return h3ClipSeconds() || wf().min_frames / wf().fps;
   return +state.h3secs || (wf().seconds[0] || 5);
 }
+// Comfy puts the clip, the pictures and the video contexts in one argument: the slots are named
+// against the clip, and the prompt names all of them by tag. With the prompt box sitting between the
+// clip card and those slots you could not see the source video while filling them in, so in Comfy the
+// prompt moves below Model. Guarded, because re-inserting a section blurs a textarea inside it.
+function orderPanel() {
+  const p = $('promptSec'), m = $('modelSec');
+  if (!p || !m) return;
+  if (isH3()) { if (m.nextElementSibling !== p) m.parentElement.insertBefore(p, m.nextSibling); }
+  else if (p.nextElementSibling !== m) m.parentElement.insertBefore(p, m);
+}
 function renderH3() {
   const on = isH3(), w = wf();
+  orderPanel();
   $('h3Box').hidden = !on; $('sdBox').hidden = on;
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
   // The sectioned brief is H3's own vocabulary, not the mode's: a workflow with an ordinary text
   // encoder (WanMove, say) does prompt, it just wants a line of description like everything else.
   const brief = on && w.brief;
   $('tplRow').hidden = !brief; $('promptRandom').hidden = brief;
-  if (brief) renderTplPick($('promptTpl').value);   // the list follows the workflow; the pick survives
+  // The pick is remembered, not re-read off the select: after a reload the brief was still sitting in
+  // the box and the row said "no template" over the top of it.
+  // A workflow with exactly one brief arrives with it chosen: picking the workflow already put it in
+  // the box, so "no template" over the top of it was never true. An explicit pick -- including no
+  // template -- sticks from then on.
+  const only = h3Recipes();
+  if (brief) renderTplPick(state.h3tpl ?? (only.length === 1 ? only[0][0] : ''));
   $('prompt').classList.toggle('brief', brief);
+  paintKeys();          // a cloud workflow has one prompt and no lane; switching away brings it back
   // A graph whose text encoder barely moves the picture says so in its manifest, and the box says it
   // back: dimmed, with the measurement under it, rather than left looking like a dial that works.
   const ph = on ? w.prompt_hint : null, dead = !!(ph && ph.dead_on_fast && comfyFast());
@@ -1551,6 +1755,9 @@ function renderH3() {
   $('prompt').disabled = dead;
   $('promptWeak').textContent = !ph ? ''
     : dead ? `ignored while fast is selected. ${ph.note || ''}` : (ph.note || '');
+  // Above the early return, because both of these live outside #h3Box -- the key sits in the Prompt
+  // card and the band on the clip card, so leaving Comfy left them on over an ordinary SD prompt.
+  paintClipKey(); paintVidKey(); renderLayers();
   if (!on) return;
   // The list, and then every control below it: a workflow with no refs slot has no References card, one
   // that writes no audio has no Sound switch. All of it off the manifest.
@@ -1633,10 +1840,11 @@ function renderH3() {
   [...$('h3Aspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === h3Aspect()));
   const refs = h3Refs();
   $('h3Refs').innerHTML = refs.map((r, i) =>
-    `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
+    `<div class="ref" data-i="${i}" draggable="true" title="${r.name} — drag to reorder; the number is what the prompt calls it"><span class="tile"><img src="/api/image/file?${qs({ path: r.path })}" alt="" draggable="false"><b class="band">PICTURE ${i + 1}</b></span><button class="x" title="Remove">✕</button></div>`).join('')
     + (refs.length >= w.refs ? '' :
-      `<div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
-  renderH3Vids();
+      `<div class="adds${refs.length ? '' : ' wide'}"><div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add picture' : 'a picture, or a frame off the stage'}</div></div>`);
+  renderH3Vids(); renderLayers();
+  paintClipKey(); paintVidKey();     // again, now the slots that decide the colours have been read
   // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
   // What mattered here was the warning, not the paragraph: a missing key still says so, loudly, and a
   // key that is there says nothing at all — the card above already names the workflow.
@@ -2174,7 +2382,7 @@ $('h3Wf').onchange = e => {
   if (h3Refs().length > w.refs) h3Refs().length = w.refs;
   if (h3Vids().length > vidRoom()) h3Vids().length = vidRoom();
   renderH3(); paintSums(); updateEst(); save();
-  // Context Smash is nothing without a mask and a brief that explains it, so it arrives with both
+  // Context Smasher is nothing without a mask and a brief that explains it, so it arrives with both
   // rather than with instructions. Anything already written is left alone.
   if (w.id === 'h3_context_smash') smashStart();
   setStatus(`${w.label} — ${w.model || 'Comfy Cloud'}`, 'done');
@@ -2229,7 +2437,7 @@ const H3_RECIPES = {
            + '<the palette: four flat colours, warm sepia, acid neon …>, moving with the shot.',
     },
   }],
-  smash: ['context smash', {
+  smash: ['context smasher', {
     wf: 'h3_context_smash',                  // the only brief that workflow offers, and only there
     role: 'look anchor — palette and texture only',
     video: {
@@ -2326,15 +2534,16 @@ function h3Template(kind) {
 }
 // The part nobody should have to learn: which tag is which video, and what a colour means. The brief
 // writes it from the slots as they stand, so the only thing left to type is what the shot is.
-// Picking Context Smash should leave you with something you could render, not homework: a mask in a
+// Picking Context Smasher should leave you with something you could render, not homework: a mask in a
 // slot and a brief that already names it. The one line left blank is the only one that is yours.
 async function smashStart() {
   if (!h3Vids().length) await makeMask('circle');
   if ((state.prompt || '').trim()) return;     // never over your own writing
   $('prompt').value = h3Template('smash');
   $('prompt').dispatchEvent(new Event('input'));
+  state.h3tpl = 'smash'; save();
   renderTplPick('smash');
-  setStatus('context smash — say what the shot is, the rest is filled in', 'done');
+  setStatus('context smasher — say what the shot is, the rest is filled in', 'done');
 }
 function h3ContextLines() {
   const vids = h3Vids().slice(0, vidRoom());
@@ -2363,6 +2572,7 @@ function renderTplPick(sel = '') {
 }
 $('promptTpl').onchange = e => {
   const kind = e.target.value;
+  state.h3tpl = kind; save();
   $('prompt').value = kind ? h3Template(kind) : h3Plain(state.prompt);   // the "random" link's path
   $('prompt').dispatchEvent(new Event('input'));
   $('prompt').focus();
@@ -2386,9 +2596,18 @@ $('h3Aspect').onclick = e => {
 // ---- Colour masks: a video whose only job is to say which other video goes where
 // Flat red / green / blue regions, drawn here and handed over as one of the contexts. The model has
 // no idea what red means until the brief says so, which is why the legend travels with the mask.
-var MASK_PATTERNS = [], MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];   // var: read from above
+var MASK_PATTERNS = [], MASK_READY = false;                                  // var: read from above
+var MASK_GREY = '#9a98a3';      // the mask's own frame: it hands colours out, it does not wear one
+var MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];
 var MASK_COLOUR_NAMES = ['red', 'green', 'blue'];        // engine/masks.py draws them in this order
 function maskBody(pattern) {
+  // A matte is a map of the frame it works on, so it is drawn at that frame's size and length: the
+  // render's in the cloud, and the clip's everywhere else, since there the plate stands in for the
+  // clip and has to be the same shape as it.
+  if (!isH3() && state.clip?.source) {
+    const s = state.clip.source;
+    return { pattern, width: s.width, height: s.height, frames: s.frames, fps: s.fps || 24 };
+  }
   const [width, height] = comfySize();
   return { pattern, width, height, frames: h3Frames(h3Seconds()), fps: wf().fps || 24 };
 }
@@ -2407,6 +2626,76 @@ async function makeMask(pattern, at) {
     setStatus('could not draw that mask: ' + e.message, 'bad');
   }
 }
+// ---- The colour-mask library: every pattern, moving, in the frame shape you are rendering
+// The row used to wear two colour swatches, which are the legend and not the mask: Circle, Wipe,
+// Split and Orbit all drew the same two stripes, so the only way to find out what a pattern did was
+// to render with it. This is the Shape library's grid pointed at a handful of generated loops.
+var ML = { at: -1 };                                     // the slot being picked for, -1 = a new one
+// The picture of a mask is 16:9 whatever you are rendering. It used to be drawn in the render's own
+// shape, on the grounds that a mask is a map of the frame -- but a tall frame made the library a row of
+// thin strips with no pattern readable in any of them. The mask that renders is still drawn at the
+// render's own size; this is only the picture of it, and one shape means one cached file per pattern.
+function maskPreviewSize() { return [256, 144]; }
+function toggleMaskLib(open = $('maskLib').hidden, at = -1) {
+  $('maskLib').hidden = !open;
+  if (!open) return;
+  ML.at = at;
+  toggleHelp(false); toggleSettings(false);
+  if (!$('runsPanel').hidden) toggleRunsPanel(false);
+  if (!$('shapeLib').hidden) toggleShapeLib(false);
+  $('enh').hidden = true;
+  paintMaskLib();
+}
+function paintMaskLib() {
+  if (!MASK_PATTERNS.length) {
+    // Before boot's /api/masks lands the list is empty for a moment, and that is not the same thing
+    // as a server too old to draw them. Telling you to restart over a race is worse than saying wait.
+    $('maskLib').innerHTML = `<div class="rs-head"><h3>Colour masks</h3><div class="rs-info">${
+      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the patterns\u2026'
+    }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
+    $('mlClose').onclick = () => toggleMaskLib(false);
+    return;
+  }
+  const [pw, ph] = maskPreviewSize(), cur = h3Vids()[ML.at]?.mask || '';
+  const card = p => `<div class="sl-card${p.id === cur ? ' on' : ''}" data-pattern="${p.id}" title="${p.note}">
+      <div class="thumb"><video src="/api/masks/preview?${qs({ pattern: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
+        <span class="tag">${p.colours} tones</span></div>
+      <b>${p.label}</b><span class="note">${p.note}</span></div>`;
+  $('maskLib').innerHTML = `<div class="rs-head">
+      <h3>Mattes</h3>
+      <div class="rs-info">Black and white, drawn at this render's size and length. A matte sits in the
+        stack above the layer it works on: white is where that layer shows, black is where what is
+        under it shows, and <b>Black / Mid / White</b> on the layer shape the greys in between.</div>
+      <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
+    </div><div class="sl-grid">${MASK_PATTERNS.map(card).join('')}</div>`;
+  playTiles($('maskLib'));
+  $('mlClose').onclick = () => toggleMaskLib(false);
+}
+$('maskLib').addEventListener('click', e => {
+  const card = e.target.closest('.sl-card'); if (!card) return;
+  makeMatte(card.dataset.pattern, ML.at);
+  toggleMaskLib(false);
+});
+// A drawn pattern as a layer that mattes the one below it. Same generator as before; it draws in
+// black and white now, because the luma is the matte and red and green are 0.27 and 0.63 of it.
+async function makeMatte(pattern, at) {
+  try {
+    const r = await api('/api/masks', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                        body: JSON.stringify(maskBody(pattern)) });
+    const row = { path: r.path, name: r.name, mask: r.pattern, matte: true };
+    if (at >= 0 && layers()[at]) Object.assign(layers()[at], row);
+    else layers().unshift(layerDefaults(row));
+    renderLayers(); paintSums(); save(); toSource();
+    setStatus(`${r.label} matte · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
+  } catch (e) {
+    setStatus('could not draw that matte: ' + e.message, 'bad');
+  }
+}
+addEventListener('keydown', e => {
+  if ($('maskLib').hidden || e.key !== 'Escape') return;
+  e.stopPropagation(); toggleMaskLib(false);
+}, true);
+
 // A mask is a map of the frame, so it has to be the frame's shape and length. Remade when they move,
 // which is cheap: flat colour through ffmpeg, a second or two, no GPU.
 function maskStale(v) {
@@ -2418,6 +2707,336 @@ async function freshenMasks() {
     if (v.mask && maskStale(v)) await makeMask(v.mask, i);
   }
 }
+// ---- Layers: the stack, flattened to one clip before anything is uploaded
+// A hosted video model takes a reference and a sentence, so the only lever a sentence gives you for
+// arranging two videos inside one shot is to describe the arrangement and hope. The colour masks
+// were that hope. This is the other way round: composite the sources here, where DWARP already has
+// ffmpeg, and hand over a picture that already *is* the arrangement. The model's job drops from
+// "obey this legend" to "resolve this into a coherent shot", which is what it is good at.
+// Topmost first, the clip is the base underneath them all.
+// Only the modes a canvas and ffmpeg both have, and have the same way. The preview is the point of
+// the panel, so a mode you cannot see is worse than a mode you do not have: ffmpeg's vividlight,
+// pinlight, phoenix and the rest have no canvas equivalent, and guessing at them in the preview
+// would make the panel lie.
+var BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'softlight', 'hardlight',
+                   'difference', 'exclusion', 'lighten', 'darken', 'addition'];
+var CANVAS_MODE = { normal: 'source-over', softlight: 'soft-light', hardlight: 'hard-light',
+                    addition: 'lighter' };
+var LAYER_MAX = 8;                  // they all flatten into one upload, so the model's slot count
+                                    // stops being the limit; this is only what a panel can show
+function layers() { return (state.layers ||= []); }
+// The clip's own dials. It is the bottom of the stack, so there is nothing under it for its opacity
+// to reveal -- turning it down fades it to black, which is what it is for.
+function baseLayer() { return (state.baseLayer ||= { opacity: 1, blur: 0 }); }
+function layerDefaults(L) {
+  const d = Object.assign({ mode: 'normal', opacity: 1, blur: 0, matte: false,
+                            black: 0, mid: 0.5, white: 1, invert: false }, L);
+  if (!BLEND_MODES.includes(d.mode)) d.mode = 'normal';   // a mode the preview cannot show is not one
+  // A drawn matte is already black and white, so it shows no levels -- and therefore carries none.
+  // A setting you cannot see is worse than one you cannot change.
+  if (d.matte && d.mask) { d.black = 0; d.mid = 0.5; d.white = 1; }
+  return d;
+}
+// The layer a matte belongs to: the one directly below it, which is the After Effects rule and the
+// reason a matte can sit in the stack and be looked at rather than hiding inside a slot.
+function matteFor(i) { const a = layers()[i - 1]; return a && a.matte ? a : null; }
+function drawnLayers() { return layers().filter(L => !L.matte); }
+function layersOn() { return !state.t2v; }
+// What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
+function layerJob() {
+  const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
+  if (!layersOn() || (!layers().length && plain)) return [];
+  const stack = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L));
+  if (state.clip) stack.push({ path: state.clip.path, mode: 'normal', matte: false,
+                               opacity: b.opacity, blur: b.blur });
+  const drawn = stack.filter(L => !L.matte);
+  return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
+}
+function layerTile(L) {
+  if (L.mask) {
+    const [pw, ph] = maskPreviewSize();
+    return `<video src="/api/masks/preview?${qs({ pattern: L.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
+  }
+  const src = L.image ? `/api/image/file?${qs({ path: L.path })}`
+                      : `/api/video/thumbnail?${qs({ path: L.path, frame: 0 })}`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>`
+       + `<img src="${src}" alt="" draggable="false">`;
+}
+function renderLayers() {
+  $('layersBox').hidden = !layersOn();
+  if (!layersOn()) return;
+  const rows = layers().slice(0, LAYER_MAX);
+  // One dial as three cells of the grid above, so the columns are the grid's and not the row's.
+  const dial = (i, k, label, v, title, unit = '') => `
+      <span class="lv" title="${title}">${label}</span>
+      <input type="range" min="0" max="100" value="${Math.round((v || 0) * 100)}" data-lv="${i}" data-k="${k}">
+      <span class="pct">${Math.round((v || 0) * 100)}${unit}</span>`;
+  const lv = (L, i, k, title) =>
+    dial(i, k, k, L[k] ?? (k === 'white' ? 1 : k === 'mid' ? 0.5 : 0), title);
+  $('layers').innerHTML = rows.map((raw, i) => {
+    const L = layerDefaults(raw);
+    return `<div class="lay${L.matte ? ' is-matte' : ''}" data-i="${i}" title="${L.name || ''}">
+      <span class="top">
+        <span class="grip" draggable="true" title="Drag to reorder">&#9776;</span>
+        <span class="tile">${layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
+        <span class="ctl">${L.matte ? `
+          <span class="nm">luma matte \u2192 the layer below</span>
+          <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Swap what is in for what is out">invert</button>
+          <button class="chip" data-unmatte="${i}" title="Put it back to an ordinary layer with a blend mode, in colour">rgb</button>`
+        : `<select data-mode="${i}" title="How this layer is laid over what is under it">${
+            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>
+          <button class="chip" data-matte="${i}" title="Use this layer as a luma matte for the layer below it: its brightness becomes that layer's alpha">matte</button>`}
+          <button class="x" title="Remove">✕</button>
+        </span>
+      </span>
+      <span class="dials">${L.matte ? `
+        ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
+        ${L.mask ? '' : `
+        ${lv(L, i, 'black', 'Below this, the layer is fully out')}
+        ${lv(L, i, 'mid', 'Bends everything in between')}
+        ${lv(L, i, 'white', 'Above this, the layer is fully in')}`}` : `
+        ${dial(i, 'opacity', 'opacity', L.opacity, 'How strongly this layer is laid over what is under it', '%')}
+        ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}`}
+      </span></div>`;
+  }).join('')
+    + (state.clip ? `<div class="lay base" title="${state.clip.name}">
+      <span class="top">
+        <span class="grip" style="opacity:.3" title="The clip is always the bottom of the stack">&#9776;</span>
+        <span class="tile"><img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="" draggable="false"><b class="band">SOURCE</b></span>
+        <span class="ctl"></span>
+      </span>
+      <span class="dials">
+        ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
+        ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
+      </span></div>` : '');
+  $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
+  playTiles($('layers'));
+  $('layerAdds').hidden = rows.length >= LAYER_MAX;
+  needPlate();
+  if (typeof applyView === 'function') applyView();
+  const drawn = drawnLayers().length + (state.clip ? 1 : 0);
+  $('layerNote').innerHTML = !rows.length
+    ? 'The clip on its own. Add a layer and the stack is composited here, at the render\'s size and length, before any of it is uploaded.'
+    : `${drawn} layer${drawn > 1 ? 's' : ''} flattened into one clip before upload — what the model gets is the arrangement itself, not a description of it.`;
+}
+// With a stack on, the thing being rendered is not the clip -- it is the clip with everything laid
+// over it. So Source shows that. The server composites it and names it after what is in it, so this
+// asks on every change and gets the same file back unless something actually moved.
+var PLATE = null, PLATE_WANT = '', plateTimer = null;
+function plateKey() {
+  const st = layerJob();
+  return st.length ? JSON.stringify(st) : '';
+}
+function needPlate(now) {
+  const want = plateKey();
+  if (want === PLATE_WANT) return;
+  PLATE_WANT = want;
+  clearTimeout(plateTimer);
+  if (!want) { PLATE = null; return repaintSource(); }
+  plateTimer = setTimeout(() => {
+    const asked = want;
+    setStatus('compositing the layers\u2026', 'live');
+    api('/api/layers/plate', { method: 'POST', headers: { 'content-type': 'application/json' },
+                               body: JSON.stringify({ layers: layerJob() }) })
+      .then(r => {
+        if (asked !== PLATE_WANT) return;            // something moved while it was compositing
+        PLATE = r; setStatus(`plate \u00b7 ${r.layers} layers \u00b7 ${r.width}\u00d7${r.height}`, 'done');
+        repaintSource();
+      })
+      .catch(e => { PLATE = null; setStatus('could not composite the layers: ' + e.message, 'bad'); });
+  }, now ? 0 : 400);
+}
+// Touching the stack while a run is on the stage shows you nothing: the thing you are adjusting is
+// the source. Cheap to call on every slider event -- it only does anything when it has to.
+function toSource() {
+  if (!state.clip || state.t2v) return;
+  if (clipMode() && view === 'src') return;
+  view = 'src'; showClip();
+}
+// What the Source tab is looking at: the plate when there is one, the clip when there is not.
+function sourcePath() { return PLATE ? PLATE.path : (state.clip ? state.clip.path : ''); }
+function repaintSource() {
+  if (typeof showClip === 'function' && clipMode()) showClip();
+  if (typeof paintPlate === 'function') paintPlate();
+}
+// ---- Live preview: one frame of the stack, composited in the browser
+// Frames are kept by path and frame number, so moving a slider never fetches anything -- it is the
+// same loop DepthDiff runs for its mask.
+var plateImgs = {}, plateLens = {}, plateWait = {}, plateLast = {};
+function plateLive() {
+  return !!$('cvPlate') && clipMode() && view === 'src' && layerJob().length > 1
+         && playing !== 'clip';
+}
+function layerFrame(L, n) {
+  const len = plateLens[L.path] || 0;
+  const at = len ? ((n % len) + len) % len : 0;      // short layers loop, as the flatten loops them
+  const url = `/api/video/thumbnail?${qs({ path: L.path, frame: at })}`;
+  const key = L.path + '|' + at;
+  if (plateImgs[key]) return (plateLast[L.path] = plateImgs[key]);
+  if (plateWait[key]) return plateLast[L.path] || null;
+  plateWait[key] = true;
+  if (!len && !plateLens[L.path]) {                  // how long it is, so the loop above is right
+    api(`/api/video/probe?${qs({ path: L.path })}`).then(p => {
+      plateLens[L.path] = Math.max(1, (p.source && p.source.frames) || 1); paintPlate();
+    }).catch(() => { plateLens[L.path] = 1; });
+  }
+  const img = new Image();
+  img.onload = () => { plateImgs[key] = img; plateWait[key] = false; paintPlate(); };
+  img.onerror = () => { plateWait[key] = false; };
+  img.src = url;
+  return plateLast[L.path] || null;                  // the last one that arrived, meanwhile
+}
+// The matte's brightness as alpha, through its levels. Same reckoning as the lut the engine builds.
+var BLUR_SPAN = 0.04;                      // matches engine/layers.py
+const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
+function matteAlpha(M, img, w, h) {
+  const t = document.createElement('canvas'); t.width = w; t.height = h;
+  const x = t.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h), p = d.data;
+  const b = M.black ?? 0, wt = M.white ?? 1;
+  const g = Math.log(0.5) / Math.log(Math.min(0.99, Math.max(0.01, M.mid ?? 0.5)));
+  for (let i = 0; i < p.length; i += 4) {
+    let v = (0.2126 * p[i] + 0.7152 * p[i + 1] + 0.0722 * p[i + 2]) / 255;
+    v = Math.abs(wt - b) < 1e-6 ? (v > b ? 1 : 0) : Math.min(1, Math.max(0, (v - b) / (wt - b)));
+    v = Math.pow(v, g);
+    if (M.invert) v = 1 - v;
+    p[i] = p[i + 1] = p[i + 2] = 255;
+    p[i + 3] = v * 255;
+  }
+  x.putImageData(d, 0, 0);
+  if (M.blur > 0) {                        // feather after the levels, as the engine does
+    const b = document.createElement('canvas'); b.width = w; b.height = h;
+    const bx = b.getContext('2d');
+    bx.filter = `blur(${blurPx(M.blur, w, h).toFixed(2)}px)`;
+    bx.drawImage(t, 0, 0);
+    return b;
+  }
+  return t;
+}
+var plateDrawn = '';
+function paintPlate() {
+  if (!plateLive()) return;
+  const stack = layerJob().map(L => layerDefaults(L));
+  // bottom-up, the same order the engine composites in; a matte belongs to the layer below it
+  const pairs = [];
+  stack.forEach((L, i) => {
+    if (L.matte) return;
+    const above = stack[i - 1];
+    pairs.push([L, above && above.matte ? above : null]);
+  });
+  pairs.reverse();
+  if (pairs.length) pairs[0][1] = null;              // nothing under the base for a matte to reveal
+  const base = layerFrame(pairs[0][0], clipFrame);
+  if (!base) return;
+  const cv = $('cvPlate'), w = base.naturalWidth, h = base.naturalHeight;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const c = cv.getContext('2d');
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+  c.fillStyle = '#000'; c.fillRect(0, 0, w, h);      // what the source fades into
+  const b0 = pairs[0][0];
+  c.filter = b0.blur > 0 ? `blur(${blurPx(b0.blur, w, h).toFixed(2)}px)` : 'none';
+  c.globalAlpha = b0.opacity;
+  c.drawImage(base, 0, 0, w, h);
+  c.filter = 'none'; c.globalAlpha = 1;
+  for (let n = 1; n < pairs.length; n++) {
+    const [L, M] = pairs[n], img = layerFrame(L, clipFrame);
+    if (!img) continue;
+    c.globalAlpha = L.opacity;
+    c.globalCompositeOperation = CANVAS_MODE[L.mode] || L.mode;
+    const mImg = M && layerFrame(M, clipFrame);
+    const soft = L.blur > 0 ? `blur(${blurPx(L.blur, w, h).toFixed(2)}px)` : 'none';
+    if (M && mImg) {
+      const t = document.createElement('canvas'); t.width = w; t.height = h;
+      const tx = t.getContext('2d');
+      tx.filter = soft; tx.drawImage(img, 0, 0, w, h); tx.filter = 'none';
+      tx.globalCompositeOperation = 'destination-in';
+      tx.drawImage(matteAlpha(M, mImg, w, h), 0, 0);
+      c.drawImage(t, 0, 0);
+    } else {
+      c.filter = soft; c.drawImage(img, 0, 0, w, h); c.filter = 'none';
+    }
+  }
+  c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  // Into the stage's own image, so everything that knows how to show a frame -- the fit, the save
+  // button, dragging it back to the panel -- keeps working without knowing a canvas was involved.
+  $('imgOut').src = cv.toDataURL('image/jpeg', 0.92);
+}
+function addLayer(res, opts) {
+  if (layers().length >= LAYER_MAX) return setStatus(`a stack takes ${LAYER_MAX} layers`, 'bad');
+  layers().unshift(layerDefaults(Object.assign({ path: res.path, name: res.name }, opts || {})));
+  renderLayers(); paintSums(); save(); toSource();
+  setStatus(`${res.name} added to the stack`);
+}
+$('layers').addEventListener('input', e => {
+  const t = e.target, which = t.dataset.op ?? t.dataset.mode ?? t.dataset.lv;
+  if (which == null) return;
+  toSource();
+  const L = which === 'base' ? baseLayer() : layers()[+which];
+  if (!L) return;
+  if (t.dataset.mode != null) L.mode = t.value;
+  if (t.dataset.op != null) { L.opacity = +t.value / 100; t.nextElementSibling.textContent = t.value + '%'; }
+  if (t.dataset.lv != null) {
+    L[t.dataset.k] = +t.value / 100;
+    t.nextElementSibling.textContent = t.value + (t.dataset.k === 'opacity' ? '%' : '');
+  }
+  paintPlate();                     // instant: the frames are already here
+  needPlate();                      // and the server's copy, for when it is rendered
+  paintSums(); save();
+});
+$('layers').onclick = e => {
+  const row = e.target.closest('.lay');
+  if (e.target.closest('[data-inv],[data-matte],[data-unmatte],button.x')) toSource();
+  const inv = e.target.closest('[data-inv]'), mk = e.target.closest('[data-matte]');
+  if (inv) { const L = layers()[+inv.dataset.inv]; L.invert = !L.invert; return (renderLayers(), save()); }
+  if (mk) {
+    const L = layerDefaults(layers()[+mk.dataset.matte]);
+    layers()[+mk.dataset.matte] = Object.assign(L, { matte: true });
+    return (renderLayers(), paintSums(), save());
+  }
+  const un = e.target.closest('[data-unmatte]');
+  if (un) {
+    const L = layerDefaults(layers()[+un.dataset.unmatte]);
+    layers()[+un.dataset.unmatte] = Object.assign(L, { matte: false, invert: false });
+    return (renderLayers(), paintSums(), save());
+  }
+  if (row && !row.classList.contains('base') && e.target.closest('button.x')) {
+    layers().splice(+row.dataset.i, 1); renderLayers(); paintSums(); save();
+  }
+};
+$('layerAdds').onclick = e => {
+  const add = e.target.closest('[data-add]');
+  if (!add) return;
+  if (add.dataset.add === 'matte') return toggleMaskLib(true, -1);
+  $('layerFile').click();
+};
+$('layerFile').onchange = e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  const image = /^image\//.test(file.type);
+  if (!image && !/^video\//.test(file.type)) return setStatus('a layer is a video or a picture', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(r => addLayer(r, { image })).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+};
+$('layers').addEventListener('dragover', e => e.preventDefault());
+$('layers').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run?.clip) return addLayer({ path: run.clip, name: run.name || 'clip' });
+  if (run) return (async () => {
+    if (run.count < 2) return setStatus('a single frame is a picture, not a layer', 'bad');
+    setStatus(`run ${run.run} → layer…`, 'live');
+    await ensureMp4(run.run);
+    addLayer(await api(`/api/runs/${run.run}/as_input`, { method: 'POST' }));
+  })().catch(err => setStatus('could not use that run: ' + err.message, 'bad'));
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return setStatus('drop a video, a picture, or a run off the strip', 'bad');
+  const image = /^image\//.test(file.type);
+  if (!image && !/^video\//.test(file.type)) return setStatus('a layer is a video or a picture', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(r => addLayer(r, { image })).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+});
+
 // ---- Video contexts: H3 reads up to three clips at once, not one
 // The panel's own clip is the first of them. The rest are whole videos handed over as context, which
 // is what "context smashing" needs: three sources in the model's head at the same time, each named in
@@ -2451,27 +3070,108 @@ function maskLegend(i) {
     .map((c, k) => tags[k] ? `${c} is <Video ${tags[k]}>` : `${c} has no video yet`);
   return named.join(', ');
 }
+// What the slot you are about to fill will stand for, so the empty box can wear it before there is
+// anything in it. Same reckoning as vidColour, for the index one past the end.
+function nextVidColour() {
+  const m = h3Vids().findIndex(v => v.mask);
+  if (m < 0) return '';
+  const n = h3Vids().length, mine = vidTag(n);
+  const tags = [...(state.clip && wf().video ? [1] : []),
+                ...h3Vids().map((_, k) => vidTag(k)), mine].filter(t => t !== vidTag(m));
+  const at = tags.indexOf(mine);
+  return at >= 0 && at < (h3Vids()[m].colours || 2) ? MASK_COLOURS[at] : '';
+}
+// Every tag the prompt can address, wearing the colour the mask hands it. Clicking one drops the
+// tag in at the cursor in its exact form -- `<Video 2>` with the brackets -- because that string has
+// to match for the model to know what is being talked about, and VIDEO 2 on a band is not it.
+function paintVidKey() {
+  // Only when there really are several contexts to tell apart. A layer stack flattens to one clip,
+  // so there is nothing to disambiguate and a lone VIDEO 1 chip is just furniture.
+  const row = $('vidKey'), on = isH3() && !!wf().video && h3Vids().length > 0;
+  row.hidden = !on;
+  if (!on) return;
+  const slots = [...(state.clip ? [{ tag: 1, c: clipVidColour(), what: state.clip.name }] : []),
+    ...h3Vids().slice(0, vidRoom()).map((v, i) =>
+      ({ tag: vidTag(i), c: v.mask ? '' : vidColour(i), what: v.mask ? 'the colour mask' : v.name }))];
+  row.innerHTML = slots.map(s =>
+    `<b data-tag="${s.tag}"${s.c ? ` style="--key:${s.c}"` : ''} title="${s.what} \u2014 click to drop &lt;Video ${s.tag}&gt; in at the cursor">VIDEO ${s.tag}</b>`).join('');
+}
+$('vidKey').onclick = e => {
+  const b = e.target.closest('[data-tag]');
+  if (!b) return;
+  const t = $('prompt'), tag = `<Video ${b.dataset.tag}>`, a = t.selectionStart, z = t.selectionEnd;
+  t.value = t.value.slice(0, a) + tag + t.value.slice(z);
+  t.focus(); t.selectionStart = t.selectionEnd = a + tag.length;
+  t.dispatchEvent(new Event('input'));
+};
 function renderH3Vids() {
   const room = vidRoom(), rows = h3Vids().slice(0, room);
   $('h3VidsRow').hidden = !(isH3() && room);
   if ($('h3VidsRow').hidden) return;
+  const [pw, ph] = maskPreviewSize();       // the same picture the library card shows, same cache
+  const nc = nextVidColour();
   // A mask wears a picker instead of a filename: the file is made here, so the pattern is the thing
-  // worth showing, and the swatches say which colour stands for which slot.
-  $('h3Vids').innerHTML = rows.map((v, i) => `<div class="ref" data-i="${i}">${
+  // worth showing. Every other slot wears a frame of the video in it, framed in the colour the mask
+  // hands it - and so does the empty box, before there is anything in it to frame.
+  $('h3Vids').innerHTML = rows.map((v, i) => {
+    const c = vidColour(i);
+    return `<div class="ref" data-i="${i}" draggable="true" title="Drag to reorder \u2014 the order decides which colour the mask hands each video">${
     v.mask
-      ? `<span class="tile" title="${maskLegend(i)}">${MASK_COLOURS.slice(0, v.colours || 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>`
-      : `<span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg></span>`
-  }<span class="tag"${vidColour(i) ? ` style="color:${vidColour(i)}"` : ''}>&lt;Video ${vidTag(i)}&gt;</span>${
+      ? `<span class="tile keyed" style="--key:${MASK_GREY}" title="${maskLegend(i)}"><video src="/api/masks/preview?${qs({ pattern: v.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video><b class="band">VIDEO ${vidTag(i)}</b></span>`
+      : `<span class="tile${c ? ' keyed' : ''}"${c ? ` style="--key:${c}"` : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg><img src="/api/video/thumbnail?${qs({ path: v.path, frame: 0 })}" alt="" draggable="false"><b class="band">VIDEO ${vidTag(i)}</b></span>`
+  }${
     v.mask
-      ? `<select data-i="${i}" title="Which colour mask. It is drawn here, at this render's size and length.">${
-            MASK_PATTERNS.map(p => `<option value="${p.id}"${p.id === v.mask ? ' selected' : ''}>${p.label}</option>`).join('')}</select>`
+      ? `<button class="pick" data-pick="${i}" title="${(MASK_PATTERNS.find(p => p.id === v.mask) || {}).label || v.mask} — click to see every pattern move and swap it. Drawn here, at this render's size and length.">colour mask</button>`
       : `<span class="nm" title="${v.path}">${v.name}</span>`
-  }<button title="Remove">\u2715</button></div>`).join('')
-    + (rows.length >= room ? '' : `<div class="adds">
-      <div class="clip-empty${rows.length ? ' slim' : ''}" data-add="video" title="Another whole video in H3's context \u2014 click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
+  }<button class="x" title="Remove">\u2715</button></div>`;
+  }).join('')
+    + (rows.length >= room ? '' : `<div class="adds${rows.length ? '' : ' wide'}">
+      <div class="clip-empty${rows.length ? ' slim' : ''}${nc ? ' keyed' : ''}"${nc ? ` style="--key:${nc}"` : ''} data-add="video" title="${
+        nc ? `The next video in H3's context \u2014 the mask sends ${MASK_COLOUR_NAMES[MASK_COLOURS.indexOf(nc)]} to whatever lands here. Click, drop a file, or drag a run in off the strip`
+           : `Another whole video in H3's context \u2014 click, drop a file, or drag a run in off the strip`}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
         MASK_PATTERNS.length ? `<div class="clip-empty${rows.length ? ' slim' : ''}" data-add="mask" title="A flat colour mask, drawn here, that says which video goes where"><span class="mini">${
           MASK_COLOURS.slice(0, 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>colour mask</div>` : ''}
     </div>`);
+  // a frame ffmpeg could not read leaves the icon underneath showing, not a broken picture
+  $('h3Vids').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
+  playTiles($('h3Vids'));
+  paintClipKey();
+}
+// `autoplay` on a video written in through innerHTML is not honoured reliably on a cold load, and a
+// mask tile that sits still is the thing these replaced. Ask, and ignore a refusal: muted loops are
+// allowed, but a browser that says no should not break the panel.
+function playTiles(root) {
+  root.querySelectorAll('video').forEach(v => {
+    if (v.error || v.networkState === 3) v.load();      // lost its source: ask once more
+    v.onerror = () => {
+      if (v.dataset.retried) return;                    // once, never a loop
+      v.dataset.retried = '1'; v.load(); const q = v.play(); if (q) q.catch(() => {});
+    };
+    const p = v.play(); if (p) p.catch(() => {});
+  });
+}
+// The clip is <Video 1> when the workflow reads video, so a mask speaks for it like any other slot.
+// Worked out the same way as vidColour, for the tag the clip card wears.
+function clipVidColour() {
+  if (!isH3() || !state.clip || !wf().video) return '';
+  const m = h3Vids().findIndex(v => v.mask);
+  if (m < 0) return '';
+  const tags = [1, ...h3Vids().map((_, k) => vidTag(k))].filter(t => t !== vidTag(m));
+  const at = tags.indexOf(1);
+  return at >= 0 && at < (h3Vids()[m].colours || 2) ? MASK_COLOURS[at] : '';
+}
+// Poked into the clip card rather than rebuilt with it: renderClip refetches eight filmstrip frames,
+// and this changes every time a mask or a video context does.
+function paintClipKey() {
+  const box = $('clipBox'), thumb = box.querySelector('.clip-thumb'), meta = box.querySelector('.clip-meta');
+  if (!thumb || !meta) return;
+  const on = isH3() && !!wf().video, c = on ? clipVidColour() : '';
+  thumb.classList.toggle('keyed', !!c);
+  if (c) thumb.style.setProperty('--key', c); else thumb.style.removeProperty('--key');
+  let band = thumb.querySelector('.band');
+  if (!on) return void (band && band.remove());
+  if (!band) { band = document.createElement('b'); band.className = 'band'; thumb.appendChild(band); }
+  band.textContent = 'VIDEO 1';
 }
 function addH3Vid(res) {
   if (h3Vids().length >= vidRoom()) return setStatus(`${wf().label} takes ${wf().video_max} videos in all`, 'bad');
@@ -2479,18 +3179,15 @@ function addH3Vid(res) {
   renderH3(); paintSums(); save();
   setStatus(`<Video ${vidTag(h3Vids().length - 1)}> added`);
 }
-$('h3Vids').onchange = e => {
-  const sel = e.target.closest('select');
-  if (sel) makeMask(sel.value, +sel.dataset.i);
-};
 $('h3Vids').onclick = e => {
+  const pick = e.target.closest('[data-pick]');          // the pattern chip: the library, on that slot
+  if (pick) return toggleMaskLib(true, +pick.dataset.pick);
   const row = e.target.closest('.ref');
   if (row && e.target.closest('button')) {
     h3Vids().splice(+row.dataset.i, 1); renderH3(); paintSums(); save(); return;
   }
   const add = e.target.closest('[data-add]');
-  if (add) (add.dataset.add === 'mask' ? makeMask(MASK_PATTERNS[0]?.id || 'circle')
-                                       : $('h3VidFile').click());
+  if (add) (add.dataset.add === 'mask' ? toggleMaskLib(true, -1) : $('h3VidFile').click());
 };
 $('h3VidFile').onchange = e => {
   const file = e.target.files[0]; e.target.value = '';
@@ -2499,6 +3196,54 @@ $('h3VidFile').onchange = e => {
   api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
     .then(addH3Vid).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
 };
+// ---- Order is an instruction here, so it has to be draggable
+// The mask hands its colours out in the order the slots are stacked: the first colour to the first
+// video that is not the mask, and so on down. Moving a card past another therefore re-aims the mask,
+// and until now the only way to do it was to remove both and add them back the other way round.
+// Capture phase, so this runs before the file/run drop handlers on the same element and can call
+// stopImmediatePropagation on a drag that started inside the list. A file drag never sets DRAG_AT,
+// so it falls straight through to them.
+// DRAG_FROM as well as the index: the two lists share these handlers, and a picture dragged over
+// the video list must not reorder the videos.
+var DRAG_AT = -1, DRAG_FROM = null;
+function listDrag(host, list, sel = '.ref', after = renderH3) {
+  host.addEventListener('dragstart', e => {
+    const row = e.target.closest(sel);
+    if (!row || row.dataset.i == null) return;   // the base row is not one of the movable ones
+    DRAG_AT = +row.dataset.i; DRAG_FROM = host;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/dwarp-slot', String(DRAG_AT));
+    row.classList.add('drag');
+  });
+  const clear = () => host.querySelectorAll(sel).forEach(r => r.classList.remove('drag', 'over'));
+  host.addEventListener('dragend', () => { DRAG_AT = -1; DRAG_FROM = null; clear(); });
+  host.addEventListener('dragover', e => {
+    if (DRAG_FROM !== host) return;          // a file, a run, or the other list: not ours
+    e.preventDefault(); e.stopImmediatePropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.target.closest(sel);
+    host.querySelectorAll(sel).forEach(r =>
+      r.classList.toggle('over', r === row && r.dataset.i != null && +r.dataset.i !== DRAG_AT));
+  }, true);
+  host.addEventListener('drop', e => {
+    if (DRAG_FROM !== host) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const row = e.target.closest(sel), l = list(), from = DRAG_AT;
+    const to = row && row.dataset.i != null ? +row.dataset.i : l.length - 1;
+    DRAG_AT = -1; DRAG_FROM = null; clear();
+    if (to === from || from < 0 || from >= l.length) return;
+    l.splice(to, 0, l.splice(from, 1)[0]);
+    after(); paintSums(); save();
+    // The tags are positions, so moving one renames the others, and a brief already written names
+    // them by the old numbers. Say what the colours stand for now rather than let it go quiet.
+    const m = host === $('h3Vids') ? h3Vids().findIndex(v => v.mask) : -1;
+    setStatus(m >= 0 ? `reordered \u2014 ${maskLegend(m).replace(/<\/?b>/g, '')}` : 'reordered', 'done');
+  }, true);
+}
+listDrag($('h3Vids'), h3Vids);
+listDrag($('h3Refs'), h3Refs);
+// The stack: the order is the composite, so dragging one past another is the edit.
+listDrag($('layers'), layers, '.lay', () => { renderLayers(); toSource(); });
 $('h3Vids').addEventListener('dragover', e => e.preventDefault());
 $('h3Vids').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
@@ -2825,6 +3570,12 @@ function paintSums() {
   const lo = LORAS.find(l => l.path === loraOn());
   set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
+  const lay = drawnLayers().length;
+  set('layers', !layersOn() || !layers().length ? ''
+    : [`${lay + (state.clip ? 1 : 0)} layers`,
+       layers().some(L => L.matte) && 'matted',
+       drawnLayers().filter(L => L.mode && L.mode !== 'normal').map(L => L.mode)[0]]
+      .filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
     (+state.style).toFixed(2) + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
@@ -2885,6 +3636,8 @@ function renderClip() {
     </div>
   </div>`;
   $('clipSizeRow').hidden = $('clipFpsRow').hidden = isH3();   // H3 picks its own size and runs at 24 fps
+  paintClipKey();
+  if (typeof renderLayers === 'function') renderLayers();   // the clip is the base of the stack
   $('swap').onclick = () => $('fileInput').click();
   bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
@@ -3299,12 +4052,13 @@ function ckptOptions(mode) {
     `<option value="${c.path}" title="${c.path}">${bolt(c.path)}${label(c.path)}${c.verified ? '' : ' (unverified .ckpt)'}</option>`).join('');
 }
 function renderMode() {
+  if (!isH3()) needCkpts();
   $('mode').style.gridTemplateColumns = `repeat(${Object.keys(MODES).length}, 1fr)`;
   $('mode').innerHTML = Object.entries(MODES).map(([k, m]) =>
     `<button data-m="${k}" class="${k === state.mode ? 'on' : ''}"${m.cloud ? ` title="Renders on ${m.cloud}, not on your card — it costs credits"` : ''}>${m.label}${m.cloud ? ' ☁' : ''}</button>`).join('');
   $('model').innerHTML = ckptOptions(state.mode);
   $('model').value = state.ckpt[state.mode] || '';
-  if ($('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
+  if (CKPT_READY && $('model').value !== (state.ckpt[state.mode] || '')) { state.ckpt[state.mode] = ''; $('model').value = ''; }
   $('size').innerHTML = modeCfg().sizes.map(s => `<button data-s="${s}">${s}</button>`).join('');
   // a fresh install: the checkpoint in use isn't on disk yet, but DWARP knows where to get it
   const ck = checkpointPath(), ckName = ck.split('/').pop(), ckOn = CHECKPOINTS.some(c => c.path === ck);
@@ -3340,12 +4094,14 @@ $('model').onchange = e => { state.ckpt[state.mode] = e.target.value; applyModel
 const embedBase = n => n.replace(/-\d+$/, '');
 const embedStep = n => (n.match(/-(\d+)$/) || [])[1] || '';
 function renderEmbed() {
+  if (!isH3()) needEmbeds();
   const sd15 = state.mode !== 'sdxl', list = EMBEDS.filter(e => e.family === state.mode);   // sd15 / sd2 embeddings
   const bases = [...new Set(list.map(e => embedBase(e.name)))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   const cur = embedOn(), base = cur ? embedBase(cur) : '';
   $('embed').disabled = !sd15 || !bases.length;
   $('embed').innerHTML = !sd15 ? '<option value="">SD 1.5 / 2.1 only for now</option>'
-    : (bases.length ? '<option value="">none</option>' : '<option value="">none — add some to models/embeddings</option>') +
+    : (bases.length ? '<option value="">none</option>'
+        : `<option value="">${EMBEDS_READY ? 'none — add some to models/embeddings' : 'loading…'}</option>`) +
       bases.map(b => `<option value="${b}">${b}</option>`).join('');
   $('embed').value = sd15 ? base : '';
   const vers = list.filter(e => embedBase(e.name) === base)
@@ -3394,7 +4150,8 @@ function applyAdProfile(denoise = false) {        // the profile's steps / CFG (
 function renderMotion() {
   const on = adOn();
   $('adBox').hidden = !on;
-  if (!on) return;
+  if (!on) return;                         // Motion off: its modules are never scanned
+  needMotion();
   const tab = AD[adI2V() ? 'i2v' : 'v2v'];
   [...$('adSpeed').children].forEach(b => {
     const prof = tab[b.dataset.s], have = !!adModule(prof);
@@ -3625,7 +4382,7 @@ function setupTransport() {
 }
 function clipFrameUrl(kind) {
   const [w, h] = renderSize();
-  return `/api/diff/base?${qs({ path: state.clip.path, frame: clipFrame, width: w, height: h, kind, ...depthQ(kind) })}`;
+  return `/api/diff/base?${qs({ path: sourcePath(), frame: clipFrame, width: w, height: h, kind, ...depthQ(kind) })}`;
 }
 function showClip() {
   if (!state.clip || state.t2v) return clearStage();
@@ -3797,6 +4554,9 @@ async function buildConfig(kind) {
   }));
   const job = {
     video: t2v ? '' : state.clip.path,
+    // The stack, topmost first, the clip its base. The engine flattens it to a clip-shaped mp4 and
+    // paints that instead, so trim, range and fps all behave exactly as they did.
+    layers: layerJob(),
     checkpoint: checkpointPath(),
     family: state.mode,
     prompt: withLook(state.prompt),
@@ -4085,7 +4845,7 @@ const HELP = {
        drift in roughly the right direction, high drags the picture along the lines and will tear it if the paths
        ask for more than the content can give. A long path at low strength and a short one at high strength look
        nothing alike — the first moves a little and stays whole, the second fights.</p>
-    <h3>H3 · Context Smash — several videos at once, and a mask that aims them</h3>
+    <h3>H3 · Context Smasher — several videos at once, and a mask that aims them</h3>
     <p>H3 reads up to <b>three whole videos</b> and nine pictures as context in one pass, and the prompt
        addresses them by tag: <b>&lt;Video 1&gt;</b>, <b>&lt;Video 2&gt;</b>, <b>&lt;Picture 3&gt;</b>. Give it
        three unrelated clips and the result borrows from all three at once — a face from one, a motion from
@@ -4096,12 +4856,20 @@ const HELP = {
        line into the prompt and the colours become instructions. Because the mask is a <i>video</i>, the aim
        can move: a circle opening out, a wipe crossing, two discs wandering. Where the colour is at a given
        second decides which context lands there at that second.</p>
-    <p>DWARP draws the masks, so picking <b>H3 · Context Smash</b> puts one in a slot straight away —
+    <p>DWARP draws the masks, so picking <b>H3 · Context Smasher</b> puts one in a slot straight away —
        a green circle growing on red. The dropdown on that row swaps the pattern; <b>Circle</b>, <b>Wipe</b>,
        <b>Split</b> and <b>Orbit</b> speak two videos, <b>Thirds</b> and <b>Blobs</b> speak three. Each one is
        redrawn at the render's own size and length, since a mask is a map of the frame and has to be the
        frame's shape. Flat colour and hard edges on purpose: a gradient reads as content, not as an
        instruction.</p>
+    <p><b>The slots wear their colours.</b> Each video context is a card with a frame of the video in
+       it, outlined in the colour the mask sends its way — the clip card too, since the clip is
+       &lt;Video 1&gt;. The empty slot wears the colour it is about to take, so you can see where a
+       video will land before you drop it in. Which colour goes to which slot is decided by
+       <b>the order the cards are in</b>: the first colour to the first video that is not the mask,
+       and so on down. <b>Drag a card past another</b> to change that — the tags renumber, and the
+       status line says what the colours mean afterwards, because a brief you have already written
+       still names the old numbers.</p>
     <p>The other slots take whatever you like — a file, or a run dragged off the strip, which is how one of
        your own renders becomes a context. With a clip loaded in the card above, that clip is
        &lt;Video 1&gt; and the extra slots number themselves 2 and 3; with no clip they start at 1. The tags
@@ -4415,7 +5183,7 @@ function paintHelp() {
 }
 function toggleHelp(open = $('helpPanel').hidden) {
   $('helpPanel').hidden = !open; $('helpBtn').classList.toggle('on', open);
-  if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; paintHelp(); }
+  if (open) { toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('maskLib').hidden = true; $('enh').hidden = true; paintHelp(); }
 }
 
 // ---------------------------------------------------------------- get-started tour
@@ -4475,6 +5243,7 @@ function startTour() {
   toggleHelp(false); toggleSettings(false);
   if (!$('runsPanel').hidden) toggleRunsPanel(false);
   if (!$('shapeLib').hidden) toggleShapeLib(false);
+  $('maskLib').hidden = true;
   $('enh').hidden = true; document.activeElement?.blur();
   document.querySelectorAll('.card.collapsed').forEach(c => c.classList.remove('collapsed'));   // open, so the stop shows its controls
   const stops = TOUR.filter(st => tourEls(st).length);
@@ -4538,7 +5307,7 @@ addEventListener('keydown', e => {   // while the tour is up, keys drive it and 
 // Machine settings live in config.json (the server re-reads it every request): the models folder, and
 // the embeddings / LoRAs folders (blank = DWARP's own). Saving reloads the page so every list refreshes.
 async function paintSettings() {
-  const c = await api('/api/config').catch(() => null);
+  const c = await api('/api/config?count=1').catch(() => null);   // only Settings needs the total
   if (!c) { $('setPanel').innerHTML = '<p>Settings need the server — restart run.bat.</p>'; return; }
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const fold = w => `<button class="fold" data-open="${w}" title="Open this folder"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></button>`;
@@ -4617,7 +5386,7 @@ async function paintSettings() {
 }
 function toggleSettings(open = $('setPanel').hidden) {
   $('setPanel').hidden = !open; $('setBtn').classList.toggle('on', open);
-  if (open) { toggleHelp(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; paintSettings(); }
+  if (open) { toggleHelp(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('maskLib').hidden = true; $('enh').hidden = true; paintSettings(); }
 }
 $('setBtn').onclick = () => toggleSettings();
 
@@ -4634,7 +5403,7 @@ const rsShown = () => RS.kind === 'all' ? RS.list : RS.kind === 'removed' ? RS.l
   : RS.list.filter(r => rsKind(r) === RS.kind);
 function toggleRunsPanel(open = $('runsPanel').hidden) {
   $('runsPanel').hidden = !open; $('manageRuns').classList.toggle('on', open);
-  if (open) { toggleHelp(false); toggleSettings(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('enh').hidden = true; loadRunsPanel(); }
+  if (open) { toggleHelp(false); toggleSettings(false); if (!$('shapeLib').hidden) toggleShapeLib(false); $('maskLib').hidden = true; $('enh').hidden = true; loadRunsPanel(); }
   else { clearTimeout(RS.timer); RS.ask = false; }
 }
 $('manageRuns').onclick = () => toggleRunsPanel();
@@ -5005,6 +5774,7 @@ function ensureFrameEl(hasInit) {
   if ($('frame')) return;
   $('stage').innerHTML = `<div class="frame" id="frame">
     <img class="out" id="imgOut" alt="">
+    <canvas id="cvPlate" style="display:none"></canvas>
     <img class="src" id="imgSrc" alt="">
     <img class="ctl" id="imgCtl" alt="">
     <canvas class="ctl" id="cvMask"></canvas>
@@ -5068,6 +5838,7 @@ function applyView() {
     return shapeLook();
   }
   // clip view: #imgOut itself carries the source frame, so the overlay source image is never needed
+  const plate = plateLive();
   src.style.display = view === 'out' || ctl || mask || clip ? 'none' : '';
   $('imgCtl').style.display = ctl ? '' : 'none';
   $('cvMask').style.display = mask ? '' : 'none';
@@ -5075,6 +5846,7 @@ function applyView() {
   div.style.left = split * 100 + '%';
   src.style.clipPath = view === 'src' ? 'none' : `inset(0 ${100 - split * 100}% 0 0)`;
   if (mask) drawMask();
+  if (plate) paintPlate();
   shapeLook();
 }
 // Tabs between Source and Output follow the panel's ControlNet / DepthDiff tab: a run's saved
@@ -5127,6 +5899,9 @@ function paintFrame() {
   if (clipMode()) {
     $('imgOut').src = clipFrameUrl('luma');
     scrubReadout(clipSec(clipFrame), clipFrame, state.clip.source.frames);
+    // With a stack on, the composite done here beats the one the server has: its plate is a few
+    // hundred milliseconds behind whatever slider was last moved, and this one never is.
+    if (typeof paintPlate === 'function') paintPlate();
   } else {
     const n = frames[frameIdx];
     $('imgOut').src = img(viewRun, 'output', n);
@@ -5154,10 +5929,11 @@ $('scrubRange').oninput = e => {
   frameIdx = +e.target.value; stopPlay(); paintFrame();
 };
 function stopPlay() {
-  if (playing === 'clip') stopClip();
-  else if (playing === 'out') stopOut();
-  else clearInterval(playing);
-  playing = null; $('playBtn').textContent = '▶';
+  const was = playing;
+  playing = null; $('playBtn').textContent = '▶';    // cleared first: what gets painted on the way
+  if (was === 'clip') stopClip();                        // out depends on nothing still playing
+  else if (was === 'out') stopOut();
+  else clearInterval(was);
 }
 function makeStageVideo() {                // one <video> over the still, shared by the clip and the run
   $('divider').insertAdjacentHTML('beforebegin', '<video id="vidSrc" playsinline loop></video>');   // under the Save button
@@ -5203,7 +5979,7 @@ function playClip() {
   if (!v) v = makeStageVideo();
   v.muted = true;
   const fps = state.clip.source.fps || 24, n = state.clip.source.frames;
-  const url = `/api/video/file?${qs({ path: state.clip.path })}`;
+  const url = `/api/video/file?${qs({ path: sourcePath() })}`;
   if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
   v.hidden = false;
   const im = $('imgOut');                  // exactly over the still (the box can be wider than the image)
@@ -5225,7 +6001,9 @@ function stopClip() {
     clipFrame = Math.min(state.clip.source.frames - 1, Math.floor(v.currentTime * (state.clip.source.fps || 24)));
     $('scrubRange').value = clipFrame;
   }
-  if (clipMode()) paintFrame();
+  // Pausing hands back to the still, and with a stack on, the still is the composite -- not the
+  // frame-exact grab paintFrame just asked the server for.
+  if (clipMode()) { paintFrame(); if (typeof paintPlate === 'function') paintPlate(); }
 }
 function togglePlay() {
   if (playing) return stopPlay();
@@ -5348,7 +6126,7 @@ $('loadRun').onclick = async () => {
 var SL = { tab: 'presets', data: null, timer: 0, armed: null };
 function toggleShapeLib(open = $('shapeLib').hidden) {
   $('shapeLib').hidden = !open; $('shapeLibBtn').classList.toggle('on', open);
-  if (open) { toggleHelp(false); toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('enh').hidden = true; loadShapeLib(true); }
+  if (open) { toggleHelp(false); toggleSettings(false); if (!$('runsPanel').hidden) toggleRunsPanel(false); $('maskLib').hidden = true; $('enh').hidden = true; loadShapeLib(true); }
   else { clearTimeout(SL.timer); SL.armed = null; }
 }
 $('shapeLibBtn').onclick = () => toggleShapeLib();
@@ -5810,12 +6588,13 @@ function paintRefine() {
   $('refFam').innerHTML = `<button class="on">${refineCfg().label}</button>`;
   $('refModel').innerHTML = ckptOptions(m);
   $('refModel').value = r.ckpt[m] || '';
-  if ($('refModel').value !== (r.ckpt[m] || '')) { r.ckpt[m] = ''; $('refModel').value = ''; }   // the file went away
+  if (CKPT_READY && $('refModel').value !== (r.ckpt[m] || '')) { r.ckpt[m] = ''; $('refModel').value = ''; }   // the file went away
   segPick($('refScale'), r.scale);
   $('refDenoise').value = r.denoise; $('refDenoiseV').textContent = (+r.denoise).toFixed(2);
   $('refHold').value = r.hold; $('refHoldV').textContent = (+r.hold).toFixed(2);
   $('refHoldBox').hidden = !rf.controlnet?.have;
   $('refGo').disabled = true;
+  if (!CKPT_READY) { needCkpts(); $('refSizeHint').textContent = 'looking for checkpoints…'; return; }
   if (!CHECKPOINTS.some(c => c.family === m)) {
     $('refSizeHint').textContent = `Refine needs an ${refineCfg().label} checkpoint — there is none on disk`; return;
   }
@@ -5902,8 +6681,8 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
 (async function boot() {
   load();
   try {
-    [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES, fetchable: FETCHABLE = {} }, { checkpoints: CHECKPOINTS }] = await Promise.all([
-      api('/api/info'), api('/presets.json'), api('/api/checkpoints')]);
+    [INFO, { presets: PRESETS, checkpoint_dir: CKPT_DIR, modes: MODES, fetchable: FETCHABLE = {} }] = await Promise.all([
+      api('/api/info'), api('/presets.json')]);
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
@@ -5936,13 +6715,23 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.sampler ??= 'dpmpp_2m'; state.schedule ??= 'karras';                    // older saves: 0 was the only behaviour, 0.15 stops the build-up
   if (!MODES[state.mode]) state.mode = 'sd15';
   } catch (e) { setStatus('backend not reachable: ' + e.message, 'bad'); return; }
-  EMBEDS = (await api('/api/embeddings').catch(() => ({ embeddings: [] }))).embeddings;
-  LORAS = (await api('/api/loras').catch(() => ({ loras: [] }))).loras;
-  MOTION = await api('/api/motion').catch(() => ({ modules: [], loras: [], lcm_lora: null }));
-  POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null }));
-  CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
-  FIELD_KINDS = (await api('/api/fields').catch(() => ({ kinds: [] }))).kinds || [];   // drawn motion
-  MASK_PATTERNS = (await api('/api/masks').catch(() => ({ patterns: [] }))).patterns || [];
+  // What is left is what the page needs before it can paint anything at all, and all of it answers
+  // in milliseconds. The model folders — loras, embeddings, motion modules, checkpoints — are not
+  // here any more: they are fetched by the controls that show them (see `need`), which in Comfy
+  // mode is never.
+  const [postOpts, cloudWf, fieldKinds, maskPats] = await Promise.all([
+    api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null })),
+    api('/api/comfy/workflows').catch(() => ({ workflows: [] })),
+    api('/api/fields').catch(() => ({ kinds: [] })),
+    api('/api/masks').catch(() => ({ patterns: [] })),
+  ]);
+  POST_OPTS = postOpts;
+  // "hidden" parks a workflow without deleting it: out of the picker, still in the manifest
+  // and still renderable by id, so a direct submit can keep testing it.
+  CLOUD_WF = (cloudWf.workflows || []).filter(w => !w.hidden);
+  FIELD_KINDS = fieldKinds.kinds || [];            // drawn motion
+  MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
+  if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned
   if (POST_OPTS?.active?.kind === 'tracks') { trackJob = POST_OPTS.active; watchTracks(); }
@@ -5950,11 +6739,6 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   bindKeys();                               // the lane is static markup: bound once
   api('/api/config').then(c => { CFG_HAS_KEY = !!c.comfy_key; renderH3(); }).catch(() => {});
   renderControls(); paintLive();
-  // grey out presets whose checkpoint isn't on disk
-  await Promise.all(PRESETS.map(async p => {
-    const r = await api(`/api/fs/exists?${qs({ path: `${CKPT_DIR}/${p.checkpoint}` })}`).catch(() => ({ exists: false }));
-    if (!r.exists) missingPresets.add(p.id);
-  }));
   renderPresets();
   if (state.clip) {
     try { await setClipPath(state.clip.path, state.clip.name).then(() => {}); }
