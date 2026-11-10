@@ -841,6 +841,30 @@ def build_app() -> FastAPI:
         except (TypeError, ValueError) as exc:
             raise HTTPException(422, detail=f"could not draw that field: {exc}") from None
 
+    @app.get("/api/masks")
+    def mask_patterns():
+        """The colour masks this install can draw. The panel builds its picker from this list, so a
+        new pattern is an entry in engine/masks.py and no page edit."""
+        from engine import masks
+        return {"patterns": masks.PATTERNS, "colours": masks.NAMES}
+
+    @app.post("/api/masks")
+    async def make_mask(request: Request):
+        """One colour mask, drawn at the size and length of the render it is for. Flat colour and
+        PIL, so it answers in the request like a field does rather than going on the queue."""
+        from engine import masks
+        body = await request.json()
+        try:
+            return masks.make(
+                INPUTS / "masks", pattern=str(body.get("pattern") or "circle"),
+                width=max(16, min(4096, int(body.get("width", 848)))),
+                height=max(16, min(4096, int(body.get("height", 480)))),
+                frames=max(2, min(1024, int(body.get("frames", 124)))),
+                fps=max(1.0, min(120.0, float(body.get("fps", 24)))),
+                amount=float(body.get("amount", 1.0)))
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not draw that mask: {exc}") from None
+
     @app.get("/api/tracks/file")
     def tracks_file(path: str):
         """One tracks JSON, to show or to copy. Only out of the tracks folder: this reads a file by

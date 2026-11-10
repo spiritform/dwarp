@@ -146,6 +146,7 @@ def caps(w: dict) -> dict:
             "megapixels": float((w.get("size") or {}).get("megapixels", 1.03)),
             "multiple": int((w.get("size") or {}).get("multiple", 32)),
             "video": bool(w.get("video")), "audio_in": bool((w.get("video") or {}).get("audio")),
+            "video_max": int((w.get("video") or {}).get("max", 1)),
             "sound": bool(w.get("sound")), "seconds": length.get("seconds") or [],
             "fps": float(length.get("fps", 24)), "snap": int(length.get("snap", 1)),
             "min_frames": int(length.get("min_frames", 1)),
@@ -350,13 +351,15 @@ def fit_size(width: int, height: int, size: dict | None = None) -> tuple[int, in
 
 
 def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height: int,
-          frames: int, seed: int, video: str = "", video_audio: bool = False,
+          frames: int, seed: int, videos: list | None = None,
           tracks: str = "", strength: float | None = None, fast: bool = False) -> dict:
     """The shipped graph with this job's values on it, placed where the manifest says they go.
 
     The reference pictures replace whatever the graph carries: one LoadImage per picture, wired into the
-    auto-growing slots (ref_image_0, ref_image_1 ...). A source clip joins them as <Video 1>, through
-    LoadVideo -> GetVideoComponents, which gives the frames and — if the slot exists — the sound."""
+    auto-growing slots (ref_image_0, ref_image_1 ...). Clips join them as <Video 1..n> the same way,
+    through LoadVideo -> GetVideoComponents, which gives the frames and — if the slot exists — the
+    sound. `videos` is [(stored name, carry its sound)] in the order the prompt will name them."""
+    videos = list(videos or [])
     g = {k: {**v, "inputs": dict(v["inputs"])} for k, v in graph.items()}
     at = lambda spec: g[str(spec[0])]["inputs"]                                  # noqa: E731
     if w.get("prompt"):
@@ -414,13 +417,24 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
         at(tspec["coords"])[tspec["coords"][1]] = tracks or "[]"
 
     vspec = w.get("video") or {}
-    if video and vspec:
-        g["910"] = {"class_type": "LoadVideo", "inputs": {"file": video}, "_meta": {"title": "Video 1"}}
-        g["911"] = {"class_type": "GetVideoComponents", "inputs": {"video": ["910", 0]},
-                    "_meta": {"title": "Video 1 frames"}}
-        main[vspec["slot"]] = ["911", 0]                      # IMAGE: the frames
-        if video_audio and vspec.get("audio"):
-            main[vspec["audio"]] = ["911", 1]                 # AUDIO: what it sounded like
+    if videos and vspec:
+        # One loader pair per video, into the same kind of auto-growing list the pictures use. A slot
+        # name with no {i} in it is the old single-video shape, and keeps working.
+        many = "{i}" in str(vspec.get("slot", ""))
+        if many:
+            for slot in [k for k in main if k.startswith(vspec.get("clear", "ref_videos."))]:
+                del main[slot]
+            for slot in [k for k in main if k.startswith(vspec.get("audio_clear", "ref_video_audios."))]:
+                del main[slot]
+        for i, (stored, with_sound) in enumerate(videos if many else videos[:1]):
+            load, comps = str(910 + i * 2), str(911 + i * 2)
+            g[load] = {"class_type": "LoadVideo", "inputs": {"file": stored},
+                       "_meta": {"title": f"Video {i + 1}"}}
+            g[comps] = {"class_type": "GetVideoComponents", "inputs": {"video": [load, 0]},
+                        "_meta": {"title": f"Video {i + 1} frames"}}
+            main[vspec["slot"].replace("{i}", str(i))] = [comps, 0]        # IMAGE: the frames
+            if with_sound and vspec.get("audio"):
+                main[vspec["audio"].replace("{i}", str(i))] = [comps, 1]   # AUDIO: what it sounded like
     return g
 
 
@@ -654,15 +668,23 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     out = Path(job.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     refs = [Path(p) for p in (getattr(job, "h3_refs", None) or []) if p and Path(p).is_file()]
-    source = (getattr(job, "h3_video", "") or "") if w.get("video") else ""
-    if not refs and not source:
+    vspec = w.get("video") or {}
+    max_vids = int(vspec.get("max", 1))
+    # <Video 1> is the panel's own clip; anything after it came from the extra context slots.
+    sources = [(getattr(job, "h3_video", "") or "", list(getattr(job, "h3_trim", None) or []))]
+    sources += [(p, list(t) if isinstance(t, list) else [])
+                for p, t in zip(getattr(job, "h3_videos", None) or [],
+                                list(getattr(job, "h3_trims", None) or []) + [[]] * 9)]
+    sources = [(p, t) for p, t in sources if p][:max_vids] if vspec else []
+    source = sources[0][0] if sources else ""
+    if not refs and not sources:
         raise CloudError(f"{name} needs a source clip, or a picture in a Reference slot.")
 
     frames = frame_count(getattr(job, "h3_seconds", 5.0), length)
     width, height = fit_size(job.width, job.height, w.get("size"))
     fps = float(length.get("fps", 24))
     parts = ([f"{len(refs)} reference{'s' if len(refs) > 1 else ''}"] if refs else []) + \
-            (["the source clip"] if source else [])
+            ([f"{len(sources)} video contexts"] if len(sources) > 1 else ["the source clip"] if sources else [])
     log(f"{name} on Comfy Cloud · {width}x{height} · {frames} frames "
         f"({frames / fps:.1f}s) · {' + '.join(parts)}")
 
@@ -672,20 +694,23 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
         names.append(upload(key, base, p))
         log(f"  <Picture {i}> {p.name}")
 
-    video, sound = "", False
-    if source and not cancelled():
-        progress("uploading", 0, frames, "sending the clip")
-        trim = getattr(job, "h3_trim", None) or []
+    videos = []                               # [(stored name, carry its sound)] in <Video k> order
+    for k, (path, trim) in enumerate(sources, 1):
+        if cancelled():
+            break
+        progress("uploading", 0, frames, f"sending video {k}" if len(sources) > 1 else "sending the clip")
         a, span, clipped = trim_span(trim, limit)
-        seg = clip_segment(source, trim, out / "comfy_reference.mp4", limit)
-        sound = has_audio(seg) and bool((w.get("video") or {}).get("audio"))
-        video = upload_video(key, base, seg)
-        log(f"  <Video 1> {Path(source).name} · {a:.1f}s to {a + span:.1f}s"
+        seg = clip_segment(path, trim, out / f"comfy_reference{k}.mp4", limit)
+        sound = has_audio(seg) and bool(vspec.get("audio"))
+        stored = upload_video(key, base, seg)
+        videos.append((stored, sound))
+        log(f"  <Video {k}> {Path(path).name} · {a:.1f}s to {a + span:.1f}s"
             f"{f' (cut to the {limit:.0f} s it looks at)' if clipped else ''} "
             f"· {seg.stat().st_size / 2**20:.1f} MB"
-            f"{', with its sound as <Audio 1>' if sound else ', no sound track'}")
-        log(f"     stored as {video}")      # the content name the graph asks LoadVideo for
+            f"{f', with its sound as <Audio {k}>' if sound else ', no sound track'}")
+        log(f"     stored as {stored}")     # the content name the graph asks LoadVideo for
         seg.unlink(missing_ok=True)
+    video = videos[0][0] if videos else ""
     if cancelled():
         return []
 
@@ -708,7 +733,7 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
         note = w["speed"].get("fast_note" if fast else "note", "")
         log(f"  {'fast' if fast else 'quality'}{f' · {note}' if note else ''}")
     graph = build(w, graph_of(w), job.prompt, names,
-                  width, height, frames, job.seed, video, sound, tracks, pull, fast)
+                  width, height, frames, job.seed, videos, tracks, pull, fast)
     prompt_id = submit(key, base, graph)
     log(f"queued on Comfy Cloud ({prompt_id})")
     detail = wait(key, base, prompt_id,

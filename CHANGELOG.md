@@ -4,6 +4,29 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-09
 
+- **H3 · Context Smash, with the mask already in the slot.** H3 reads up to three whole videos as
+  context at once and the prompt names them — `<Video 1>`, `<Video 2>`, `<Video 3>` — so three
+  unrelated clips come back blended. DWARP wired one of those slots; now a workflow of its own opens
+  all three. It is the same graph as Pika Flex asked a different question, and **Pika Flex is exactly
+  what it always was**, one clip as `<Video 1>`.
+- **DWARP draws the colour masks.** The way you aim a smash is to make one of the videos flat colour:
+  red where `<Video 1>` belongs, green for `<Video 2>`. `engine/masks.py` renders them — **Circle**,
+  **Wipe**, **Split**, **Orbit** for two videos, **Thirds** and **Blobs** for three — flat, saturated
+  and hard-edged on purpose, since a gradient reads as content rather than as an instruction. No GPU,
+  a second or two. Picking Context Smash puts one in a slot straight away, and the dropdown on that
+  row swaps the pattern. Change Aspect or Length and the mask is redrawn before the render: a map of
+  the frame has to be the frame's own shape.
+- **The brief writes the plumbing.** The mapping only exists in words — to the model a mask is pixels
+  like any other video — so Context Smash fills the `video_contexts:` block in for you, naming every
+  slot and spelling out which colour means which. It works the mapping out from the slots as they
+  stand, skipping the mask's own tag (it cannot stand for itself), and says *"green has no video yet"*
+  rather than pointing at a slot that is not there. The tags on the panel wear their colours, so you
+  can see the mapping without reading it. The only line left blank is what the shot is.
+- **Less to read on the panel.** The paragraph under the Workflow dropdown is gone, replaced by a **?**
+  beside the label that opens the help, where there is now a Context Smash section. The add rows are
+  one line once a slot is filled instead of a card-sized landing strip, a video and a colour mask sit
+  side by side as the two ways in, and the card hover lift is gone — it was lifting the card to the
+  point where the rows sitting on it stopped reading as controls.
 - **Motion is translated to the render, never refused by it.** A path node takes exactly one point per
   frame, so motion drawn at 3s and rendered at 5s used to come back as an error telling you to do it
   again. That is a refusal over arithmetic. `fit_tracks()` re-spaces the paths to the render's frame

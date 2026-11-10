@@ -54,8 +54,9 @@
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
   /* a collapsible card: header = title · live summary · chevron; click it to fold the card to that line */
   .card { background: var(--panel-2); border-radius: var(--radius); transition: background .12s; }
-  /* the card under the pointer, or holding the focus, lifts a shade: where you are in the panel */
-  .card:hover, .card:focus-within, .clip:hover { background: #222227; }
+  /* No hover lift on a card. It said "you are here", which you already knew from the pointer, and it
+     cost the only thing that mattered: with the card at #222227 the rows and slots sitting on it at
+     #25242b stopped reading as controls at all. The panel is flat; the fills do the talking. */
   .card-head { display: flex; align-items: center; gap: 8px; padding: 11px 12px; cursor: pointer; user-select: none; }
   .card-head .title { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
   .card-head .sum { margin-left: auto; color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -281,7 +282,32 @@
   .levels .pt.w { border-bottom-color: #fff; }
   #styleRefCtl[hidden] { display: none; }
   /* H3: the reference pictures, same slot as a style ref but a row of them */
-  #h3Refs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #h3Refs, #h3Vids { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #h3Vids .ref, #h3Vids .clip-empty { font-size: 11px; }
+  #h3Vids .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
+  #h3Vids .tile { width: 38px; height: 38px; border-radius: 5px; flex: none; overflow: hidden;
+                  display: flex; background: #1b1a20; color: var(--faint); align-items: center; justify-content: center; }
+  #h3Vids .tile svg { width: 16px; height: 16px; }
+  #h3Vids .ref .tag { font-size: 10px; color: var(--faint); flex: none; }
+  #h3Vids .ref span.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
+  #h3Vids .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
+  #h3Vids .ref button:hover { color: #ff9a8a; }
+  #h3Vids .ref select { background: #2b2a31; color: var(--text); border: 0; border-radius: 6px;
+                        padding: 4px 6px; font: inherit; font-size: 11px; flex: 1; min-width: 0; }
+  /* a colour band per video the mask speaks for: stretched, since the tile centres its icon */
+  #h3Vids .tile i { flex: 1; align-self: stretch; display: block; }
+  #h3Vids .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
+                        align-items: center; gap: 6px; border-radius: 8px; color: var(--dim); cursor: pointer; text-align: center; }
+  /* once a slot is filled the next one is a line, not a landing strip */
+  #h3Refs .clip-empty.slim, #h3Vids .clip-empty.slim { flex-direction: row; padding: 8px 10px; gap: 7px; }
+  #h3Vids .adds { display: flex; gap: 6px; }      /* a video or a mask: the same move, two sources */
+  #h3Vids .adds .clip-empty { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+  #h3Vids .mini { display: flex; width: 13px; height: 13px; border-radius: 2px; overflow: hidden; flex: none; }
+  #h3Vids .mini i { flex: 1; align-self: stretch; }
+  #h3Refs .clip-empty.slim svg, #h3Vids .clip-empty.slim svg { width: 13px; height: 13px; }
+  #h3Vids .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #h3Vids .clip-empty svg { width: 18px; height: 18px; }
+  body.runDrag #h3Vids { background: rgba(255,106,61,.14); border-radius: 8px; }
   #h3Refs .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
   /* the picture's own shape, not a square crop of it: this chip and the Motion canvas below are two
      views of the same reference, and they should not disagree about what you loaded */
@@ -799,7 +825,7 @@
     <div class="card-body">
     <div class="seg mode" id="mode"></div>
     <div id="h3Box" hidden>
-      <div class="sublabel" id="h3WfLabel" style="margin-top:10px">Workflow</div>
+      <div class="sublabel" id="h3WfLabel" style="margin-top:10px">Workflow<a href="#" data-help="h3" class="randlink" style="margin-left:6px" title="What this workflow is and how to drive it">?</a></div>
       <select class="model" id="h3Wf" title="Which graph runs on Comfy Cloud. Each one takes its own inputs, so the controls below follow what you pick."></select>
       <div class="cloudnote" id="h3Note"></div>
       <div class="sublabel" id="h3SpeedLabel">Speed</div>
@@ -810,6 +836,11 @@
       <div class="sublabel" id="h3RefsLabel">References</div>
       <div id="h3Refs"></div>
       <input type="file" id="h3File" accept="image/*" hidden>
+      <div id="h3VidsRow" hidden>
+        <div class="sublabel" id="h3VidsLabel">Video contexts</div>
+        <div id="h3Vids"></div>
+      </div>
+      <input type="file" id="h3VidFile" accept="video/*" hidden>
       <div class="sublabel" id="h3MotionLabel">Motion</div>
       <div id="trackSlot"></div>
       <input type="file" id="trackFile" accept="video/*" hidden>
@@ -1402,6 +1433,8 @@ function h3Config(kind) {
       comfy_fast: comfyFast(),
       h3_video: state.clip?.path || '',
       h3_trim: dur ? [+(state.range[0] * dur).toFixed(2), +(state.range[1] * dur).toFixed(2)] : [],
+      h3_videos: h3Vids().slice(0, vidRoom()).map(v => v.path),   // <Video 2..n>: whole, as context
+      h3_trims: [],
     },
     total: h3Frames(seconds), size: state.size, fps: wf().fps,
   };
@@ -1509,7 +1542,7 @@ function renderH3() {
   // encoder (WanMove, say) does prompt, it just wants a line of description like everything else.
   const brief = on && w.brief;
   $('tplRow').hidden = !brief; $('promptRandom').hidden = brief;
-  if (brief && !$('promptTpl').options.length) renderTplPick();
+  if (brief) renderTplPick($('promptTpl').value);   // the list follows the workflow; the pick survives
   $('prompt').classList.toggle('brief', brief);
   // A graph whose text encoder barely moves the picture says so in its manifest, and the box says it
   // back: dimmed, with the measurement under it, rather than left looking like a dial that works.
@@ -1602,16 +1635,15 @@ function renderH3() {
   $('h3Refs').innerHTML = refs.map((r, i) =>
     `<div class="ref" data-i="${i}"><img src="/api/image/file?${qs({ path: r.path })}" alt=""><span class="tag">&lt;Picture ${i + 1}&gt;</span><span class="nm" title="${r.path}">${r.name}</span><button title="Remove">✕</button></div>`).join('')
     + (refs.length >= w.refs ? '' :
-      `<div class="clip-empty" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
+      `<div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${refs.length ? 'add another picture' : 'a picture, or a frame off the stage'}</div>`);
+  renderH3Vids();
   // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
-  $('h3Note').innerHTML = CFG_HAS_KEY
-    ? `On <b>Comfy Cloud</b> · spends credits${
-        w.sound ? ' · comes back with sound' : ''}. ${state.clip && w.video
-        ? 'The trimmed clip goes in as <b>&lt;Video 1&gt;</b>.'
-        : w.refs ? 'Working from references alone.' : ''}
-       <a href="#" data-help="h3">how it works</a>`
-    : `<span class="bad">No API key.</span> This renders on Comfy's machines — add one in
-       <b>Settings → Comfy Cloud</b>. <a href="#" data-help="h3">how it works</a>`;
+  // What mattered here was the warning, not the paragraph: a missing key still says so, loudly, and a
+  // key that is there says nothing at all — the card above already names the workflow.
+  $('h3Note').hidden = CFG_HAS_KEY;
+  $('h3Note').innerHTML = CFG_HAS_KEY ? '' :
+    `<span class="bad">No API key.</span> This renders on Comfy's machines — add one in
+     <b>Settings → Comfy Cloud</b>. <a href="#" data-help="h3">how it works</a>`;
   $('h3Wf').title = w.note || $('h3Wf').title;
 }
 // ---- Motion: a video's movement as path data
@@ -2140,7 +2172,11 @@ $('h3Wf').onchange = e => {
   if (w.seconds.length && !w.seconds.includes(+state.h3secs) && state.h3secs !== 'auto')
     state.h3secs = w.seconds[0];            // the old length may not be one this workflow offers
   if (h3Refs().length > w.refs) h3Refs().length = w.refs;
+  if (h3Vids().length > vidRoom()) h3Vids().length = vidRoom();
   renderH3(); paintSums(); updateEst(); save();
+  // Context Smash is nothing without a mask and a brief that explains it, so it arrives with both
+  // rather than with instructions. Anything already written is left alone.
+  if (w.id === 'h3_context_smash') smashStart();
   setStatus(`${w.label} — ${w.model || 'Comfy Cloud'}`, 'done');
 };
 // "how it works" opens the Help panel on the H3 topic
@@ -2191,6 +2227,18 @@ const H3_RECIPES = {
            + ' charcoal on paper / cel-shaded anime …>,\n'
            + '<the line and texture: thick wobbling outlines, visible brush, paper grain …>,\n'
            + '<the palette: four flat colours, warm sepia, acid neon …>, moving with the shot.',
+    },
+  }],
+  smash: ['context smash', {
+    wf: 'h3_context_smash',                  // the only brief that workflow offers, and only there
+    role: 'look anchor — palette and texture only',
+    video: {
+      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
+      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
+    },
+    look: {
+      ref: '<what the shot is: one line>',
+      words: '<what the shot is: one line>',
     },
   }],
   scene: ['new scene', {
@@ -2268,6 +2316,7 @@ function h3Template(kind) {
     ...refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`),
     ...(state.clip ? [r.video[cut]] : []),
     '',
+    ...h3ContextLines(),
     'detailed_description:',
     body,
     ...(/^\[Shot /m.test(body) ? [] : [H3_SHOT]), '',
@@ -2275,8 +2324,40 @@ function h3Template(kind) {
     'non_diegetic_music:', kept('non_diegetic_music'));
   return out.join('\n');
 }
+// The part nobody should have to learn: which tag is which video, and what a colour means. The brief
+// writes it from the slots as they stand, so the only thing left to type is what the shot is.
+// Picking Context Smash should leave you with something you could render, not homework: a mask in a
+// slot and a brief that already names it. The one line left blank is the only one that is yours.
+async function smashStart() {
+  if (!h3Vids().length) await makeMask('circle');
+  if ((state.prompt || '').trim()) return;     // never over your own writing
+  $('prompt').value = h3Template('smash');
+  $('prompt').dispatchEvent(new Event('input'));
+  renderTplPick('smash');
+  setStatus('context smash — say what the shot is, the rest is filled in', 'done');
+}
+function h3ContextLines() {
+  const vids = h3Vids().slice(0, vidRoom());
+  if (!vids.length) return [];
+  return ['video_contexts:',
+    ...(state.clip && wf().video
+      ? ['<Video 1>: the plate. fully_preserved - the camera move, the blocking and the timing.'] : []),
+    ...vids.map((v, i) => v.mask
+      ? `<Video ${vidTag(i)}>: a colour mask. It is an instruction, never something to draw: `
+        + `${maskLegend(i)}. Follow it frame by frame — wherever a colour is, that video's content `
+        + `belongs there, and the mask's own colours never appear in the picture.`
+      : `<Video ${vidTag(i)}>: ... what to take from it.`),
+    ''];
+}
+// Which briefs this workflow offers. A recipe that names a workflow is only shown there; the general
+// ones are hidden on a workflow that has its own, because offering "character swap" next to a colour
+// mask is an invitation to write a brief the slots cannot answer.
+function h3Recipes() {
+  const id = wf().id, own = Object.values(H3_RECIPES).some(([, r]) => r.wf === id);
+  return Object.entries(H3_RECIPES).filter(([, [, r]]) => (r.wf ? r.wf === id : !own));
+}
 function renderTplPick(sel = '') {
-  $('promptTpl').innerHTML = '<option value="">no template</option>' + Object.entries(H3_RECIPES)
+  $('promptTpl').innerHTML = '<option value="">no template</option>' + h3Recipes()
     .map(([k, [label]]) => `<option value="${k}">${label}</option>`).join('');
   $('promptTpl').value = sel;                // the pick stays on show: it says which brief is in the box
 }
@@ -2302,6 +2383,139 @@ $('h3Aspect').onclick = e => {
   state.h3aspect = a; state.h3aspectSet = true;    // from here on it is your choice, not the picture's
   renderH3(); paintSums(); save();
 };
+// ---- Colour masks: a video whose only job is to say which other video goes where
+// Flat red / green / blue regions, drawn here and handed over as one of the contexts. The model has
+// no idea what red means until the brief says so, which is why the legend travels with the mask.
+var MASK_PATTERNS = [], MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];   // var: read from above
+var MASK_COLOUR_NAMES = ['red', 'green', 'blue'];        // engine/masks.py draws them in this order
+function maskBody(pattern) {
+  const [width, height] = comfySize();
+  return { pattern, width, height, frames: h3Frames(h3Seconds()), fps: wf().fps || 24 };
+}
+async function makeMask(pattern, at) {
+  if (!MASK_PATTERNS.length) return setStatus('colour masks need the new server \u2014 restart run.bat', 'bad');
+  const body = maskBody(pattern);
+  try {
+    const r = await api('/api/masks', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                        body: JSON.stringify(body) });
+    const row = { path: r.path, name: r.name, mask: r.pattern, colours: r.colours,
+                  legend: r.legend, width: r.width, height: r.height, frames: r.frames };
+    if (at == null) h3Vids().push(row); else h3Vids()[at] = row;
+    renderH3(); paintSums(); save();
+    setStatus(`${r.label} mask \u00b7 ${maskLegend(at == null ? h3Vids().length - 1 : at)}`, 'done');
+  } catch (e) {
+    setStatus('could not draw that mask: ' + e.message, 'bad');
+  }
+}
+// A mask is a map of the frame, so it has to be the frame's shape and length. Remade when they move,
+// which is cheap: flat colour through ffmpeg, a second or two, no GPU.
+function maskStale(v) {
+  const b = maskBody(v.mask);
+  return v.width !== b.width || v.height !== b.height || v.frames !== b.frames;
+}
+async function freshenMasks() {
+  for (const [i, v] of h3Vids().entries()) {
+    if (v.mask && maskStale(v)) await makeMask(v.mask, i);
+  }
+}
+// ---- Video contexts: H3 reads up to three clips at once, not one
+// The panel's own clip is the first of them. The rest are whole videos handed over as context, which
+// is what "context smashing" needs: three sources in the model's head at the same time, each named in
+// the prompt, and - if you want to steer which lands where - one of them a colour mask saying so.
+function h3Vids() { return (state.h3vids ||= []); }
+function vidRoom() {                           // slots after <Video 1>, which is the clip card's job
+  return Math.max(0, (wf().video ? (wf().video_max || 1) : 0) - 1);
+}
+function vidTag(i) {                           // what the prompt calls it: the clip takes 1 when it is there
+  return (state.clip && wf().video ? 2 : 1) + i;
+}
+// Which video each colour stands for. The mask is itself one of the three slots, so it cannot stand
+// for itself: the colours take the *other* videos, in the order they are stacked. Work this out from
+// the slots as they are now, not when the mask was drawn - adding a clip renumbers everything.
+// What colour stands for this slot in whichever mask is loaded, so the tag can wear it. A tag with
+// no colour is one the mask says nothing about.
+function vidColour(i) {
+  const m = h3Vids().findIndex(v => v.mask);
+  if (m < 0 || m === i) return '';
+  const tags = [...(state.clip && wf().video ? [1] : []), ...h3Vids().map((_, k) => vidTag(k))]
+    .filter(t => t !== vidTag(m));
+  const at = tags.indexOf(vidTag(i));
+  return at >= 0 && at < (h3Vids()[m].colours || 2) ? MASK_COLOURS[at] : '';
+}
+function maskLegend(i) {
+  const mine = vidTag(i);
+  const tags = [...(state.clip && wf().video ? [1] : []),
+                ...h3Vids().map((_, k) => vidTag(k))].filter(t => t !== mine);
+  const want = h3Vids()[i]?.colours || 2;
+  const named = MASK_COLOUR_NAMES.slice(0, want)
+    .map((c, k) => tags[k] ? `${c} is <Video ${tags[k]}>` : `${c} has no video yet`);
+  return named.join(', ');
+}
+function renderH3Vids() {
+  const room = vidRoom(), rows = h3Vids().slice(0, room);
+  $('h3VidsRow').hidden = !(isH3() && room);
+  if ($('h3VidsRow').hidden) return;
+  // A mask wears a picker instead of a filename: the file is made here, so the pattern is the thing
+  // worth showing, and the swatches say which colour stands for which slot.
+  $('h3Vids').innerHTML = rows.map((v, i) => `<div class="ref" data-i="${i}">${
+    v.mask
+      ? `<span class="tile" title="${maskLegend(i)}">${MASK_COLOURS.slice(0, v.colours || 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>`
+      : `<span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg></span>`
+  }<span class="tag"${vidColour(i) ? ` style="color:${vidColour(i)}"` : ''}>&lt;Video ${vidTag(i)}&gt;</span>${
+    v.mask
+      ? `<select data-i="${i}" title="Which colour mask. It is drawn here, at this render's size and length.">${
+            MASK_PATTERNS.map(p => `<option value="${p.id}"${p.id === v.mask ? ' selected' : ''}>${p.label}</option>`).join('')}</select>`
+      : `<span class="nm" title="${v.path}">${v.name}</span>`
+  }<button title="Remove">\u2715</button></div>`).join('')
+    + (rows.length >= room ? '' : `<div class="adds">
+      <div class="clip-empty${rows.length ? ' slim' : ''}" data-add="video" title="Another whole video in H3's context \u2014 click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
+        MASK_PATTERNS.length ? `<div class="clip-empty${rows.length ? ' slim' : ''}" data-add="mask" title="A flat colour mask, drawn here, that says which video goes where"><span class="mini">${
+          MASK_COLOURS.slice(0, 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>colour mask</div>` : ''}
+    </div>`);
+}
+function addH3Vid(res) {
+  if (h3Vids().length >= vidRoom()) return setStatus(`${wf().label} takes ${wf().video_max} videos in all`, 'bad');
+  h3Vids().push({ path: res.path, name: res.name });
+  renderH3(); paintSums(); save();
+  setStatus(`<Video ${vidTag(h3Vids().length - 1)}> added`);
+}
+$('h3Vids').onchange = e => {
+  const sel = e.target.closest('select');
+  if (sel) makeMask(sel.value, +sel.dataset.i);
+};
+$('h3Vids').onclick = e => {
+  const row = e.target.closest('.ref');
+  if (row && e.target.closest('button')) {
+    h3Vids().splice(+row.dataset.i, 1); renderH3(); paintSums(); save(); return;
+  }
+  const add = e.target.closest('[data-add]');
+  if (add) (add.dataset.add === 'mask' ? makeMask(MASK_PATTERNS[0]?.id || 'circle')
+                                       : $('h3VidFile').click());
+};
+$('h3VidFile').onchange = e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  if (!/^video\//.test(file.type)) return setStatus('a video context needs a video', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(addH3Vid).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+};
+$('h3Vids').addEventListener('dragover', e => e.preventDefault());
+$('h3Vids').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);
+  if (run?.clip) return addH3Vid({ path: run.clip, name: run.name || 'clip' });
+  if (run) return (async () => {               // a run: its mp4, built first if it has none yet
+    if (run.count < 2) return setStatus('a single frame is a picture, not a video context', 'bad');
+    setStatus(`run ${run.run} \u2192 video context\u2026`, 'live');
+    await ensureMp4(run.run);
+    addH3Vid(await api(`/api/runs/${run.run}/as_input`, { method: 'POST' }));
+  })().catch(err => setStatus('could not use that run: ' + err.message, 'bad'));
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return setStatus('drop a video, or a run off the strip', 'bad');
+  if (!/^video\//.test(file.type)) return setStatus('a video context needs a video', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(addH3Vid).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
+});
 const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
 function addH3Ref(res) {
   if (h3Refs().length >= wf().refs) return setStatus(`${wf().label} takes up to ${wf().refs} references`, 'bad');
@@ -3871,6 +4085,27 @@ const HELP = {
        drift in roughly the right direction, high drags the picture along the lines and will tear it if the paths
        ask for more than the content can give. A long path at low strength and a short one at high strength look
        nothing alike — the first moves a little and stays whole, the second fights.</p>
+    <h3>H3 · Context Smash — several videos at once, and a mask that aims them</h3>
+    <p>H3 reads up to <b>three whole videos</b> and nine pictures as context in one pass, and the prompt
+       addresses them by tag: <b>&lt;Video 1&gt;</b>, <b>&lt;Video 2&gt;</b>, <b>&lt;Picture 3&gt;</b>. Give it
+       three unrelated clips and the result borrows from all three at once — a face from one, a motion from
+       another, a palette from the third. That is the whole technique; the rest is aim.</p>
+    <p><b>The aim is a colour mask.</b> One of the three videos can be nothing but flat colour: red where
+       &lt;Video 1&gt; should land, green for &lt;Video 2&gt;, blue for &lt;Video 3&gt;. The model has no idea
+       what red means until the brief says so, which is why every mask comes with its legend — copy that
+       line into the prompt and the colours become instructions. Because the mask is a <i>video</i>, the aim
+       can move: a circle opening out, a wipe crossing, two discs wandering. Where the colour is at a given
+       second decides which context lands there at that second.</p>
+    <p>DWARP draws the masks, so picking <b>H3 · Context Smash</b> puts one in a slot straight away —
+       a green circle growing on red. The dropdown on that row swaps the pattern; <b>Circle</b>, <b>Wipe</b>,
+       <b>Split</b> and <b>Orbit</b> speak two videos, <b>Thirds</b> and <b>Blobs</b> speak three. Each one is
+       redrawn at the render's own size and length, since a mask is a map of the frame and has to be the
+       frame's shape. Flat colour and hard edges on purpose: a gradient reads as content, not as an
+       instruction.</p>
+    <p>The other slots take whatever you like — a file, or a run dragged off the strip, which is how one of
+       your own renders becomes a context. With a clip loaded in the card above, that clip is
+       &lt;Video 1&gt; and the extra slots number themselves 2 and 3; with no clip they start at 1. The tags
+       on the rows always say what the model will actually see.</p>
     <h3>H3 · Pika Flex — a clip with sound</h3>
     <p>The workflow DWARP ships with: <b>MiniMax-H3</b> through Pika's <b>H3 Flex</b> adapter. H3 is also why this
        mode exists:
@@ -4593,6 +4828,10 @@ async function startJob(kind) {
     setStatus('fitting the motion to this render…', 'live');
     await drawField(true);                     // redrawn at this Length, eased the way it was drawn.
   }                                            // If that fails the engine still fits it, so carry on.
+  if (kind !== 'refine' && isH3() && h3Vids().some(v => v.mask && maskStale(v))) {
+    setStatus('redrawing the mask for this render…', 'live');
+    await freshenMasks();                      // a map of the frame has to be the frame's own shape
+  }
   setButtons(true);
   setStatus(`${name} · starting…`, 'live'); setBusy(true, 'starting…');
   let built;
@@ -5685,6 +5924,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
+  state.h3vids ??= [];                      // the extra video contexts, after the clip
   state.h3secs ??= 5; state.h3aspect ??= '16:9'; state.h3sound ??= true; state.comfyWf ??= '';
   state.tracks ??= null;                    // motion, measured or drawn, if any: see renderTracks
   state.trackPts ??= 24; state.comfyPull ??= {};   // how many paths, and how hard each workflow pulls
@@ -5702,6 +5942,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   POST_OPTS = await api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null }));
   CLOUD_WF = (await api('/api/comfy/workflows').catch(() => ({ workflows: [] }))).workflows || [];
   FIELD_KINDS = (await api('/api/fields').catch(() => ({ kinds: [] }))).kinds || [];   // drawn motion
+  MASK_PATTERNS = (await api('/api/masks').catch(() => ({ patterns: [] }))).patterns || [];
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned
   if (POST_OPTS?.active?.kind === 'tracks') { trackJob = POST_OPTS.active; watchTracks(); }

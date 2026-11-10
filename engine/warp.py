@@ -169,6 +169,11 @@ class RenderJob:
     h3_sound: bool = True                         # keep H3's soundtrack in the mp4 (it is made either way)
     h3_video: str = ""                            # the source clip as a reference: <Video 1>, its sound <Audio 1>
     h3_trim: list = field(default_factory=list)   # [start, end] of that clip in seconds; H3 looks at 15 s at most
+    # H3 takes up to three videos in its context, not one. The extra ones ride here as <Video 2> and
+    # <Video 3>: a second look, a motion to borrow, or a colour mask saying which of them goes where.
+    # h3_video stays the first of them, so every run made before this still renders.
+    h3_videos: list = field(default_factory=list)  # more clips, in <Video 2..n> order
+    h3_trims: list = field(default_factory=list)   # [start, end] per extra clip, [] for all of it
 
     @staticmethod
     def from_dict(d: dict) -> "RenderJob":

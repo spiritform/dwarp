@@ -17,7 +17,7 @@
     "  length  frame count: the model's fps, its frame-count step (snap) and floor, and the lengths to",
     "          offer on the panel. A model that takes seconds instead can set \"unit\": \"seconds\".",
     "  refs    the auto-growing picture slots: a {i} template, the prefix to clear first, and how many",
-    "  video   the slot a source clip goes in, and the one its sound goes in",
+    "  video   the clip slots: {\"slot\": \"ref_videos.ref_video_{i}\", \"clear\": prefix to wipe first,\n          \"audio\": the matching audio slot, \"audio_clear\": its prefix, \"max\": how many}.\n          A slot name with no {i} is the old single-clip shape and still works. H3 reads up\n          to three videos at once and the prompt names them <Video 1..3>, which is what a\n          colour mask steering several contexts needs.",
     "  tracks  {\"coords\": [node, input]} for a motion-control graph: DWARP measures a video's",
     "          movement (engine/tracks.py) and writes the path JSON straight onto that input. The",
     "          Motion slot on the panel appears only for a workflow that has this key.",
@@ -79,6 +79,60 @@
       "video": {
         "slot": "ref_videos.ref_video_0",
         "audio": "ref_video_audios.ref_video_audio_0"
+      },
+      "sound": true,
+      "brief": true
+    },
+    {
+      "id": "h3_context_smash",
+      "label": "H3 · Context Smash",
+      "short": "smash",
+      "model": "MiniMax-H3 + Pika H3 Flex adapter",
+      "note": "Several whole videos in H3’s context at once, named in the prompt. Up to three videos and nine pictures go in; what comes out borrows from all of them. The trick is to make one of the videos a flat colour mask and tell the prompt which colour means which video — that is what decides where each context lands and when. 5-15 s, with sound.",
+      "graph": "pika_h3_ref2va.json",
+      "saver": "92",
+      "prompt": [
+        "138",
+        "value"
+      ],
+      "seed": [
+        "129",
+        "noise_seed"
+      ],
+      "node": "136",
+      "drop": [
+        "LoadImage"
+      ],
+      "size": {
+        "megapixels": 1.03,
+        "multiple": 32,
+        "width": "width",
+        "height": "height"
+      },
+      "length": {
+        "input": "length",
+        "fps": 24,
+        "snap": 17,
+        "min_frames": 124,
+        "max_seconds": 15.1,
+        "seconds": [
+          5,
+          7,
+          10,
+          15
+        ]
+      },
+      "refs": {
+        "slot": "ref_images.ref_image_{i}",
+        "clear": "ref_images.",
+        "max": 9
+      },
+      "video": {
+        "slot": "ref_videos.ref_video_{i}",
+        "clear": "ref_videos.",
+        "audio": "ref_video_audios.ref_video_audio_{i}",
+        "audio_clear": "ref_video_audios.",
+        "max": 3
       },
       "sound": true,
       "brief": true
