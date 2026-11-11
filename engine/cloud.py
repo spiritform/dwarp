@@ -150,8 +150,15 @@ def caps(w: dict) -> dict:
             "speed": w.get("speed") or None,
             "prompt_hint": w.get("prompt_hint") or None,
             "brief": bool(w.get("brief")),
+            # What this graph can honestly be asked for. A role left out here is one the model does
+            # not honour on this workflow, so the panel never offers it and nobody waits on a result
+            # that was never coming.
+            "roles": w.get("roles") or None,
             "megapixels": float((w.get("size") or {}).get("megapixels", 1.03)),
             "multiple": int((w.get("size") or {}).get("multiple", 32)),
+            # A colour mask is only an instruction if the brief explains its legend, and that brief
+            # belongs to one workflow. Anywhere else it is a video of coloured rectangles.
+            "masks": bool(w.get("masks")),
             "video": bool(w.get("video")), "audio_in": bool((w.get("video") or {}).get("audio")),
             "video_max": int((w.get("video") or {}).get("max", 1)),
             "sound": bool(w.get("sound")), "seconds": length.get("seconds") or [],
@@ -435,12 +442,15 @@ def build(w: dict, graph: dict, prompt: str, refs: list[str], width: int, height
         # named sockets, not slot 0 and slot 1 of the same list. A socket with no picture for it has
         # to be removed outright, because the loader it pointed at is dropped with the examples.
         for i, name in enumerate(refs[:len(named)]):
+            if not name:                               # that slot was left empty
+                continue
             node_id = str(900 + i)
             g[node_id] = {"class_type": "LoadImage", "inputs": {"image": name},
                           "_meta": {"title": named[i].replace("_", " ")}}
             main[named[i]] = [node_id, 0]
-        for empty in named[len(refs):]:
-            main.pop(empty, None)
+        for j, slot in enumerate(named):
+            if j >= len(refs) or not refs[j]:
+                main.pop(slot, None)
     elif spec.get("slot"):                             # auto-growing reference slots: one loader each
         for slot in [k for k in main if k.startswith(spec.get("clear", "ref_images."))]:
             del main[slot]
@@ -731,7 +741,12 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
 
     out = Path(job.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    refs = [Path(p) for p in (getattr(job, "h3_refs", None) or []) if p and Path(p).is_file()]
+    # Named slots are positional: an empty one stays empty rather than letting the next picture
+    # slide into it. Numbered references just close up, as they always did.
+    found = [(Path(p) if p and Path(p).is_file() else None)
+             for p in (getattr(job, "h3_refs", None) or [])]
+    refs = found if (w.get("refs") or {}).get("slots") else [p for p in found if p]
+    n_refs = sum(1 for p in refs if p)
     vspec = w.get("video") or {}
     max_vids = int(vspec.get("max", 1))
     # <Video 1> is the panel's own clip; anything after it came from the extra context slots.
@@ -745,14 +760,14 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     # the reference. The arrangement stops being a sentence the model has to believe and becomes
     # pixels, which is a thing the model can simply see.
     stack = layers.clean(getattr(job, "layers", None) or []) if vspec else []
-    if not refs and not sources and not stack:
+    if not n_refs and not sources and not stack:
         raise CloudError(f"{name} needs a source clip, or a picture in a Reference slot.")
 
     frames = frame_count(getattr(job, "h3_seconds", 5.0), length)
     width, height = fit_size(job.width, job.height, w.get("size"))
     fps = float(length.get("fps", 24))
     drawn = layers.plan(stack)
-    parts = ([f"{len(refs)} reference{'s' if len(refs) > 1 else ''}"] if refs else []) + \
+    parts = ([f"{n_refs} reference{'s' if n_refs > 1 else ''}"] if n_refs else []) + \
             ([f"a plate of {len(drawn)} layer{'s' if len(drawn) > 1 else ''}"] if stack else
              [f"{len(sources)} video contexts"] if len(sources) > 1 else
              ["the source clip"] if sources else [])
@@ -773,8 +788,9 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     progress("uploading", 0, frames, "sending the references")
     names = []
     for i, p in enumerate(refs[:max_refs], 1):
-        names.append(upload(key, base, p))
-        log(f"  <Picture {i}> {p.name}")
+        names.append(upload(key, base, p) if p else "")      # "" is a slot left empty
+        if p:
+            log(f"  <Picture {i}> {p.name}")
 
     videos = []                               # [(stored name, carry its sound)] in <Video k> order
     for k, (path, trim) in enumerate(sources, 1):

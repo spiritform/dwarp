@@ -1,0 +1,112 @@
+{
+  "_note": "H3 reads a sectioned brief, not a pile of style words. This file is the whole of that protocol: the tag names, the retention words the model actually responds to, and which of them each starting point picks. The panel shows plain language and sends back ids, so nothing here has to be typed by hand. Add a recipe to offer a new starting point; add a role to offer a new way for a slot to bind.",
+  "roles": {
+    "video": [
+      {
+        "id": "shot",
+        "label": "keep the shot",
+        "note": "the camera move and the timing are followed; everything else is open",
+        "line": "fully_preserved - the camera move, the blocking and the timing."
+      },
+      {
+        "id": "all",
+        "label": "keep it exactly",
+        "note": "the clip is the scene: its surfaces come through as they already look",
+        "line": "fully_preserved - the camera move, the blocking, the timing, and every surface exactly as it already appears."
+      },
+      {
+        "id": "loose",
+        "label": "loose reference",
+        "note": "only the energy and pacing; the scene is invented",
+        "line": "weak_reference only - the energy and pacing; the scene itself is new."
+      }
+    ],
+    "picture": [
+      {
+        "id": "identity",
+        "label": "the subject",
+        "note": "who or what is in the shot: the design is held exactly",
+        "role": "identity anchor - the character design, exactly",
+        "line": "fully_preserved - the design exactly as drawn."
+      },
+      {
+        "id": "look",
+        "label": "the look",
+        "note": "the medium and palette: every surface is redrawn to match",
+        "role": "style anchor - the medium, line, palette and texture",
+        "line": "attribute_transfer - every surface in frame is redrawn in this style, buildings, smoke, ground and crowd included. Nothing stays photographic.",
+        "restyle": true
+      },
+      {
+        "id": "hint",
+        "label": "a hint",
+        "note": "a loose influence on the mood, nothing held",
+        "role": "mood reference",
+        "line": "weak_reference only - a loose influence on the mood."
+      }
+    ]
+  },
+  "recipes": [
+    {
+      "id": "restyle",
+      "label": "full restyle",
+      "video": "shot",
+      "picture": "look",
+      "shot": "The whole frame is one drawing - <the medium, the line weight, the palette> - moving with the shot.",
+      "needs": [
+        "picture"
+      ]
+    },
+    {
+      "id": "swap",
+      "label": "character swap",
+      "video": "shot",
+      "picture": "identity",
+      "shot": "The shot stays as filmed; only the subject is replaced, lit to match the plate.",
+      "needs": [
+        "picture"
+      ]
+    },
+    {
+      "id": "plate",
+      "label": "follow the plate",
+      "video": "all",
+      "picture": "look",
+      "note": "for a layer stack: what you built in Layers is the scene, and the model keeps it",
+      "shot": "<what the shot is, in one line: the plate already carries the look>",
+      "needs": [
+        "video"
+      ]
+    },
+    {
+      "id": "scene",
+      "label": "new scene",
+      "video": "loose",
+      "picture": "identity",
+      "shot": "<what the shot is: subject, place, medium, palette, lens, grain>",
+      "needs": [
+        "video"
+      ]
+    },
+    {
+      "id": "journey",
+      "label": "first → last",
+      "wf": "pika_h3_fl2va",
+      "video": "shot",
+      "picture": "identity",
+      "moments": true,
+      "shot": "The shot begins on the first frame. At about one second ... At about two seconds ... It settles into the last frame and holds."
+    },
+    {
+      "id": "smash",
+      "label": "context smasher",
+      "wf": "h3_context_smash",
+      "video": "shot",
+      "picture": "look",
+      "shot": "<what the shot is: one line>"
+    }
+  ],
+  "sound_default": "the natural sound of the scene.",
+  "music_default": "none.",
+  "_needs": "Which slot a recipe actually works through. A workflow that cannot honour that slot's role is not offered the recipe: full restyle is a picture restyling the scene, so a model whose pictures only carry identity never shows it."
+}

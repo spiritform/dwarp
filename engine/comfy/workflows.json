@@ -81,14 +81,95 @@
         "audio": "ref_video_audios.ref_video_audio_0"
       },
       "sound": true,
-      "brief": true
+      "brief": true,
+      "roles": {
+        "video": [
+          "shot",
+          "all"
+        ],
+        "picture": [
+          "identity",
+          "look"
+        ]
+      }
+    },
+    {
+      "id": "minimax_h3_r2v",
+      "label": "H3 · MiniMax",
+      "short": "h3",
+      "model": "MiniMax H3 ref2va (no adapter)",
+      "note": "The same reference-to-video weights Pika Flex is built on, run plain: no Flex adapter, res_multistep at 20 steps instead of six distilled ones. Slower, and the reference binds differently — this is the one to compare against when Flex holds your clip too hard. Up to nine pictures and your clip, with sound.",
+      "graph": "minimax_h3_r2v.json",
+      "saver": "92",
+      "prompt": [
+        "138",
+        "value"
+      ],
+      "seed": [
+        "129",
+        "noise_seed"
+      ],
+      "node": "136",
+      "drop": [
+        "LoadImage"
+      ],
+      "size": {
+        "megapixels": 1.03,
+        "multiple": 32,
+        "width": "width",
+        "height": "height"
+      },
+      "length": {
+        "input": "length",
+        "fps": 24,
+        "snap": 17,
+        "min_frames": 124,
+        "max_seconds": 15.1,
+        "seconds": [
+          5,
+          7,
+          10,
+          15
+        ]
+      },
+      "refs": {
+        "slot": "ref_images.ref_image_{i}",
+        "clear": "ref_images.",
+        "max": 9
+      },
+      "video": {
+        "slot": "ref_videos.ref_video_{i}",
+        "clear": "ref_videos.",
+        "audio": "ref_video_audios.ref_video_audio_{i}",
+        "audio_clear": "ref_video_audios.",
+        "max": 1
+      },
+      "speed": {
+        "node": "146",
+        "input": "value",
+        "fast": true,
+        "note": "20 steps, res_multistep on the beta schedule — the full model",
+        "fast_note": "4 steps with MiniMax's own turbo LoRA — much quicker, softer detail"
+      },
+      "sound": true,
+      "brief": true,
+      "roles": {
+        "video": [
+          "shot",
+          "all",
+          "loose"
+        ],
+        "picture": [
+          "identity"
+        ]
+      }
     },
     {
       "id": "pika_h3_fl2va",
-      "label": "H3 \u00b7 First \u2192 Last",
+      "label": "H3 · First → Last",
       "short": "fl2va",
       "model": "MiniMax-H3 FL2VA + Pika H3 Flex adapter",
-      "note": "Two pictures and the road between them. Reference 1 is the frame it opens on, Reference 2 the frame it closes on, and the prompt describes what happens in between \u2014 say when things happen and it mostly obeys. Both frames are held, so a shot can be made to land exactly where you want it. 5-15 s, with sound.",
+      "note": "Two pictures and the road between them. Reference 1 is the frame it opens on, Reference 2 the frame it closes on, and the prompt describes what happens in between — say when things happen and it mostly obeys. Both frames are held, so a shot can be made to land exactly where you want it. 5-15 s, with sound.",
       "graph": "pika_h3_fl2va.json",
       "saver": "92",
       "prompt": [
@@ -134,7 +215,14 @@
         "max": 2
       },
       "sound": true,
-      "brief": true
+      "brief": true,
+      "roles": {
+        "video": [
+          "shot",
+          "all"
+        ],
+        "picture": []
+      }
     },
     {
       "id": "h3_context_smash",
@@ -189,7 +277,18 @@
         "max": 3
       },
       "sound": true,
-      "brief": true
+      "brief": true,
+      "masks": true,
+      "roles": {
+        "video": [
+          "shot",
+          "all"
+        ],
+        "picture": [
+          "identity",
+          "look"
+        ]
+      }
     },
     {
       "id": "wanmove_480p",
@@ -307,11 +406,11 @@
       "id": "upscale_topaz_astra",
       "kind": "upscale",
       "graph": "upscale_topaz_astra.json",
-      "label": "Topaz Astra 2 \u00b7 creative",
+      "label": "Topaz Astra 2 · creative",
       "short": "topaz",
-      "model": "Topaz Video Enhance \u00b7 Astra 2 (partner API)",
-      "note": "Enlarges to 1080p or 4K and rebuilds detail as it goes \u2014 Creative says how much it is allowed to invent. Keeps the frame count, the fps and the sound.",
-      "cost": "Runs as a partner API node \u2014 billed per call, not against GPU time, and 4K costs more than 1080p.",
+      "model": "Topaz Video Enhance · Astra 2 (partner API)",
+      "note": "Enlarges to 1080p or 4K and rebuilds detail as it goes — Creative says how much it is allowed to invent. Keeps the frame count, the fps and the sound.",
+      "cost": "Runs as a partner API node — billed per call, not against GPU time, and 4K costs more than 1080p.",
       "limits": "With a prompt set, Topaz caps the clip at 450 frames (about 15s at 30 fps).",
       "saver": "3",
       "input": [
@@ -330,7 +429,7 @@
             "4K (2160p)"
           ],
           "default": "FullHD (1080p)",
-          "note": "A size to reach rather than a multiplier \u2014 it fits the frame to this and keeps the shape."
+          "note": "A size to reach rather than a multiplier — it fits the frame to this and keeps the shape."
         },
         {
           "id": "creativity",
@@ -371,12 +470,12 @@
       "id": "upscale_flux_bfl",
       "kind": "upscale",
       "graph": "upscale_flux_bfl.json",
-      "label": "Flux \u00b7 creative or precise",
+      "label": "Flux · creative or precise",
       "short": "flux",
       "model": "FLUX super-resolution (Black Forest Labs, partner API)",
       "note": "Two minds in one node. <b>creative</b> restores and invents fine detail, which is what generated footage, texture and scenery want. <b>precise</b> sharpens what is there without changing it, for faces and real footage. A prompt steers the detail it invents; empty is a neutral upscale.",
-      "cost": "Runs as a partner API node \u2014 billed per call, not against GPU time.",
-      "limits": "Takes 1 to 20 seconds of video, aspect between 1:4 and 4:1, and caps the frame at about 14.4 megapixels. It renders the result at 24 fps whatever went in, so a clip rendered on twos or threes comes back retimed \u2014 check the first one.",
+      "cost": "Runs as a partner API node — billed per call, not against GPU time.",
+      "limits": "Takes 1 to 20 seconds of video, aspect between 1:4 and 4:1, and caps the frame at about 14.4 megapixels. It renders the result at 24 fps whatever went in, so a clip rendered on twos or threes comes back retimed — check the first one.",
       "saver": "3",
       "input": [
         "1",

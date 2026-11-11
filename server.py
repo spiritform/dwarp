@@ -202,6 +202,22 @@ def build_app() -> FastAPI:
         except cloud.CloudError as e:
             return {"workflows": [], "error": str(e)}
 
+    @app.get("/api/comfy/briefs")
+    def comfy_briefs():
+        """The starting points a brief can be built from, and the ways a slot can bind, as plain
+        labels. The panel draws its form from this: the retention words H3 actually reads stay in
+        engine/comfy/briefs.json and never reach the page."""
+        from engine import brief as brieflib
+        return brieflib.catalogue()
+
+    @app.post("/api/comfy/brief")
+    async def comfy_brief(request: Request):
+        """Compose the brief for a job, from the form as it stands. Pure text work, so the page can
+        ask on every change and show you exactly what will go up before anything is spent."""
+        from engine import brief as brieflib
+        body = await request.json()
+        return {"text": brieflib.compose(body if isinstance(body, dict) else {})}
+
     @app.get("/api/config")
     def get_config(count: bool = False):
         """`count` walks the checkpoints folder to total them. Settings asks for that; start-up does
@@ -498,7 +514,7 @@ def build_app() -> FastAPI:
                     raise HTTPException(422, detail=[{"message": f"{'clip' if key == 'h3_video' else 'reference'} not found: {path!r}"}])
             if job.get("comfy_tracks") and not os.path.isfile(job["comfy_tracks"]):
                 raise HTTPException(422, detail=[{"message": f"tracks not found: {job['comfy_tracks']!r}"}])
-            if not job.get("h3_video") and not (job.get("h3_refs") or []):
+            if not job.get("h3_video") and not any(job.get("h3_refs") or []):   # "" is an empty slot
                 raise HTTPException(422, detail=[{"message": "this workflow needs a clip, or a reference picture"}])
         else:
             for key in (("checkpoint",) + (("init_image",) if job.get("init_image") else ()) if job.get("t2v_frames")

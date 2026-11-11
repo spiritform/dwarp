@@ -4,6 +4,46 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-10
 
+- **MiniMax H3 is in the workflow list, plain.** The same reference-to-video weights Pika Flex is
+  built on, without the Flex adapter: `res_multistep` at 20 steps on the beta schedule instead of
+  six distilled ones. It is the control sample — when Flex holds your clip so hard that the prompt
+  cannot move it, this says whether that is the adapter or the model. Nine pictures, three videos,
+  sound, and a Fast switch that drops to MiniMax's own 4-step turbo LoRA.
+- **Context Smasher is parked.** It is out of the workflow picker while the reference behaviour is
+  being worked out — still in the manifest, still renderable by id, nothing deleted. One flag back.
+- **The colour mask is only offered where it means something.** A mask is an instruction the brief
+  has to explain, and that brief belongs to Context Smasher — anywhere else it would go up as a
+  video of coloured rectangles. The manifest says which workflow has them now.
+- **The H3 brief is a form now, and its wording moved to the server.** H3 reads a sectioned
+  document, and inside it the words `fully_preserved`, `attribute_transfer` and `weak_reference`
+  are what decide whether the thing you loaded is followed or ignored — and they were sitting in a
+  text box looking like prose you had written. That is how a layer stack came back unused: "new
+  scene" had quietly written `weak_reference only` over your plate. The Prompt card now asks what
+  the shot is, and gives every loaded clip and picture one row saying what it is *for* — keep the
+  shot · keep it exactly · loose reference for a clip, the subject · the look · a hint for a
+  picture. The document is composed from the answers and shown before you spend anything. A new
+  starting point, **follow the plate**, is the one for a layer stack: it tells H3 the clip's
+  surfaces are the scene. "Write it myself" hands you the composed text; a brief you had already
+  written by hand opens that way and is never composed over.
+- **No negative prompt on Comfy Cloud.** None of the cloud graphs has a negative conditioning
+  input, so the fold is not offered there — it went nowhere.
+- **The Diff tab is gone from Comfy Cloud.** Leaving the guidance tab on DepthDiff and switching to
+  a cloud workflow left a Diff tab on the stage for a thing that workflow cannot do.
+- **The playhead stops at the frame being rendered.** While a run was being made the track covered
+  only the frames that already existed, so it grew under your hand — and the orange fill, which is
+  a percentage of the whole job, ran on a different scale from it: the playhead could sit well past
+  the orange and look like it had got ahead of the render. The track is now the whole run from the
+  first frame, the orange marks how far it has got, and the playhead stops at the last frame that
+  exists. This much is made, that much is still coming.
+- **H3 First to Last shows both of its slots.** The References row was built for workflows that
+  simply number their pictures, so it offered one "add" box at a time — which hid the fact that
+  this one has two sockets that mean particular things, and made the closing frame unreachable
+  until the opening one was filled. A workflow with named slots now draws every slot, labelled,
+  and the one you drop on is the one you fill. Taking a picture out leaves that slot empty instead
+  of promoting the next picture into it, which would have turned a closing frame into an opening
+  one without saying so. An empty slot is drawn as the card it is about to become — the same
+  picture-shaped well, the slot's name on the same band — so the row reads as two image slots,
+  one of which happens to be empty.
 - **Flattening the layers no longer freezes the whole server.** The plate is ffmpeg over the
   entire clip, and it was running inside the request's own thread — so while it composited, DWARP
   answered nothing else: the frame thumbnails the live preview is built from never arrived (the

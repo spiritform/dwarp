@@ -85,7 +85,7 @@
   .hint:empty { display: none; }
   /* fields sit a shade lighter than the card they're in, or they'd vanish into it */
   .card-body textarea, .card-body select.model, .card-body .seed input, .card-body .seed button, .card-body .seed-tag,
-  .card-body .seg button { background: #2b2a31; }         /* a step brighter than the hovered card (#222227), so they stay visible */
+  .card-body .seg button, .card-body #briefForm .line { background: #2b2a31; }         /* a step brighter than the hovered card (#222227), so they stay visible */
   .card-body .seed button:hover, .card-body .seg button:hover { background: #33323a; }
   .card-body .seg button.on { background: #3b3a42; }
   .randlink { color: var(--accent-2); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
@@ -388,6 +388,15 @@
   #h3Refs .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
     align-items: center; gap: 6px; border-radius: 8px; color: var(--faint); cursor: pointer; text-align: center; }
   #h3Refs .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  /* A slot that means something is drawn as the card it will become: the same picture-shaped well,
+     the same band in the same place, so an empty first frame reads as a picture that is missing
+     rather than as a button you press. */
+  #h3Refs .clip-empty.slot { display: block; padding: 6px; text-align: left; }
+  #h3Refs .clip-empty.slot .tile { display: flex; align-items: center; justify-content: center;
+    background: #1b1a20; }
+  #h3Refs .clip-empty.slot:hover .tile { background: #212027; }
+  #h3Refs .clip-empty.slot .band { background: rgba(16,15,20,.6); color: var(--dim); }
+  #h3Refs .clip-empty.slot:hover .band { color: var(--text); }
   #h3Refs .clip-empty svg { width: 18px; height: 18px; }
   body.runDrag #h3Refs, body.dragging #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
   /* Layers: one stacked source per row, the matte sitting in the stack where you can see it */
@@ -430,7 +439,7 @@
   /* select, chips, the eye and the delete are one row of controls, so they are one height */
   #layers select, #layers .chip, #layers .x, #layers .eye { height: 22px; box-sizing: border-box;
     border: 0; border-radius: 6px; font: inherit; flex: none; }
-  #layers select { padding: 0 5px; font-size: 11px; flex: 1 1 0; min-width: 0; }
+  #layers select { padding: 0 5px; font-size: 11px; line-height: 1; flex: 1 1 0; min-width: 0; }
   #layers .chip { padding: 0 7px; font-size: 10px; }
   /* matte as a mark rather than a word: the dropdown next to it is the thing you read */
   #layers .chip.ico { width: 22px; padding: 0; display: inline-flex; align-items: center;
@@ -503,6 +512,26 @@
   /* The same bands the slots wear, beside the box you type in. Which colour is which video is the
      whole technique, and it was only legible on the cards -- which sit above the prompt and scroll
      away exactly when you are writing the line that uses them. */
+  /* The brief as a form: one line that is yours, and a pill per thing you loaded saying what it
+     is for. Everything H3 actually reads is composed from these behind the panel. */
+  /* A header and the thing it names want air between them, or the form reads as one block. */
+  #briefForm .sublabel { margin: 16px 0 7px; }
+  #briefForm .sublabel:first-child { margin-top: 0; }
+  #briefForm .brow { margin-top: 16px; }
+  /* A slot's role sits under the slot itself: this is what that picture, or that clip, is for. */
+  .roles { margin-top: 8px; }
+  .roles .brow + .brow { margin-top: 8px; }
+  .roles .brow > b { display: block; font-size: 11px; font-weight: 600; color: var(--faint);
+                     margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .roles .seg button { font-size: 11px; padding: 7px 4px; line-height: 1.2; }
+  /* which thing this is: its own picture, its tag, and what it is called */
+  #briefForm .brow .seg { width: 100%; }
+  #briefForm .brow .seg button { font-size: 11px; padding: 8px 4px; line-height: 1.2; }
+  #briefForm textarea { min-height: 62px; }
+  #briefForm .line { width: 100%; box-sizing: border-box; border: 0; border-radius: var(--radius);
+    color: var(--text); font: inherit; padding: 10px; }
+  #briefForm .line:focus { outline: 0; background: #24232a; }
+  #briefFoot { margin: 14px 0 8px; }
   .vidkey { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
   .vidkey b { font-size: 9px; font-weight: 700; letter-spacing: .06em; line-height: 1; cursor: pointer;
               padding: 4px 6px; border-radius: 4px; background: #232228; color: #fff;
@@ -513,6 +542,7 @@
   /* the optional negative prompt: a small fold under the prompt box */
   .negtoggle { display: inline-block; margin-top: 0; font-size: 11px; color: var(--dim); cursor: pointer; }
   .negtoggle:hover { color: var(--text); }
+  .negtoggle[hidden] { display: none; }        /* an explicit display beats the browser's [hidden] */
   .negtoggle.set::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                           background: var(--accent); margin-left: 6px; vertical-align: 1px; }   /* folded, but in use */
   textarea.neg { min-height: 48px; margin-top: 6px; }
@@ -871,6 +901,8 @@
   select:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23e8e6e3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important; }
   @supports (appearance: base-select) {
     select, ::picker(select) { appearance: base-select; }
+    /* base-select makes the select a real box and lays its text out from the top of it */
+    select { align-items: center; align-content: center; }
     select::picker-icon { display: none; }                 /* the chevron above stands in */
     ::picker(select) { background: #1d1d22; color: var(--text); border: 0; border-radius: 8px; padding: 4px;
                        margin-top: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.55); }
@@ -958,6 +990,7 @@
   <section>
     <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Video → Video: restyle a video">Video</button><button data-s="i2v" title="Image → Video: your picture is frame 1, a camera move carries it on">Image</button><button data-s="t2v" title="Text → Video: the prompt paints frame 1, a camera move carries it on">Text</button></div>
     <div id="clipBox"></div>
+    <div id="vidRole" class="roles" hidden></div>
     <input type="file" id="fileInput" accept="video/*,image/*" hidden>
   </section>
 
@@ -986,11 +1019,17 @@
     <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="hint" id="promptHint"></div>
-    <div id="tplRow" hidden>
-      <div class="sublabel" style="margin:0 0 4px">Start from</div>
-      <select class="model" id="promptTpl" title="Lay out H3's sectioned brief, filled in from the clip and the references you have loaded. Switching rewrites the brief and keeps what you typed into it; no template strips the sections away and leaves your own lines."></select>
-    </div>
     <div class="vidkey" id="vidKey" hidden></div>
+    <div id="briefForm" hidden>
+      <div class="sublabel">Template</div>
+      <select class="model" id="briefRecipe" title="What kind of shot this is. It sets what each thing you loaded is for; change any of them underneath."></select>
+      <div class="hint" id="briefNote"></div>
+      <div class="sublabel">The shot</div>
+      <textarea id="briefShot" placeholder="what the shot is"></textarea>
+      <div class="sublabel">Audio prompt</div>
+      <input class="line" id="briefSound" placeholder="room tone, voices, a score — what it should sound like">
+    </div>
+    <div id="briefFoot" hidden><a id="briefShow" class="negtoggle"></a></div>
     <textarea id="prompt" placeholder="a marble sculpture in an abandoned apartment"></textarea>
     <div class="hint" id="promptWeak" style="margin:6px 0 2px"></div>
     <div class="keywrap">
@@ -1022,8 +1061,10 @@
         <button data-f="0">quality</button>
         <button data-f="1">fast</button>
       </div>
+      <div id="briefHome"></div>
       <div class="sublabel" id="h3RefsLabel">References</div>
       <div id="h3Refs"></div>
+      <div id="refRoles" class="roles" hidden></div>
       <input type="file" id="h3File" accept="image/*" hidden>
       <div id="h3VidsRow" hidden>
         <div class="sublabel" id="h3VidsLabel">Video contexts</div>
@@ -1062,12 +1103,13 @@
       <div class="sublabel" id="h3LenLabel">Length</div>
       <div class="seg" id="h3Secs"></div>
       <div class="adnote" id="h3Len" style="margin:6px 0 0"></div>
-      <div class="sublabel" id="h3SoundLabel">Sound</div>
+      <div class="sublabel" id="h3SoundLabel" title="H3 always makes a soundtrack. This decides whether it stays in the mp4 you get back — what the sound should BE is the Sound and Music lines in Prompt.">Audio track</div>
       <div class="seg" id="h3Sound" style="grid-template-columns:1fr 1fr">
         <button data-v="1" title="Keep the soundtrack H3 generates — voices, effects and music, made with the picture">keep</button>
         <button data-v="0" title="Drop the audio track, for cutting your own over it. H3 still makes the sound; it is left out of the file">silent</button></div>
       <div id="h3AspectRow"><div class="sublabel">Aspect</div>
         <div class="seg" id="h3Aspect" style="grid-template-columns:repeat(4,1fr)"><button data-a="16:9">16:9</button><button data-a="1:1">1:1</button><button data-a="9:16">9:16</button><button data-a="ref" id="h3AspectRef" title="The shape of your first reference, so none of it is cropped away. The model fits the picture into whatever box this row picks by cutting the overflow off the long side.">ref</button></div></div>
+      <div id="briefTail"></div>
     </div>
     <div id="sdBox">
     <div class="sublabel">Checkpoint</div>
@@ -1665,7 +1707,7 @@ function h3Config(kind) {
       video: '', checkpoint: '', family: 'comfy', comfy_workflow: wf().id,
       prompt: withLook(state.prompt), negative: '',    // one prompt: no travel, no keyframes
       width, height, seed: state.seed,
-      h3_refs: h3Refs().map(r => r.path),
+      h3_refs: h3Refs().map(r => (r && r.path) || ''),   // '' is a named slot left empty
       h3_seconds: seconds,
       h3_sound: state.h3sound !== false,
       comfy_tracks: (wf().tracks && state.tracks?.path) || '',
@@ -1818,16 +1860,16 @@ function renderH3() {
   if ($('clipSizeRow')) $('clipSizeRow').hidden = $('clipFpsRow').hidden = on;
   // The sectioned brief is H3's own vocabulary, not the mode's: a workflow with an ordinary text
   // encoder (WanMove, say) does prompt, it just wants a line of description like everything else.
-  const brief = on && w.brief;
-  $('tplRow').hidden = !brief; $('promptRandom').hidden = brief;
+  const sectioned = on && w.brief;
+  $('promptRandom').hidden = sectioned;
+  renderBrief();
   // The pick is remembered, not re-read off the select: after a reload the brief was still sitting in
   // the box and the row said "no template" over the top of it.
   // A workflow with exactly one brief arrives with it chosen: picking the workflow already put it in
   // the box, so "no template" over the top of it was never true. An explicit pick -- including no
   // template -- sticks from then on.
-  const only = h3Recipes();
-  if (brief) renderTplPick(state.h3tpl ?? (only.length === 1 ? only[0][0] : ''));
-  $('prompt').classList.toggle('brief', brief);
+  $('prompt').classList.toggle('brief', sectioned);
+  paintNeg();                 // the cloud has no negative conditioning: no fold for one
   paintKeys();          // a cloud workflow has one prompt and no lane; switching away brings it back
   // A graph whose text encoder barely moves the picture says so in its manifest, and the box says it
   // back: dimmed, with the measurement under it, rather than left looking like a dial that works.
@@ -1922,12 +1964,24 @@ function renderH3() {
   const refs = h3Refs();
   // Most workflows just number their pictures; one whose slots mean particular things (FL2VA's
   // opening and closing frame) says so instead, and the manifest is where that is written.
-  const refName = i => (w.ref_labels || [])[i] || `PICTURE ${i + 1}`;
-  $('h3Refs').innerHTML = refs.map((r, i) =>
-    `<div class="ref" data-i="${i}" draggable="true" title="${r.name} — drag to reorder; the number is what the prompt calls it"><span class="tile"><img src="/api/image/file?${qs({ path: r.path })}" alt="" draggable="false"><b class="band">${refName(i)}</b></span><button class="x" title="Remove">✕</button></div>`).join('')
-    + (refs.length >= w.refs ? '' :
-      `<div class="adds${refs.length ? '' : ' wide'}"><div class="clip-empty${refs.length ? ' slim' : ''}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${(w.ref_labels || [])[refs.length] ? (w.ref_labels[refs.length] + '').toLowerCase()
-          : refs.length ? 'add picture' : 'a picture, or a frame off the stage'}</div></div>`);
+  const names = w.ref_labels || [];
+  const refName = i => names[i] || `PICTURE ${i + 1}`;
+  const filled = (r, i) =>
+    `<div class="ref" data-i="${i}" draggable="true" title="${r.name}${names.length ? ' — drag it onto the other slot to swap them' : ' — drag to reorder; the number is what the prompt calls it'}"><span class="tile"><img src="/api/image/file?${qs({ path: r.path })}" alt="" draggable="false"><b class="band">${refName(i)}</b></span><button class="x" title="Remove">✕</button></div>`;
+  // An empty slot. `data-slot` is which one it is: a named workflow fills the slot you dropped on,
+  // a numbered one just takes the next place in the line.
+  const empty = (i, label, wide) => i == null
+    ? `<div class="adds${wide ? ' wide' : ''}"><div class="clip-empty${wide ? '' : ' slim'}" title="A picture H3 keeps the look or the identity of — click, drop a file, or drag a frame in off the stage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${label}</div></div>`
+    // A named slot wears the filled card's shape: well, then band, label where the picture's own
+    // label will sit.
+    : `<div class="adds" data-slot="${i}"><div class="clip-empty slot" title="The ${(label + '').toLowerCase()} — click, drop a file, or drag a frame in off the stage"><span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg><b class="band">${label}</b></span></div></div>`;
+  $('h3Refs').innerHTML = names.length
+    // Slots that mean something are all drawn, labelled, whether or not there is a picture in them:
+    // you cannot fill the closing frame of a first-to-last if the page only offers you the opening one.
+    ? names.map((label, i) => refs[i] ? filled(refs[i], i) : empty(i, label)).join('')
+    : refs.map(filled).join('')
+      + (refs.length >= w.refs ? ''
+         : empty(null, refs.length ? 'add picture' : 'a picture, or a frame off the stage', !refs.length));
   renderH3Vids(); renderLayers();
   paintClipKey(); paintVidKey();     // again, now the slots that decide the colours have been read
   // One line, and the rest in Help -> Comfy. The clip, when there is one, is <Video 1>.
@@ -2477,216 +2531,205 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-help]'); if (!a) return;
   e.preventDefault(); helpTab = a.dataset.help; toggleHelp(true);
 });
-// H3 reads a sectioned brief rather than a pile of style words, and nobody types that from memory.
-// The skeleton is built from what is actually loaded: a <Picture n> line per reference, <Video 1> only
-// when there is a clip, and the length that is selected. Whatever was already written is kept as the
-// look line, so pressing this never loses work.
-// Three intents, one skeleton. What separates them is retention_analysis: how hard each reference
-// binds. Say nothing and H3 takes the mood and little else, which is how a street comes back as a
-// theatre stage; pin the video and it keeps your plate and swaps who is standing in it.
-// Each one comes in two cuts, because a reference picture is only ONE way to say what you want: with a
-// picture loaded the brief points at <Picture 1>; with none it leaves you a line to describe the style
-// in words instead. H3 reads both. A picture is simply harder to be vague with.
-const H3_RECIPES = {
-  swap: ['character swap', {
-    role: 'identity anchor — the character design, exactly',
-    video: {
-      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
-         + 'attribute_transfer - everything else is restyled.',
-      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
-           + 'attribute_transfer - the subject is replaced by the character described below.',
-    },
-    look: {
-      ref: 'The shot stays as filmed; only the subject is replaced, drawn in the style of <Picture 1>'
-         + ' and lit to match the plate.',
-      words: 'The shot stays as filmed; only the subject is replaced by <the new character: build,'
-           + ' costume, colours, and how it is drawn> and lit to match the plate.',
-    },
-  }],
-  restyle: ['full restyle', {
-    role: 'style anchor — the medium, line, palette and texture',
-    video: {
-      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
-         + 'attribute_transfer - every surface in frame is redrawn in the style of <Picture 1>,\n'
-         + 'buildings, smoke, ground and crowd included. Nothing stays photographic.',
-      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing;\n'
-           + 'attribute_transfer - every surface in frame is redrawn in the style described below,\n'
-           + 'buildings, smoke, ground and crowd included. Nothing stays photographic.',
-    },
-    look: {
-      ref: 'The whole frame is one drawing in the style of <Picture 1> — same medium, same line'
-         + ' weight, same palette — moving with the shot.',
-      words: 'The whole frame is <the medium: hand-inked 1930s rubber-hose animation / oil on canvas /'
-           + ' charcoal on paper / cel-shaded anime …>,\n'
-           + '<the line and texture: thick wobbling outlines, visible brush, paper grain …>,\n'
-           + '<the palette: four flat colours, warm sepia, acid neon …>, moving with the shot.',
-    },
-  }],
-  journey: ['first → last', {
-    wf: 'pika_h3_fl2va',                     // the only brief that workflow offers, and only there
-    subjects: false,                         // the pictures are moments, not characters to hold
-    role: 'the frame the shot lands on',
-    // Replaces retention_analysis, because what is preserved here is a pair of instants, and the
-    // model is told exactly where on the clock each one sits.
-    align: (refs, secs) => [
-      '<Picture 1> is the first frame: it aligns with the 0.00-second mark of the target video.',
-      ...(refs.length > 1
-        ? [`<Picture 2> is the last frame: it aligns with the ${(+secs).toFixed(2)}-second mark.`]
-        : ['<Picture 2> is missing: add a second picture for the frame it should close on.']),
-      'Both are fully_preserved - the shot opens exactly on one and settles exactly into the other.',
-    ],
-    video: {
-      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
-      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
-    },
-    look: {
-      ref: 'The shot begins exactly on <Picture 1>. At about one second ... At about two seconds ...'
-         + ' It settles into the composition of <Picture 2> and holds.',
-      words: 'The shot begins on <the opening frame>. At about one second ... At about two seconds ...'
-           + ' It settles into <the closing frame> and holds.',
-    },
-  }],
-  smash: ['context smasher', {
-    wf: 'h3_context_smash',                  // the only brief that workflow offers, and only there
-    role: 'look anchor — palette and texture only',
-    video: {
-      ref: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
-      words: '<Video 1>: fully_preserved - the camera move, the blocking and the timing.',
-    },
-    look: {
-      ref: '<what the shot is: one line>',
-      words: '<what the shot is: one line>',
-    },
-  }],
-  scene: ['new scene', {
-    role: 'identity anchor',
-    video: {
-      ref: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
-      words: '<Video 1>: weak_reference only - the energy and pacing; the scene itself is new.',
-    },
-    look: { ref: '<the look: medium, palette, lens, grain>', words: '<the look: medium, palette, lens, grain>' },
-  }],
-};
-// Every look line any recipe can write. They carry no "..." so they would otherwise read as your own
-// writing, and switching to a full restyle would leave "only the subject is replaced" sitting in it.
-const H3_BOILER = new Set(Object.values(H3_RECIPES).flatMap(([, r]) => [r.look.ref, r.look.words])
-  .flatMap(t => t.split('\n')).map(l => l.trim()));
-const H3_SECTIONS = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description',
-                     'overall_soundscape', 'non_diegetic_music'];
-const H3_SHOT = '[Shot 1] Wide frame, ... At about two seconds the camera pushes in ...';
-const H3_FEAT = 'Features to follow exactly:';
-// Picking a second template has to REPLACE the first, not fold the whole of it into one section. So a
-// brief is read back apart first, by its section names. Plain prose has none of them and is left alone.
-function h3Sections(text) {
-  const map = {}; let cur = null;
-  for (const line of (text || '').split('\n')) {
-    const m = /^([a-z_]+):\s*$/.exec(line);
-    if (m && H3_SECTIONS.includes(m[1])) { map[cur = m[1]] = []; continue; }
-    if (cur) map[cur].push(line);
-  }
-  for (const k in map) map[k] = map[k].join('\n').trim();
-  return map;
-}
-// And the rule for what survives the switch: a line still carrying one of our "..." placeholders is ours
-// to rewrite; a line you have written over is yours, and is carried across.
-const h3Filled = t => (t || '').split('\n')
-  .filter(l => l.trim() && !/\.\.\.|…/.test(l)).join('\n').trim();
-// "none" takes the scaffolding away again: the structural sections go (they were the template talking),
-// what you wrote stays, as plain text. Nothing written yet means an empty box, which is the honest answer.
-const H3_PROSE = ['summary', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
-function h3Plain(text) {
-  const prev = h3Sections(text);
-  if (!Object.keys(prev).length) return (text || '').trim();   // never was a brief
-  return H3_PROSE.map(k => h3Filled(prev[k]).split('\n').filter(l => !H3_BOILER.has(l.trim())).join('\n').trim())
-                 .filter(Boolean).join('\n\n');
-}
-function h3Template(kind) {
-  const r = H3_RECIPES[kind]?.[1] || H3_RECIPES.swap[1];
-  const refs = h3Refs(), secs = h3Seconds();
-  const cut = refs.length ? 'ref' : 'words';   // point at the picture, or leave a line to describe it
-  const prev = h3Sections(state.prompt), brief = !!Object.keys(prev).length;
-  // written before any template was used: the whole thing is the look line, as it always was
-  const look = brief ? h3Filled(prev.detailed_description).split('\n')
-                         .filter(l => !H3_BOILER.has(l.trim())).join('\n').trim()
-                     : (state.prompt || '').trim();
-  const feats = {};                            // your own "Features to follow exactly:", kept per subject
-  let at = 0;
-  for (const raw of (prev.subject_definitions || '').split('\n')) {
-    const line = raw.trim(), m = /^<Subject (\d+)>/.exec(line);
-    if (m) at = +m[1];
-    if (at && line.startsWith(H3_FEAT) && h3Filled(line)) feats[at] = line;
-  }
-  const kept = k => h3Filled(prev[k]) || '...';
-  const out = [];
-  if (refs.length && r.subjects !== false) {
-    out.push('subject_definitions:', ...refs.map((_, i) =>
-      `<Subject ${i + 1}> is the subject of <Picture ${i + 1}>. Reference role: ${r.role}.\n` +
-      `${feats[i + 1] || H3_FEAT + ' ...'}\n` +
-      `Do not carry over the background of <Picture ${i + 1}>.`), '');
-  }
-  const who = refs.length ? '<Subject 1>' : 'the subject';
-  const body = look || r.look[cut];
-  out.push('summary:',
-    h3Filled(prev.summary)
-      || `A ${secs}-second single continuous shot: ${who} ...${state.clip ? ', following <Video 1>' : ''}. No cut.`, '',
-    'retention_analysis:',                     // the recipe itself: always rewritten, it is what you picked
-    ...(r.align ? r.align(refs, secs) : refs.map((_, i) => `<Subject ${i + 1}>: fully_preserved - ...`)),
-    ...(state.clip && wf().video ? [r.video[cut]] : []),
-    '',
-    ...h3ContextLines(),
-    'detailed_description:',
-    body,
-    ...(/^\[Shot /m.test(body) ? [] : [H3_SHOT]), '',
-    'overall_soundscape:', kept('overall_soundscape'), '',
-    'non_diegetic_music:', kept('non_diegetic_music'));
-  return out.join('\n');
-}
-// The part nobody should have to learn: which tag is which video, and what a colour means. The brief
-// writes it from the slots as they stand, so the only thing left to type is what the shot is.
 // Picking Context Smasher should leave you with something you could render, not homework: a mask in a
 // slot and a brief that already names it. The one line left blank is the only one that is yours.
 async function smashStart() {
   if (!h3Vids().length) await makeMask('circle');
-  if ((state.prompt || '').trim()) return;     // never over your own writing
-  $('prompt').value = h3Template('smash');
-  $('prompt').dispatchEvent(new Event('input'));
-  state.h3tpl = 'smash'; save();
-  renderTplPick('smash');
+  const b = brief();
+  if ((b.shot || '').trim()) return;           // never over your own writing
+  b.recipe = 'smash'; b.roles = {}; save();
+  await renderBrief();
   setStatus('context smasher — say what the shot is, the rest is filled in', 'done');
 }
-function h3ContextLines() {
-  const vids = h3Vids().slice(0, vidRoom());
-  if (!vids.length) return [];
-  return ['video_contexts:',
-    ...(state.clip && wf().video
-      ? ['<Video 1>: the plate. fully_preserved - the camera move, the blocking and the timing.'] : []),
-    ...vids.map((v, i) => v.mask
-      ? `<Video ${vidTag(i)}>: a colour mask. It is an instruction, never something to draw: `
-        + `${maskLegend(i)}. Follow it frame by frame — wherever a colour is, that video's content `
-        + `belongs there, and the mask's own colours never appear in the picture.`
-      : `<Video ${vidTag(i)}>: ... what to take from it.`),
-    ''];
+// ---------------------------------------------------------------- the brief, composed
+// What H3 reads is a sectioned document whose retention words -- fully_preserved,
+// attribute_transfer, weak_reference -- are the difference between a plate that is followed and one
+// that is ignored. None of that belongs in a text box: the panel asks what the shot is and what each
+// loaded thing is for, and engine/brief.py composes the document from the answers.
+var BRIEFS = null, briefTimer = 0, briefSent = '';
+function brief() {
+  if (!state.brief) {
+    // A brief written by hand before the form existed is yours, and the form would compose straight
+    // over it. So a sectioned document opens in manual; an ordinary line becomes the shot.
+    const had = (state.prompt || '').trim(), sectioned = /^retention_analysis:/m.test(had);
+    state.brief = { recipe: '', shot: sectioned ? '' : had, sound: '',
+                    roles: {}, manual: sectioned };
+  }
+  return state.brief;
 }
-// Which briefs this workflow offers. A recipe that names a workflow is only shown there; the general
-// ones are hidden on a workflow that has its own, because offering "character swap" next to a colour
-// mask is an invitation to write a brief the slots cannot answer.
-function h3Recipes() {
-  const id = wf().id, own = Object.values(H3_RECIPES).some(([, r]) => r.wf === id);
-  return Object.entries(H3_RECIPES).filter(([, [, r]]) => (r.wf ? r.wf === id : !own));
+async function needBriefs() {
+  if (!BRIEFS) BRIEFS = await api('/api/comfy/briefs')
+    .catch(() => ({ recipes: [], roles: { video: [], picture: [] } }));
+  return BRIEFS;
 }
-function renderTplPick(sel = '') {
-  $('promptTpl').innerHTML = '<option value="">no template</option>' + h3Recipes()
-    .map(([k, [label]]) => `<option value="${k}">${label}</option>`).join('');
-  $('promptTpl').value = sel;                // the pick stays on show: it says which brief is in the box
+// Everything loaded that the brief has to account for, in the order H3 numbers them.
+function briefSlots() {
+  const w = wf(), out = [], stacked = layerJob().length;
+  if (w.video && state.clip)
+    out.push({ key: 'v1', kind: 'video', tag: 1, name: stacked ? 'the plate' : state.clip.name,
+               path: sourcePath(),       // the plate once there is one: that is what goes up
+               what: stacked ? 'the plate: your layers, flattened into one clip' : 'the source clip' });
+  if (w.video) h3Vids().slice(0, vidRoom()).forEach((v, i) => out.push({
+    key: 'v' + vidTag(i), kind: 'video', tag: vidTag(i),
+    name: v.mask ? 'colour mask' : (v.name || 'video'),
+    path: v.mask ? '' : v.path, mask: v.mask || '',
+    what: v.mask ? '' : (v.name || 'a video context'),
+    legend: v.mask ? maskLegend(i) : '' }));
+  h3Refs().forEach((r, i) => r && out.push({ key: 'p' + (i + 1), kind: 'picture', tag: i + 1,
+    path: r.path, name: ((wf().ref_labels || [])[i] || r.name || 'picture') }));
+  for (const kind of ['video', 'picture']) {
+    const of = out.filter(s => s.kind === kind), one = of.length < 2;
+    const label = kind === 'video' ? 'Video' : 'Picture';
+    of.forEach(s => s.head = one ? label : `${label} ${s.tag}`);
+  }
+  return out;
 }
-$('promptTpl').onchange = e => {
-  const kind = e.target.value;
-  state.h3tpl = kind; save();
-  $('prompt').value = kind ? h3Template(kind) : h3Plain(state.prompt);   // the "random" link's path
-  $('prompt').dispatchEvent(new Event('input'));
-  $('prompt').focus();
-  setStatus(kind ? `${H3_RECIPES[kind][0]} — fill in the ... parts`
-                 : 'template off — your own lines kept', 'done');
+// The roles this workflow actually honours. No declaration means every role, which is how a
+// workflow that has not been measured behaves until it is.
+function briefRoleList(kind) {
+  const all = ((BRIEFS || {}).roles || {})[kind] || [];
+  const allow = (wf().roles || {})[kind];
+  return allow ? all.filter(r => allow.includes(r.id)) : all;
+}
+// What this slot is set to: your pick if this workflow can do it, else the template's, else the
+// first thing it can do. Resolved here rather than left to the server, because the server does not
+// know which graph it is being asked about.
+function briefRole(s, rec) {
+  const roles = briefRoleList(s.kind), ids = roles.map(r => r.id);
+  if (!ids.length) return '';
+  const mine = brief().roles[s.key];
+  if (ids.includes(mine)) return mine;
+  const d = (rec || briefRecipe() || {})[s.kind];
+  return ids.includes(d) ? d : ids[0];
+}
+function briefRecipe() {
+  return ((BRIEFS || {}).recipes || []).find(r => r.id === brief().recipe) || null;
+}
+function briefSpec() {
+  const b = brief(), slots = briefSlots();
+  const rec = briefRecipe();
+  const pick = s => briefRole(s, rec);
+  return { recipe: b.recipe, seconds: h3Seconds(), shot: b.shot, sound: b.sound,
+           moments: !!(wf().ref_labels || []).length,
+           videos: slots.filter(s => s.kind === 'video')
+             .map(s => ({ tag: s.tag, what: s.what, legend: s.legend || '', role: pick(s) })),
+           pictures: slots.filter(s => s.kind === 'picture')
+             .map(s => ({ tag: s.tag, name: s.name, role: pick(s) })) };
+}
+// The composed brief *is* the prompt: everything downstream -- the job, the preset, the run's own
+// record of what made it -- keeps reading state.prompt and knows nothing about a form.
+function needBrief(now) {
+  if (!isH3() || !wf().brief || brief().manual) return;
+  const body = JSON.stringify(briefSpec());
+  if (body === briefSent) return;              // the panel redraws often; the brief has not moved
+  briefSent = body;
+  clearTimeout(briefTimer);
+  briefTimer = setTimeout(async () => {
+    const r = await api('/api/comfy/brief', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body }).catch(() => null);
+    if (!r || brief().manual) return;
+    state.prompt = r.text;
+    if (document.activeElement !== $('prompt')) $('prompt').value = r.text;
+    paintSums(); save();
+  }, now ? 0 : 180);
+}
+// The boxes the brief is made of belong to the Prompt card in SD and to the Workflow card in
+// Comfy. They are the same boxes either way, so they are moved rather than duplicated -- and where
+// each one came from is remembered on the first move, so leaving Comfy puts it back exactly.
+var briefHomeAt = null;
+function briefMove(on) {
+  const parts = ['vidKey', 'promptWeak', 'briefForm', 'briefFoot', 'prompt'];
+  if (!briefHomeAt) briefHomeAt = parts.map(id => {
+    const el = $(id);
+    return el && { el, parent: el.parentElement, next: el.nextElementSibling };
+  });
+  if (briefMove.on === on) return;            // moving a textarea blurs it: only when it changes
+  briefMove.on = on;
+  if (on) {
+    ['vidKey', 'promptWeak', 'briefForm'].forEach(id => $('briefHome').appendChild($(id)));
+    ['briefFoot', 'prompt'].forEach(id => $('briefTail').appendChild($(id)));
+  } else {
+    briefHomeAt.forEach(p => p && p.parent.insertBefore(p.el, p.next));
+  }
+  $('promptSec').hidden = on;
+  document.querySelector('[data-card="model"] .title').textContent = on ? 'Workflow' : 'Model';
+}
+async function renderBrief() {
+  const on = isH3() && !!wf().brief, b = brief();
+  briefMove(on);
+  if (!on) { $('vidRole').hidden = $('refRoles').hidden = true; }
+  $('briefForm').hidden = !on;
+  $('briefFoot').hidden = !on;
+  $('prompt').hidden = on && !state.briefOpen;
+  if (!on) return;
+  paintBriefOut();
+  const d = await needBriefs();
+  // A recipe that names a workflow is only offered there, and a workflow with its own hides the
+  // general ones: offering "character swap" beside a colour mask is an invitation to write a brief
+  // the slots cannot answer.
+  const own = (d.recipes || []).some(r => r.wf === wf().id);
+  // A template whose clip role this workflow cannot honour is not a template you can have here:
+  // offering "new scene" on a graph that always holds the clip is promising a result it will not give.
+  // A recipe works through one slot: restyle through the picture, new scene through the clip. If
+  // this workflow cannot honour that slot's role, the recipe cannot do what its name says, so it is
+  // not offered -- rather than sitting there promising a result that will not come.
+  const able = r => (r.needs || ['video']).every(kind => {
+    const allow = (wf().roles || {})[kind];
+    if (!allow) return true;                   // nothing measured: offer it
+    if (kind === 'video' && !wf().video) return true;
+    return allow.includes(r[kind]);
+  });
+  const list = (d.recipes || []).filter(r => (r.wf ? r.wf === wf().id : !own) && able(r));
+  if (!list.some(r => r.id === b.recipe)) b.recipe = (list[0] || {}).id || '';
+  $('briefRecipe').innerHTML = list.map(r =>
+    `<option value="${r.id}"${r.id === b.recipe ? ' selected' : ''}>${r.label}</option>`).join('');
+  const rec = list.find(r => r.id === b.recipe) || {};
+  $('briefNote').textContent = rec.note || '';
+  if (document.activeElement !== $('briefShot')) $('briefShot').value = b.shot || '';
+  $('briefShot').placeholder = rec.shot || 'what the shot is';
+  if (document.activeElement !== $('briefSound')) $('briefSound').value = b.sound || '';
+  const slots = briefSlots();
+  for (const [el, kind] of [[$('vidRole'), 'video'], [$('refRoles'), 'picture']]) {
+    const roles = briefRoleList(kind), mine = slots.filter(x => x.kind === kind);
+    // One choice is not a choice: the brief still uses it, the panel just does not ask.
+    el.hidden = roles.length < 2 || !mine.length;
+    el.innerHTML = el.hidden ? '' : mine.map(x => {
+      const at = briefRole(x, rec);
+      return `<div class="brow">${mine.length > 1 ? `<b title="${x.name}">${x.head}</b>` : ''}
+        <div class="seg" data-slot="${x.key}" style="grid-template-columns:repeat(${roles.length},1fr)">${roles.map(r =>
+          `<button data-role="${r.id}"${r.id === at ? ' class="on"' : ''} title="${r.note || ''}">${r.label}</button>`).join('')}</div></div>`;
+    }).join('');
+  }
+  needBrief(true);
+}
+// Touching the form is what hands the prompt back to it: the form is the thing that writes it, and
+// an edit you made in the box can only survive until you change your mind about a field.
+const briefEdit = () => { brief().manual = false; };
+$('briefRecipe').onchange = e => {
+  const b = brief();
+  b.recipe = e.target.value; b.roles = {}; b.manual = false;   // a template sets every pill
+  save(); renderBrief();
+};
+$('briefShot').oninput = e => { briefEdit(); brief().shot = e.target.value; save(); needBrief(); };
+$('briefSound').oninput = e => { briefEdit(); brief().sound = e.target.value; save(); needBrief(); };
+document.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-role]'), seg = btn && btn.closest('[data-slot]');
+  if (!seg) return;
+  briefEdit();
+  brief().roles[seg.dataset.slot] = btn.dataset.role;
+  [...seg.children].forEach(b2 => b2.classList.toggle('on', b2 === btn));
+  save(); needBrief();
+});
+// One control, and its label is the other side of it: the form that writes the prompt, or the
+// prompt itself. Going back to the form lets it compose again, which replaces anything typed in
+// the box -- so the button says that on hover rather than in a paragraph under it.
+function paintBriefOut() {
+  const b = $('briefShow');
+  b.textContent = (state.briefOpen ? '▾' : '▸') + ' view prompt';
+  b.title = 'The prompt this form composes — exactly what goes up. You can type in it; touching the form writes it again.';
+}
+$('briefShow').onclick = () => {
+  state.briefOpen = !state.briefOpen; save(); renderBrief();
 };
 $('h3Secs').onclick = e => {
   const v = e.target.dataset.s; if (!v) return;
@@ -2902,8 +2945,10 @@ $('layers').addEventListener('pointerdown', e => {
     const dx = ev.clientX - x0;
     if (!moved && Math.abs(dx) < 3) return;
     moved = true; el.classList.add('dragging');
+    // A pixel is a percent. At two pixels per percent the pointer ran away from the number and the
+    // box felt like it was sliding under you rather than being carried; Shift still gives quarters.
     const step = (ev.shiftKey ? 0.25 : 1) / 100;
-    L[k] = Math.min(1, Math.max(0, +(from + Math.round(dx / 2) * step).toFixed(4)));
+    L[k] = Math.min(1, Math.max(0, +(from + dx * step).toFixed(4)));
     paintNum(el, L[k]);
     needPaint(); needPlate(); pushLayers();
   };
@@ -3438,7 +3483,7 @@ function renderH3Vids() {
       <div class="clip-empty${rows.length ? ' slim' : ''}${nc ? ' keyed' : ''}"${nc ? ` style="--key:${nc}"` : ''} data-add="video" title="${
         nc ? `The next video in H3's context \u2014 the mask sends ${MASK_COLOUR_NAMES[MASK_COLOURS.indexOf(nc)]} to whatever lands here. Click, drop a file, or drag a run in off the strip`
            : `Another whole video in H3's context \u2014 click, drop a file, or drag a run in off the strip`}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
-        MASK_PATTERNS.length ? `<div class="clip-empty${rows.length ? ' slim' : ''}" data-add="mask" title="A flat colour mask, drawn here, that says which video goes where"><span class="mini">${
+        MASK_PATTERNS.length && wf().masks ? `<div class="clip-empty${rows.length ? ' slim' : ''}" data-add="mask" title="A flat colour mask, drawn here, that says which video goes where"><span class="mini">${
           MASK_COLOURS.slice(0, 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>colour mask</div>` : ''}
     </div>`);
   // a frame ffmpeg could not read leaves the icon underneath showing, not a broken picture
@@ -3571,15 +3616,39 @@ $('h3Vids').addEventListener('drop', e => {
     .then(addH3Vid).catch(err => setStatus('upload failed: ' + err.message, 'bad'));
 });
 const H3_REF_LONG = 1344;                      // what H3 looks at; a bigger upload buys nothing
+var refSlot = -1;                              // the slot that was clicked or dropped on, if any
 function addH3Ref(res) {
-  if (h3Refs().length >= wf().refs) return setStatus(`${wf().label} takes up to ${wf().refs} references`, 'bad');
-  h3Refs().push({ path: res.path, name: res.name, width: res.width || 0, height: res.height || 0 });
-  renderH3(); paintSums(); save(); setStatus(`<Picture ${h3Refs().length}> added`);
+  const refs = h3Refs(), pic = { path: res.path, name: res.name,
+                                 width: res.width || 0, height: res.height || 0 };
+  const at = refSlot; refSlot = -1;
+  if (at >= 0) {                               // a named slot: this picture goes in this one
+    while (refs.length < at) refs.push(null);
+    refs[at] = pic;
+  } else {
+    if (refs.filter(Boolean).length >= wf().refs) return setStatus(`${wf().label} takes up to ${wf().refs} references`, 'bad');
+    refs.push(pic);
+  }
+  const label = (wf().ref_labels || [])[at >= 0 ? at : refs.length - 1];
+  renderH3(); paintSums(); save();
+  setStatus(label ? `${label} set` : `<Picture ${refs.length}> added`);
 }
+// Which empty slot an event landed on: -1 when it landed anywhere else, so a drop on the row at
+// large still just adds the next picture.
+const refSlotAt = e => {
+  const box = e.target.closest('[data-slot]');
+  return box ? +box.dataset.slot : -1;
+};
 $('h3Refs').onclick = e => {
   const row = e.target.closest('.ref');
-  if (row && e.target.closest('button')) { h3Refs().splice(+row.dataset.i, 1); renderH3(); paintSums(); save(); return; }
-  if (e.target.closest('.clip-empty')) $('h3File').click();
+  if (row && e.target.closest('button')) {
+    const refs = h3Refs(), i = +row.dataset.i;
+    // A named slot keeps its place: promoting the next picture into it would turn the frame a clip
+    // ends on into the frame it starts from, silently.
+    if ((wf().ref_labels || []).length) refs[i] = null; else refs.splice(i, 1);
+    while (refs.length && !refs[refs.length - 1]) refs.pop();
+    renderH3(); paintSums(); save(); return;
+  }
+  if (e.target.closest('.clip-empty')) { refSlot = refSlotAt(e); $('h3File').click(); }
 };
 $('h3File').onchange = e => {
   const file = e.target.files[0]; e.target.value = '';
@@ -3605,6 +3674,7 @@ async function clipFrameAsRef() {
 $('h3Refs').addEventListener('dragover', e => e.preventDefault());
 $('h3Refs').addEventListener('drop', e => {
   e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  refSlot = refSlotAt(e);                      // read before the upload: the row is redrawn by then
   const run = runDragData(e);
   if (run && run.clip) return clipFrameAsRef()
     .catch(err => setStatus('could not use that frame: ' + err.message, 'bad'));
@@ -3842,7 +3912,10 @@ function lockShare(next, style) { return Math.min(1, Math.max(0, +(1 - (+next) /
 
 // Negative prompt: optional, folded by default; a dot on the fold when it holds something
 function paintNeg() {
-  $('negative').hidden = !state.negOpen;
+  // No cloud graph has a negative conditioning input, so there is nothing for one to reach.
+  const none = typeof isH3 === 'function' && isH3();
+  $('negToggle').hidden = none;
+  $('negative').hidden = none || !state.negOpen;
   $('negative').value = state.negative;
   $('negToggle').textContent = (state.negOpen ? '▾' : '▸') + ' negative';
   $('negToggle').classList.toggle('set', !state.negOpen && !!state.negative.trim());
@@ -3870,7 +3943,7 @@ function paintSums() {
   const set = (k, t) => { const el = $('sum_' + k); if (el) el.textContent = t; };
   set('prompt', state.keys.length && !isH3() ? `${state.keys.length + 1} keyframes` : '');
   set('model', isH3()
-    ? [wf().label, h3Refs().length && `${h3Refs().length} ref`,
+    ? [wf().label, h3Refs().filter(Boolean).length && `${h3Refs().filter(Boolean).length} ref`,
        comfyFast() && 'fast',
        state.tracks && wf().tracks && `${isField() ? state.tracks.label + ' \u00b7 ' : ''}${state.tracks.paths} paths`,
        wf().strength && wf().tracks && state.tracks && `pull ${(+comfyPull()).toFixed(2)}`]
@@ -4626,6 +4699,12 @@ $('seed').onchange = e => {
 $('seedDice').onclick = () => { state.seed = randomSeed(); state.seedLock = true; renderSeed(); save(); };
 $('seedLock').onclick = () => { state.seedLock = !state.seedLock; renderSeed(); save(); };
 $('prompt').oninput = e => {
+  // Comfy: the form composes this box. Typing in it is the handover -- nothing else should have to
+  // be pressed first, and nothing the form writes afterwards may land on top of your words.
+  if (isH3() && wf().brief && !brief().manual) {
+    brief().manual = true;                 // not composed over while you are in it
+    setStatus('the prompt is yours — until you touch the form again', 'done');
+  }
   if (liveOn()) return;                    // Live: Enter sends it; the keyframe arrives from the engine
   if (state.keySel >= 0 && state.keys[state.keySel]) state.keys[state.keySel].prompt = e.target.value;
   else state.prompt = e.target.value;
@@ -4702,6 +4781,14 @@ function picFrameUrl(kind) {
   return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind, ...depthQ(kind) })}`;
 }
 function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
+// The frames the run on show will have when it finishes, while it is still being made; 0 otherwise.
+// The transport uses it so the track is the whole run from the first frame, rather than a bar that
+// grows under your hand -- and so the playhead has somewhere to stop.
+function liveTotal() {
+  const live = job && job.run_id === viewRun && !['completed', 'cancelled', 'failed'].includes(job.state);
+  return (live && job.total_frames) || 0;
+}
+const liveEdge = () => frames.length - 1;  // the last frame that exists: as far as the playhead goes
 function toSource() {                      // e.g. scrubbing away from a Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
@@ -4721,7 +4808,7 @@ function setupTransport() {
     $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
   } else if (frames.length) {
     $('scrub').hidden = false;
-    $('scrubRange').max = frames.length - 1; $('scrubRange').value = frameIdx;
+    $('scrubRange').max = Math.max(frames.length, liveTotal()) - 1; $('scrubRange').value = frameIdx;
   }
 }
 function clipFrameUrl(kind) {
@@ -5929,7 +6016,7 @@ addEventListener('keydown', e => {
 async function startJob(kind) {
   const name = { frame: 'frame', test: 'preview', render: 'render', refine: 'refine' }[kind];   // shown in status + run labels
   if (kind !== 'refine' && !state.clip && !state.t2v && !isH3()) { setStatus('drop a video first', 'bad'); return; }
-  if (isH3() && !state.clip && !h3Refs().length) { setStatus('H3 needs a clip, or a reference picture', 'bad'); return; }
+  if (isH3() && !state.clip && !h3Refs().filter(Boolean).length) { setStatus('H3 needs a clip, or a reference picture', 'bad'); return; }
   // Comfy brings its own inputs; the Image -> Video slot belongs to the local modes and must not gate it
   if (kind !== 'refine' && state.i2v && !state.image && !isH3()) { setStatus('drop an image first', 'bad'); return; }
   if (job && !['completed', 'cancelled', 'failed'].includes(job.state)) return;
@@ -6210,7 +6297,9 @@ function applyView() {
 var controlTabs = {}, runLayers = [];     // var: renderControls can call in before this line runs
 function setControlTabs(layers = runLayers) {
   runLayers = layers;
-  const noRun = !viewRun, dd = state.gtab === 'dd' && (!state.t2v || state.i2v);   // Text -> Video: a 3D run's depth; Image -> Video: the live Diff
+  // Comfy Cloud has no DepthDiff: the guidance card is hidden there, so a Diff tab left over from an
+  // SD session is a tab for a thing this workflow cannot do.
+  const noRun = !viewRun, dd = state.gtab === 'dd' && !isH3() && (!state.t2v || state.i2v);   // Text -> Video: a 3D run's depth; Image -> Video: the live Diff
   const hasSrc = state.t2v ? state.i2v && !!state.image : !!state.clip;
   const entries = dd ? (hasSrc && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
                      : (noRun ? [] : layers.filter(l => (l.id !== 'control_diff' || state.t2v) && l.id !== 'control_shape' && l.id !== 'control_qr').map(l => [l.id, l.label]));   // no live Diff without a clip
@@ -6282,7 +6371,11 @@ $('scrubRange').oninput = e => {
   }
   if (oneFrameRun()) toSource();           // scrubbing away from a Frame result: back to Source
   if (clipMode()) { if (playing) stopPlay(); clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
-  frameIdx = +e.target.value; stopPlay(); paintFrame();
+  // Past the live edge there is nothing to show, so the playhead stops there and waits for the
+  // render to come to it.
+  frameIdx = Math.min(+e.target.value, liveEdge());
+  if (+e.target.value !== frameIdx) e.target.value = frameIdx;
+  stopPlay(); paintFrame();
 };
 function stopPlay() {
   const was = playing;
@@ -6379,14 +6472,17 @@ function togglePlay() {
   playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / fps);
 }
 $('playBtn').onclick = togglePlay;
+// Someone typing owns the keyboard: space is a space, and the arrows move the caret. Every field
+// counts, not just the big ones -- a one-line box is still a box you are typing in.
+const typing = e => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 addEventListener('keydown', e => {
-  if ((clipMode() || oneFrameRun()) && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+  if ((clipMode() || oneFrameRun()) && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !typing(e)) {
     if (oneFrameRun()) toSource();
     const n = state.clip.source.frames;
     clipFrame = (clipFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
     $('scrubRange').value = clipFrame; paintFrame(); return;
   }
-  if (e.target.tagName === 'TEXTAREA' || (!frames.length && !clipMode())) return;
+  if (typing(e) || (!frames.length && !clipMode())) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     stopPlay(); frameIdx = (frameIdx + (e.code === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length;
