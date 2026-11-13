@@ -199,7 +199,11 @@ from engine import layers as layerlib   # noqa: E402  (pure stdlib + PIL, nothin
 # ------------------------------------------------------------------ frames
 def extract_frames(job: RenderJob, dest: Path) -> list[Path]:
     """Source frames at render size, numbered from 0 in extracted-frame units. `job.video` may also be a
-    folder of PNGs (Refine: a run's output frames), resized with Lanczos."""
+    folder of PNGs (Refine: a run's output frames), resized with Lanczos.
+
+    `job.fit` (an attribute a caller may set on its own copy; stretch unless it does) is how a frame
+    that is not the render's shape is brought to size. A layer asks for fill, so it keeps its shape
+    and the overflow is cropped -- the same cover the flatten does."""
     dest.mkdir(parents=True, exist_ok=True)
     for old in dest.glob("*.jpg"):
         old.unlink()
@@ -209,15 +213,15 @@ def extract_frames(job: RenderJob, dest: Path) -> list[Path]:
         if job.frame_end >= 0:
             pngs = pngs[:job.frame_end - job.frame_start + 1]
         for k, f in enumerate(pngs):
-            Image.open(f).convert("RGB").resize((job.width, job.height), Image.LANCZOS).save(
-                dest / f"{k:06d}.jpg", quality=95)
+            fit_image(Image.open(f).convert("RGB"), job.width, job.height,
+                      getattr(job, "fit", "stretch")).save(dest / f"{k:06d}.jpg", quality=95)
         if not pngs:
             raise RuntimeError(f"no frames in {job.video}")
         return sorted(dest.glob("*.jpg"))
     start = job.frame_start * nth
     end = "" if job.frame_end < 0 else f"*lte(n\\,{job.frame_end * nth})"
     vf = (f"select=gte(n\\,{start}){end}*not(mod(n\\,{nth})),"
-          f"scale={job.width}:{job.height}:flags=lanczos")
+          + scale_vf(job.width, job.height, getattr(job, "fit", "stretch")))
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", job.video, "-vf", vf, "-vsync", "vfr",
                     "-q:v", "2", "-start_number", "0", str(dest / "%06d.jpg")], check=True)
     frames = sorted(dest.glob("*.jpg"))

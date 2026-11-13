@@ -336,9 +336,13 @@ def _blend(a, b, mode: str):
 class FrameStack:
     """Every layer as frames at render size, and the composite of any one of them on demand.
 
-    Each layer goes through the engine's own frame extraction, so the range, the every-nth and the
-    render size are whatever the job says -- a layer is read exactly the way the clip would be. A
-    layer shorter than the render loops, which is what the flatten does too.
+    Each layer goes through the engine's own frame extraction at the render's size and every-nth.
+    The base is the clip, so it is read over the trimmed range. Everything laid over it is read
+    whole, from its own first frame, and looked up by the absolute frame number so a layer shorter
+    than the clip loops -- the way the preview loops it, and the way the flatten does.
+
+    Reading a layer over the clip's range was what the trim meant before, and it could not work: a
+    still has one frame, so trimming to 84 selected nothing out of it and ffmpeg failed the render.
     """
 
     def __init__(self, job, out: Path, extract, log=lambda s: None):
@@ -350,9 +354,17 @@ class FrameStack:
         self.dir = Path(out) / "src"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.frames: dict[int, list] = {}
+        base_k = self.pairs[0][0]
+        self.off: dict[int, int] = {}
         for k, L in enumerate(self.stack):
             one = copy(job)
             one.video = L["path"]
+            # Fill the frame and keep the shape, as the flatten does. The clip itself is left alone:
+            # the render size comes from it, so there is nothing to crop.
+            if k != base_k:
+                one.fit = "fill"
+                one.frame_start, one.frame_end = 0, -1   # read whole; the trim is the clip's, not its
+            self.off[k] = 0 if k == base_k else max(0, job.frame_start)
             self.frames[k] = extract(one, Path(out) / "layers" / f"{k}")
             log(f"  {Path(L['path']).name} \u00b7 {len(self.frames[k])} frames"
                 + (" \u00b7 matte" if L["matte"] else f" \u00b7 {L['mode']} {L['opacity'] * 100:.0f}%"))
@@ -363,7 +375,7 @@ class FrameStack:
     def _frame(self, k: int, i: int):
         from PIL import Image
         got = self.frames[k]
-        return Image.open(got[i % len(got)]).convert("RGB")
+        return Image.open(got[(self.off[k] + i) % len(got)]).convert("RGB")
 
     def write(self, i: int, stack=None) -> Path:
         """Composite frame `i` with the settings as they stand, unless that is already on disk."""

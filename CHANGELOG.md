@@ -2,6 +2,35 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-12
+
+- **A still layer no longer fails the render.** Every layer was read over the clip's trimmed range,
+  so a picture — which has exactly one frame — had nothing to give when the trim started at frame
+  84, and ffmpeg failed the whole job. The trim belongs to the clip: layers over it are read whole
+  from their own first frame now and loop by frame number, which is what the preview was already
+  showing you.
+- **A layer keeps its shape in the live preview.** The flatten always cropped a layer to fill the
+  frame; the browser preview stretched it to the frame instead, so a square picture over a wide clip
+  looked squashed until the render came back. All three cover now — the flatten, the preview and
+  the renderer — filling the frame, keeping the aspect, letting the overflow go off the edges.
+- **An enhance no longer draws a false edge on the transport.** The orange fill is the live edge of
+  the run you are scrubbing — frames exist to its left, and the playhead stops there. An enhance is
+  building a different run with a different frame count (62 in, 123 out), so its progress on that
+  track was a line that meant nothing to the frames under it. It reports itself in the status chip,
+  which was always the more precise of the two.
+- **The Prompt card came back from Comfy.** Switching from a Comfy workflow to SD 1.5 left the
+  prompt box, and the card it lives in, still packed away in the Workflow panel: putting the boxes
+  back asked for a neighbour that had not been put back yet, so the whole restore gave up halfway.
+  They now go home from the bottom up.
+- **Render is Sampler.** The card is Denoise, the frame modes and their dials — it has always been
+  the sampling half, and the thing called Render is the button.
+- **The layers card lost its paragraph.** What it said is in the tooltips and, better, on the Source
+  tab, which shows the flattened stack itself.
+- **The Denoise ramp turns itself off.** The little "off" link is gone: the end handle now starts
+  level with Denoise, which is the flat line, and dragging it away is what makes a ramp. That also
+  gives 0 back its real meaning — ramp down to 0 and the paint fades out into the source by the
+  last frame, instead of reading as "no ramp".
+
 ## 2026-11-10
 
 - **MiniMax H3 is in the workflow list, plain.** The same reference-to-video weights Pika Flex is

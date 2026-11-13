@@ -1142,7 +1142,7 @@
 
   <section>
     <div class="card" data-card="render">
-    <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Render</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
+    <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Sampler</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider">
       <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With Warp, this is frame 1 — Frame Lock sets the rest">Denoise</b><span id="styleV"></span></div>
@@ -1155,7 +1155,7 @@
         <span id="styleEndV"></span>
       </div>
       <input type="range" id="styleEnd" min="0" max="1" step="0.01">
-      <div class="ends"><span id="rampNote"></span><a href="#" id="rampOff" class="randlink">off</a></div>
+      <div class="ends"><span id="rampNote"></span></div>
     </div>
     <div class="seg" id="frameMode" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button data-f="warp" title="Carry the paint along the footage's motion: strokes stick to things">Warp</button>
@@ -1232,7 +1232,6 @@
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
     </div>
-    <div class="adnote" id="layerNote" style="margin:10px 0 0"></div>
     </div></div>
     <input type="file" id="layerFile" accept="video/*,image/*" hidden>
   </section>
@@ -2638,7 +2637,7 @@ function needBrief(now) {
 // each one came from is remembered on the first move, so leaving Comfy puts it back exactly.
 var briefHomeAt = null;
 function briefMove(on) {
-  const parts = ['vidKey', 'promptWeak', 'briefForm', 'briefFoot', 'prompt'];
+  const parts = ['vidKey', 'briefForm', 'briefFoot', 'prompt', 'promptWeak'];   // document order
   if (!briefHomeAt) briefHomeAt = parts.map(id => {
     const el = $(id);
     return el && { el, parent: el.parentElement, next: el.nextElementSibling };
@@ -2649,7 +2648,11 @@ function briefMove(on) {
     ['vidKey', 'promptWeak', 'briefForm'].forEach(id => $('briefHome').appendChild($(id)));
     ['briefFoot', 'prompt'].forEach(id => $('briefTail').appendChild($(id)));
   } else {
-    briefHomeAt.forEach(p => p && p.parent.insertBefore(p.el, p.next));
+    // Bottom up: each one goes in front of its old neighbour, so that neighbour has to be home
+    // first. A forward pass asks for a sibling that is still sitting in the other card, which
+    // throws -- and the Prompt card then stayed hidden with everything in it.
+    for (const p of [...briefHomeAt].reverse())
+      if (p) p.parent.insertBefore(p.el, p.next && p.next.parentElement === p.parent ? p.next : null);
   }
   $('promptSec').hidden = on;
   document.querySelector('[data-card="model"] .title').textContent = on ? 'Workflow' : 'Model';
@@ -3085,13 +3088,6 @@ function renderLayers() {
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
   needPlate();
   if (typeof applyView === 'function') applyView();
-  const drawn = drawnLayers().length + (state.clip ? 1 : 0);
-  const b = baseLayer(), faded = b.opacity !== 1 || !!b.blur;
-  $('layerNote').innerHTML = !rows.length
-    ? (faded
-      ? `The source on its own, faded or softened before anything else sees it — composited here at the render's size and length.`
-      : `The clip on its own. Add a layer and the stack is composited here, at the render's size and length, before any of it is uploaded.`)
-    : `${drawn} layer${drawn > 1 ? 's' : ''} flattened into one clip before upload — what the model gets is the arrangement itself, not a description of it.`;
 }
 // With a stack on, the thing being rendered is not the clip -- it is the clip with everything laid
 // over it. So Source shows that. The server composites it and names it after what is in it, so this
@@ -3168,6 +3164,16 @@ function layerFrame(L, n) {
   img.src = url;
   return plateLast[L.path] || null;                  // the last one that arrived, meanwhile
 }
+// Fill the frame and keep the shape: the same cover the flatten does
+// (scale=force_original_aspect_ratio=increase, then a centred crop). A layer is a picture laid over
+// another picture -- stretching it to the frame distorts it, and letterboxing it would hand the
+// model black bars as content. Overflow goes off the edges instead.
+function coverDraw(ctx, img, w, h) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+  const k = Math.max(w / iw, h / ih), sw = w / k, sh = h / k;
+  ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
+}
 // The matte's brightness as alpha, through its levels. Same reckoning as the lut the engine builds.
 var BLUR_SPAN = 0.04;                      // matches engine/layers.py
 const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
@@ -3179,7 +3185,7 @@ function matteAlpha(M, img, w, h) {
   if (matteCache.has(ck)) return matteCache.get(ck);
   const t = document.createElement('canvas'); t.width = w; t.height = h;
   const x = t.getContext('2d', { willReadFrequently: true });
-  x.drawImage(img, 0, 0, w, h);
+  coverDraw(x, img, w, h);
   const d = x.getImageData(0, 0, w, h), p = d.data;
   const b = M.black ?? 0, wt = M.white ?? 1;
   const g = Math.log(0.5) / Math.log(Math.min(0.99, Math.max(0.01, M.mid ?? 0.5)));
@@ -3241,7 +3247,7 @@ function paintPlate(soft) {
   const b0 = pairs[0][0];
   c.filter = b0.blur > 0 ? `blur(${blurPx(b0.blur, w, h).toFixed(2)}px)` : 'none';
   c.globalAlpha = b0.opacity;
-  c.drawImage(base, 0, 0, w, h);
+  coverDraw(c, base, w, h);
   c.filter = 'none'; c.globalAlpha = 1;
   for (let n = 1; n < pairs.length; n++) {
     const [L, M] = pairs[n], img = layerFrame(L, clipFrame);
@@ -3253,12 +3259,12 @@ function paintPlate(soft) {
     if (M && mImg) {
       const t = document.createElement('canvas'); t.width = w; t.height = h;
       const tx = t.getContext('2d');
-      tx.filter = soft; tx.drawImage(img, 0, 0, w, h); tx.filter = 'none';
+      tx.filter = soft; coverDraw(tx, img, w, h); tx.filter = 'none';
       tx.globalCompositeOperation = 'destination-in';
       tx.drawImage(matteAlpha(M, mImg, w, h), 0, 0);
       c.drawImage(t, 0, 0);
     } else {
-      c.filter = soft; c.drawImage(img, 0, 0, w, h); c.filter = 'none';
+      c.filter = soft; coverDraw(c, img, w, h); c.filter = 'none';
     }
   }
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
@@ -4712,26 +4718,24 @@ $('prompt').oninput = e => {
 };
 $('style').oninput = e => { state.style = +e.target.value; $('styleV').textContent = state.style.toFixed(2); renderRamp(); save(); pushDials(); };
 // Denoise over the clip: null is a flat line, a number is where it ends up. The slider under Denoise
-// is the end of the ramp; "off" puts it back to flat.
+// is the end of the ramp. Off is not a link, it is the handle sitting level with Denoise: a ramp
+// from a value to itself is flat, and dragging the handle away from Denoise is what makes it a
+// ramp. That leaves 0 free to mean what it says -- the paint fades back to the source by the end.
 function rampOn() { return typeof state.styleEnd === 'number'; }
 function renderRamp() {
-  const on = rampOn(), v = on ? state.styleEnd : Math.min(1, +(state.style + 0.25).toFixed(2));
+  const on = rampOn(), v = on ? state.styleEnd : +(+state.style).toFixed(2);
   $('styleEnd').value = v;
-  $('styleEndV').textContent = on ? v.toFixed(2) : 'off';
+  $('styleEndV').textContent = v.toFixed(2);
   $('styleEndV').style.opacity = on ? '' : '.5';
-  $('rampOff').hidden = !on;
   $('rampNote').textContent = on
     ? `${(+state.style).toFixed(2)} at the first frame \u2192 ${v.toFixed(2)} at the last`
-    : 'drag to make Denoise climb across the clip';
+    : 'flat across the clip — drag to make Denoise climb or fall';
   $('rampRow').hidden = isH3() || adOn();
 }
 $('styleEnd').oninput = e => {
-  state.styleEnd = +(+e.target.value).toFixed(2);
+  const v = +(+e.target.value).toFixed(2);
+  state.styleEnd = v === +(+state.style).toFixed(2) ? null : v;   // level with Denoise = no ramp
   renderRamp(); paintSums(); save(); pushDials();
-};
-$('rampOff').onclick = e => {
-  e.preventDefault();
-  state.styleEnd = null; renderRamp(); paintSums(); save(); pushDials();
 };
 $('styleNext').oninput = e => { state.frameLock = +(+e.target.value).toFixed(2); $('styleNextV').textContent = state.frameLock.toFixed(2); save(); pushDials(); };
 $('styleNext').ondblclick = () => { state.frameLock = 0.35; renderControls(); save(); };
@@ -5640,7 +5644,7 @@ var TOUR = [
     `The Stable Diffusion family (<b>SD 1.5</b>, <b>2.1</b>, <b>SDXL</b>) and the checkpoint. <b>Steps</b> trade time for detail,
      <b>CFG</b> is how literally it follows the prompt. <b>Seed</b>: lock it to compare one change at a time, 🎲 for a new one,
      drag the number to step through nearby seeds.` },
-  { at: () => [document.querySelector('[data-card="render"]')], title: 'Render', text: () =>
+  { at: () => [document.querySelector('[data-card="render"]')], title: 'Sampler', text: () =>
     `<b>Denoise</b>: how much of each frame is repainted, from keeping the source to repainting it all. Then how frames connect:
      <b>Warp</b> carries the paint along the motion so strokes stick to things, <b>Boil</b> repaints every frame fresh
      (a hand-painted shimmer), <b>Motion</b> (SD 1.5) animates 16 frames at a time for smooth movement.
@@ -6118,7 +6122,11 @@ async function startJob(kind) {
   };
   es.onerror = () => { /* EventSource retries on its own; state arrives on reconnect */ };
 }
-// A job's progress fills the transport's track orange (0 / done = no fill); while it runs the strip shows
+// A job's progress fills the transport's track orange (0 / done = no fill); while it runs the strip
+// shows it. Only a render may fill it: the track is that run's frames, so the orange edge is where
+// the frames stop and the playhead stops with it. An enhance is making a different run with a
+// different frame count, so filling this track would draw a line the playhead has no reason to
+// respect -- it reports itself in the status chip instead.
 function setProgress(pct) {
   const on = pct > 0 && pct < 100;
   $('scrubRange').style.setProperty('--prog', (on ? pct : 0) + '%');
@@ -7107,12 +7115,11 @@ $('enhGo').onclick = async () => {
   $('enh').hidden = true; followPost(runId);
 };
 function followPost(runId) {
-  setButtons(true); paintEnhanceSafe();
+  setButtons(true); paintEnhanceSafe(); setProgress(0);
   $('cancelLink').classList.remove('hide');
   $('cancelLink').onclick = () => postJob && api(`/api/post/${postJob.id}/cancel`, { method: 'POST' }).catch(() => {});
   const tick = async () => {
     try { postJob = await api(`/api/post/${postJob.id}`); } catch { setTimeout(tick, 2000); return; }
-    setProgress(postJob.progress);
     if (postJob.logs) setLog(postJob.logs);     // an upscale has as much to say as a render does
     if (postJob.state === 'running' || postJob.state === 'queued') {
       setStatus(`enhance · ${postJob.message}`, 'live'); setTimeout(tick, 1000); return;
