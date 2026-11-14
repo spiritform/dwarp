@@ -4,6 +4,9 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **The bar under the stage reads copy settings · use frame → · enhance.** "use settings" is
+  **copy settings** again, and the two that take something out of a run and put it back in the panel
+  now sit together; enhance follows, since it is the one that leaves the run as it is.
 - **A layer is a card.** It has a header — the name, and the marks for matte, hide and remove —
   a shade brighter than the card, running corner to corner, with an outline round the whole thing
   and twice as much air between one card and the next. You drag a layer by that header now, not by

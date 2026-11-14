@@ -1497,9 +1497,9 @@
       <a id="liveBtn" title="Live: starts a Render (or joins the running one); type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
-    <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
-    <a id="enhanceLink" class="hide">enhance</a>
+    <a id="loadRun" class="hide" title="Copy this run's settings into the panel: its look, prompt, keyframes, sliders, model, seed and clip">copy settings</a>
     <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">use frame →</a>
+    <a id="enhanceLink" class="hide">enhance</a>
     <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
@@ -5988,7 +5988,7 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
     <h3>Runs, seeds and Enhance</h3>
     <h4>The strip</h4>
     <p>Every Frame, Preview and Render is a run in the strip at the bottom, newest on the left. Click one to view it;
-       <b>use settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.</p>
+       <b>copy settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.</p>
     <table>
       <tr><td><b>← →</b></td><td>After clicking a run: the previous / next run (the strip keeps it in view). Click the
           stage or the timeline and they step frames again.</td></tr>
@@ -6120,7 +6120,7 @@ var TOUR = [
     `Work up in steps: <b>Frame</b> paints one frame to dial in the look, <b>Preview</b> a few frames to check the motion,
      <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
   { at: () => [document.querySelector('footer')], title: 'Runs', text: () =>
-    `Every Frame, Preview and Render lands here. Click one to view it; then <b>use settings</b> puts its settings back in the panel,
+    `Every Frame, Preview and Render lands here. Click one to view it; then <b>copy settings</b> puts its settings back in the panel,
      <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it. The grid icon at the right opens every run on disk.` },
   { at: () => [document.querySelector('.barbtns')], title: 'Status & help', text: () =>
     `The status opens the renderer log, the GPU meter shows memory in use, <b>?</b> has the full guide (and this tour again),
