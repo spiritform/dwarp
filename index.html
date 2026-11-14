@@ -17,8 +17,11 @@
     --accent-2: #ffb36b;
     --ok: #7bd88f;
     --bad: #ff5d6c;
-    --radius: 8px;                       /* surfaces: cards, the source slot, a layer row */
-    --radius-sm: 4px;                    /* controls: value boxes, selects, chips, thumbnails */
+    /* One corner, everywhere: a card, a value box and a thumbnail are rounded the same
+       amount, and the amount is small enough that you read it as "not sharp" rather than as
+       a shape of its own. Two radii meant a control inside a card never quite sat in it. */
+    --radius: 4px;                       /* every surface and every control */
+    --radius-sm: 4px;                    /* the old name for the same thing, still in rules */
   }
   * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #34333b transparent; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -408,71 +411,89 @@
   #h3Refs .clip-empty svg { width: 18px; height: 18px; }
   body.runDrag #h3Refs, body.dragging #h3Refs { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   /* Layers: one stacked source per row, the matte sitting in the stack where you can see it */
-  #layers { display: flex; flex-direction: column; gap: 6px; }
-  /* Square thumbnail down the left, everything else stacked beside it: the row is a picture and
-     its settings, which is how you read a stack -- by the pictures, top to bottom. */
-  /* Picture, properties, and a row under both of them. Anything that belongs to the whole layer
-     rather than to one column goes in that bottom row, where it lines up with the row above it. */
-  #layers .lay { position: relative; display: grid; grid-template-columns: 90px 1fr; gap: 6px;
-                 align-items: start; background: #25242b; border-radius: var(--radius); padding: 6px; }
-  /* Three rows: what it is, how strongly, how softly. The floor is the tile's width, so the
-     picture beside them is square and every row in the stack is the same height. */
-  #layers .side { flex: 1 1 0; min-width: 0; min-height: 90px;
-                  display: flex; flex-direction: column; gap: 6px; }
-  /* One row of values, dragged rather than aimed at. The fill behind the text is the proportion,
-     so nothing is lost by not having a track -- and two fit where one slider used to go. */
-  #layers .dials { display: flex; gap: 6px; align-items: stretch; }
-  #layers .num { flex: 1 1 0; min-width: 0; height: 28px; border-radius: var(--radius-sm); box-sizing: border-box;
-                 padding: 0 8px; display: flex; align-items: center; justify-content: space-between;
-                 gap: 5px; cursor: ew-resize; user-select: none; touch-action: none;
+  /* Six everywhere inside a card, double that between them: now that a card has an outline and
+     a lit header, the thing that says where one layer ends is the air around it. */
+  #layers { display: flex; flex-direction: column; gap: 12px; }
+  /* The card is halved, and each half is halved again: four columns, one 6px gap between them
+     and the same 6px round the outside. The picture takes the left half, the controls the right,
+     and anything about the whole layer goes in a full-width row underneath. Every edge in the
+     card therefore lands on one of five lines, which is the whole of the tidiness. */
+  #layers .lay { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+                 align-items: start; background: #25242b; border-radius: var(--radius); padding: 6px;
+                 outline: 1px solid #3a3942; outline-offset: -1px; }
+  /* A header first, across the card: what this layer is, and what you can do to the whole of it.
+     The name used to share a line with the blend mode, where it was the first thing squeezed. */
+  #layers .hd { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; min-width: 0;
+                margin: -6px -6px 0; padding: 7px 7px 7px 9px; background: #2f2e37;
+                border-radius: var(--radius) var(--radius) 0 0;
+                border-bottom: 1px solid rgba(255,255,255,.07); }
+  /* The right half, stretched to the picture beside it and split into rows of equal height. The
+     picture's 16:9 sets that height, so the two columns start and finish on the same two lines. */
+  #layers .side { grid-column: span 2; align-self: stretch; min-width: 0;
+                  display: grid; grid-auto-rows: 1fr; gap: 6px; }
+  /* Each row of the right half is halved in turn: two controls, or one marked wide that takes
+     both. The same two lines the thumbnail's edges sit on, all the way down the card. */
+  #layers .ctl, #layers .dials { display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+                                 align-items: stretch; min-width: 0; }
+  #layers .ctl > .wide, #layers .dials > .wide { grid-column: 1 / -1; }
+  /* A value, dragged rather than aimed at. The fill behind it is the proportion, so nothing is
+     lost by not having a track. The name sits over the number rather than beside it: at a quarter
+     of the card a label and a number on one line cut each other in half, and half a label is not
+     a label. Stacked, both are whole, and the box is as tall as the row it is given. */
+  #layers .num { min-width: 0; height: 100%; min-height: 28px; border-radius: var(--radius); box-sizing: border-box;
+                 padding: 0 7px; display: flex; flex-direction: column; align-items: flex-start;
+                 justify-content: center; gap: 1px; cursor: ew-resize; user-select: none; touch-action: none;
                  background: linear-gradient(90deg, #46434f 0 var(--f),
                                              #2b2a31 var(--f)); }
   #layers .num:hover { background: linear-gradient(90deg, #524e5e 0 var(--f),
                                                    #322f3a var(--f)); }
-  #layers .num b { font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--dim);
-                   text-transform: uppercase;
+  #layers .num b { font-size: 8px; font-weight: 600; letter-spacing: .07em; color: var(--dim);
+                   text-transform: uppercase; line-height: 1; max-width: 100%;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Beside the blend mode a number needs no name: the mode is the sentence, this is how much. */
-  #layers .num.bare { justify-content: center; }
-  #layers .num i { font-size: 12px; font-style: normal; color: #f1eff4; flex: none; }
+  #layers .num.bare { align-items: center; justify-content: center; }
+  #layers .num i { font-size: 13px; font-style: normal; color: #f1eff4; line-height: 1.15; }
   #layers .num.dragging b, #layers .num.dragging i { color: var(--accent-2); }
   /* The levels bar is painted with the curve it makes: black up to the black point, white from the
      white point, the ramp between them. Dragging the grey handle slides where the half-way value
      lands, which is the gamma -- the same thing the engine's lut is built from. */
-  #layers .lvl { position: relative; flex: 2 1 0; min-width: 0; height: 28px; border-radius: var(--radius-sm);
+  #layers .lvl { position: relative; min-width: 0; height: 28px; border-radius: var(--radius);
                  cursor: ew-resize; touch-action: none;
                  background: linear-gradient(90deg, #121117 0, #121117 var(--b),
                                              #e9e8ee var(--w), #e9e8ee 100%); }
-  #layers .lvl .h { position: absolute; top: 0; width: 6px; height: 32px; margin-left: -3px;
-                    border-radius: 3px; box-shadow: 0 0 0 2px #25242b; }
+  #layers .lvl .h { position: absolute; top: -2px; width: 6px; height: calc(100% + 4px); margin-left: -3px;
+                    border-radius: var(--radius); box-shadow: 0 0 0 2px #25242b; }
   #layers .lay:hover .lvl .h { box-shadow: 0 0 0 2px #2d2c35; }
   #layers .lvl .hb { background: #0b0a0f; }
   #layers .lvl .hm { background: var(--accent); }
   #layers .lvl .hw { background: #fff; }
-  /* select, chips, the eye and the delete are one row of controls, so they are one height */
-  #layers select, #layers .chip, #layers .x, #layers .eye { height: 22px; box-sizing: border-box;
-    border: 0; border-radius: var(--radius-sm); font: inherit; flex: none; }
-  #layers select { padding: 0 5px; font-size: 11px; line-height: 1; flex: 1 1 0; min-width: 0; }
+  /* A control fills the row it is given, so every box in the right half is the same height
+     without any of them being told what that height is. */
+  #layers select, #layers .chip, #layers .x, #layers .eye { box-sizing: border-box;
+    border: 0; border-radius: var(--radius); font: inherit; }
+  #layers select { padding: 0 7px; font-size: 11px; line-height: 1; width: 100%; min-width: 0; }
+  #layers .ctl select, #layers .ctl .chip, #layers .dials .chip { height: 100%; min-height: 28px; }
   #layers .chip { padding: 0 7px; font-size: 10px; }
-  /* matte as a mark rather than a word: the dropdown next to it is the thing you read */
-  #layers .chip.ico { width: 22px; padding: 0; display: inline-flex; align-items: center;
-                      justify-content: center; }
+  /* The header's three marks are square and a size below the controls: they belong to the card,
+     not to the row of values, and reading as a smaller thing is how you can tell. */
+  #layers .hd .chip, #layers .x, #layers .eye { height: 24px; width: 24px; padding: 0; flex: none; }
+  /* matte as a mark rather than a word: the name next to it is the thing you read */
+  #layers .chip.ico { display: inline-flex; align-items: center; justify-content: center; }
   #layers .chip.ico svg { width: 12px; height: 12px; }
   #layers .lay.drag { opacity: .35; }
   #layers .lay.over { background: #34333b; }
   /* the one under the pointer, so you can see which row a slider belongs to without it shouting */
-  #layers .lay:hover { box-shadow: inset 0 0 0 2px #35343d; }
-  /* The thumbnail is the handle: drag it to reorder, double-click it to replace what is in it.
-     Only it drags -- the whole row used to, which meant you could not move a slider without picking
-     the layer up instead. */
-  #layers .tile { cursor: grab; }
-  #layers .tile:active { cursor: grabbing; }
-  #layers .lay.base .tile { cursor: pointer; }
-  /* A square, the same in every row. It used to stretch to the row, which was the same thing
-     while every row was the same height -- a pulse layer has a beat under its dials and is taller,
-     and its picture grew into a column beside the others. */
-  #layers .tile { position: relative; align-self: flex-start; width: 90px; height: 90px;
-                  border-radius: var(--radius-sm); flex: none;
+  #layers .lay:hover { outline-color: #4a4852; }
+  /* The header is the handle: a card is picked up by its lid. The whole row used to be, which
+     meant you could not move a slider without picking the layer up instead; then the thumbnail
+     was, which is the thing you most want to double-click. Now the picture is only a picture. */
+  #layers .hd[draggable] { cursor: grab; }
+  #layers .hd[draggable]:active { cursor: grabbing; }
+  #layers .tile { cursor: pointer; }
+  /* The left half of the card, and 16:9 of it -- the shape of the thing being rendered, so the
+     picture in the stack is a small version of the frame rather than a square crop of it. Its
+     height is whatever that works out to, and the controls beside it divide the same height. */
+  #layers .tile { position: relative; grid-column: span 2; width: 100%; aspect-ratio: 16 / 9;
+                  border-radius: var(--radius);
                   overflow: hidden; background: #1b1a20; display: flex; align-items: center;
                   justify-content: center; color: var(--faint); }
   #layers .tile img, #layers .tile video { position: absolute; inset: 0; width: 100%; height: 100%;
@@ -481,38 +502,24 @@
   #layers .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: rgba(16,15,20,.86);
                   color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-align: center;
                   padding: 2px 0; line-height: 1; }
-  #layers .hd { display: flex; gap: 6px; align-items: center; min-width: 0; height: 22px; }
-  #layers .ctl { display: flex; gap: 6px; align-items: center; min-width: 0; }
-  /* The blend mode and how much of it: one sentence, so one row. Three value boxes side by side
-     were narrow enough to cut their own labels in half, which is not a label. */
-  #layers .ctl select { height: 28px; }
-  /* Two halves, all the way down. A fixed right-hand column lined the rows up and then ate the
-     left one -- the panel is not wide enough for a column that does not give anything back. Equal
-     halves line up just as well, and every gap in the card is the same six pixels. A row with one
-     number in it takes the whole width rather than leaving a hole. */
-  #layers .ctl > *, #layers .dials > * { flex: 1 1 0; min-width: 0; }
-  /* where the blend mode would be, when there is no blend mode to choose */
-  #layers .mt { flex: 1 1 0; min-width: 0; height: 22px; box-sizing: border-box; border-radius: var(--radius-sm);
-                background: #2b2a31; display: flex; align-items: center; padding: 0 8px;
-                font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--accent-2);
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* the source has no blend row to fill, so its two sit in the middle rather than at the top */
-  #layers .lay.base .side { justify-content: center; }
+  #layers .ctl > *, #layers .dials > * { min-width: 0; }
   #layers .row { display: flex; gap: 6px; align-items: center; min-width: 0; }
   #layers select { background: #2b2a31; color: var(--text); }
   #layers input[type=range] { width: 100%; min-width: 0; height: 16px; display: block; }
   #layers .pct { font-size: 9px; line-height: 13px; color: var(--dim); flex: none; }
   #layers .lv { font-size: 9px; line-height: 13px; color: var(--faint); overflow: hidden;
                 text-overflow: ellipsis; white-space: nowrap; }
-  #layers .nm { font-size: 11px; color: #c9c7cf; flex: 1 1 0; min-width: 0; overflow: hidden;
+  #layers .nm { font-size: 12px; color: #f1eff4; flex: 1 1 0; min-width: 0; overflow: hidden;
                 text-overflow: ellipsis; white-space: nowrap; }
   #layers .chip { background: #2b2a31; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  #layers .hd .chip { background: #3a3942; color: #a9a7b1; }
+  #layers .hd .chip:hover, #layers .x:hover, #layers .eye:hover { background: #46444f; }
   #layers .chip.on { color: var(--text); box-shadow: inset 0 0 0 2px var(--accent); }
   #layers .chip:hover { color: var(--text); }
   /* Quiet until the row is under the pointer, but they keep their place: a control that appears
      and shoves the rest of the row along is worse than one that is simply quiet. The eye is the
      exception -- once it is off it has to stay visible, or nothing says why the layer is gone. */
-  #layers .x, #layers .eye { width: 22px; padding: 0; background: #2b2a31; color: var(--dim);
+  #layers .x, #layers .eye { width: 22px; padding: 0; background: #3a3942; color: #a9a7b1;
                cursor: pointer; font-size: 10px; font-weight: 700;
                display: inline-flex; align-items: center; justify-content: center; }
   #layers .x:hover { background: var(--bad); color: #fff; }
@@ -521,8 +528,8 @@
   #layers .eye.off { color: var(--accent); }
   /* A hidden layer stays where it is, with everything it was set to, and simply stops counting. */
   #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
-  #layers .lay.off .chip, #layers .lay.off .nm { opacity: .38; }
-  #layerAdds { display: flex; gap: 6px; margin-top: 6px; }
+  #layers .lay.off .ctl, #layers .lay.off .beat, #layers .lay.off .nm { opacity: .38; }
+  #layerAdds { display: flex; gap: 6px; margin-top: 12px; }
   #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
     display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
     border-radius: var(--radius); color: var(--dim); cursor: pointer; white-space: nowrap; }
@@ -553,13 +560,26 @@
   #layers .beat { grid-column: 1 / -1; padding-top: 6px;
                   border-top: 1px solid rgba(255,255,255,.075); }
   #layers .beat .seg { grid-template-columns: repeat(3, 1fr); margin-bottom: 6px; }
-  #layers .beat .seg button { font-size: 11px; padding: 6px 4px; }
-  #layers .beat .bl { display: flex; align-items: center; gap: 6px;
-                      color: var(--faint); font-size: 11px; }
-  #layers .beat .bl .num { flex: 0 0 104px; }       /* a value box, like the dials above it */
-  #layers .beat .bl select { flex: 1; min-width: 0; }
-  #layers .beat .bl .snd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-                           white-space: nowrap; }
+  #layers .beat .seg button { font-size: 11px; padding: 8px 4px; }
+  /* The same four columns as the card above it, so a value box down here lines up with the edge
+     of the picture and with the box over it. s2 and s3 are how many of the four a thing takes. */
+  #layers .beat .bl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+                      align-items: center; color: var(--faint); font-size: 11px; }
+  #layers .beat .bl > * { min-width: 0; height: 34px; }
+  #layers .beat .bl .s2 { grid-column: span 2; }
+  #layers .beat .bl .s3 { grid-column: span 3; }
+  #layers .beat .bl select { margin-top: 0; }
+  /* The metronome: it ticks, so it is square and sits at the end of the line it paces. */
+  #layers .beat .bl .metro { display: flex; align-items: center; justify-content: center;
+                             padding: 0; }
+  #layers .beat .bl .metro svg { width: 15px; height: 15px; }
+  #layers .beat .bl .metro.on { color: var(--accent); }
+  #layers .beat .bl .snd { display: flex; align-items: center;
+                           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The levels bar is the one thing that wants the whole width: three numbers on one track. */
+  #layers .beat .bl .dial { grid-column: 1 / -1; height: auto; display: flex;
+                            flex-direction: column; gap: 3px; }
+  #layers .beat .bl .dh { display: flex; justify-content: space-between; gap: 6px; }
   .roles { margin-top: 8px; }
   .roles .brow + .brow { margin-top: 8px; }
   .roles .brow > b { display: block; font-size: 11px; font-weight: 600; color: var(--faint);
@@ -1271,7 +1291,7 @@
       <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
-      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, from a BPM you type or from a sound. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
+      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, paced by the clip, by a speed you set, or by a track you load. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
     </div>
     </div></div>
     <input type="file" id="layerFile" accept="video/*,image/*" hidden>
@@ -1479,7 +1499,7 @@
     </div>
     <a id="loadRun" class="hide" title="Use this run's settings: its look, prompt, keyframes, sliders, model, seed and clip go back into the panel">use settings</a>
     <a id="enhanceLink" class="hide">enhance</a>
-    <a id="animateLink" class="hide" title="Animate this frame: it becomes Image mode's picture, with Motion on (SD 1.5) — press Preview to see it move">animate →</a>
+    <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">use frame →</a>
     <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
@@ -2970,7 +2990,7 @@ async function makePulse(kind, at = -1) {
   try {
     setStatus('drawing the pulse\u2026', 'live');
     const was = at >= 0 ? layers()[at] : null;
-    const L = Object.assign({ pulse: kind, beat: 'bpm', bpm: 120, division: 1, amount: 1,
+    const L = Object.assign({ pulse: kind, beat: clipAudio() ? 'clip' : 'bpm', bpm: 120, division: 1, amount: 1,
                               audio: '', audioName: '' }, was || {}, { pulse: kind });
     const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
                                                body: JSON.stringify(pulseBody(L)) });
@@ -3197,14 +3217,8 @@ $('layers').addEventListener('click', e => {
   }
   const snd = e.target.closest('[data-snd]');
   if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
-});
-$('layers').addEventListener('input', e => {
-  const div = e.target.closest('[data-div]');
-  if (!div) return;
-  const i = +div.dataset.div, L = layers()[i];
-  if (!L) return;
-  L.division = +div.value || 1;
-  needPulse(i);
+  const met = e.target.closest('[data-metro]');
+  if (met) { const i = +met.dataset.metro; METRO.at === i ? metroStop() : metroStart(i, met); }
 });
 // Which pulse layer asked for a sound, remembered until the picker answers.
 var PULSE_AT = -1;
@@ -3292,29 +3306,89 @@ function layerTile(L) {
 }
 // One value box, the same shape as the dials above it. Drawn here rather than in renderLayers
 // because the bottom row has them too, and they are the same thing wherever they sit.
-function numBox(lv, k, label, v, title, unit = '') {
-  return `<span class="num" data-lv="${lv}" data-k="${k}" data-unit="${unit}"
+function numBox(lv, k, label, v, title, unit = '', cls = '') {
+  return `<span class="num ${cls}" data-lv="${lv}" data-k="${k}" data-unit="${unit}"
         title="${title} — drag sideways to change it, double-click for its default"><b>${label}</b><i></i></span>`;
 }
-// Where a pulse layer's beat comes from, and what it is set to. Three sources, one row, because
-// they are the same question answered three ways -- and only the answer you picked is asked about.
-// Is there a beat in what is already loaded? The probe says so, and a source with nothing to read
-// -- a picture, a silent clip, nothing at all -- should not be offered as one.
+// The same box with its number already in it: a name over the value, and the proportion as the
+// fill behind both. Drag it sideways. Out here because the bottom row draws them as well.
+function dial(i, k, label, v, title, unit = '', cls = '') {
+  const n = Math.round((v || 0) * 100);
+  return `<span class="num ${cls}${label ? '' : ' bare'}" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
+        title="${title} \u2014 drag sideways to change it, double-click for its default">
+      ${label ? `<b>${label}</b>` : ''}<i>${n}${unit}</i></span>`;
+}
+// What sets the speed of the pulse, and what that speed is. Three ways of answering one question
+// -- how fast does this thing move -- so they are one row, and only the way you picked is asked
+// about. Two of them read their timing out of a track; the third is a number you set. A source
+// with no track in it cannot be one of them, which the probe below settles.
 function clipAudio() { return !!(state.clip && state.clip.source && state.clip.source.audio); }
+// A number is not a tempo until you can hear it, so the speed can be tapped out loud: a click at
+// the rate the layer is set to, scheduled on the audio clock rather than on a timer, so it does
+// not drift while the page is busy drawing. Nothing is loaded for it -- the click is an
+// oscillator with a very short envelope, which is all a metronome has ever been.
+var METRO = { at: -1, timer: null, ctx: null, next: 0, hit: 0, until: 0 };
+function metroTick(C, when, strong) {
+  const o = C.createOscillator(), g = C.createGain();
+  o.frequency.value = strong ? 1760 : 1180;
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(strong ? 0.5 : 0.28, when + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+  o.connect(g).connect(C.destination);
+  o.start(when); o.stop(when + 0.07);
+}
+function metroStop() {
+  clearInterval(METRO.timer);
+  METRO.timer = null; METRO.at = -1;
+  $('layers').querySelectorAll('.metro.on').forEach(b => b.classList.remove('on'));
+}
+function metroStart(i, btn) {
+  metroStop();
+  const C = METRO.ctx || (METRO.ctx = new (window.AudioContext || window.webkitAudioContext)());
+  if (C.state === 'suspended') C.resume();
+  METRO.at = i; METRO.hit = 0;
+  METRO.next = C.currentTime + 0.08;
+  METRO.until = C.currentTime + 120;          // it is a cue, not a backing track
+  if (btn) btn.classList.add('on');
+  // Scheduled a tenth of a second ahead on each wake-up: the clock is the audio card's, and the
+  // rate is read fresh every time, so dragging the bpm box speeds the clicking up as you drag.
+  METRO.timer = setInterval(() => {
+    const L = layers()[METRO.at];
+    if (!L || !L.pulse || (L.beat || (clipAudio() ? 'clip' : 'bpm')) !== 'bpm') return metroStop();
+    if (document.hidden || C.currentTime > METRO.until) return metroStop();
+    const step = 60 / Math.max(1, (L.bpm || 120) * (L.division || 1));
+    if (METRO.next < C.currentTime) { METRO.next = C.currentTime + 0.02; METRO.hit = 0; }
+    while (METRO.next < C.currentTime + 0.12) {
+      metroTick(C, METRO.next, METRO.hit % 4 === 0);
+      METRO.next += step; METRO.hit++;
+    }
+  }, 40);
+}
 function beatRow(i, L) {
-  const at = L.beat === 'clip' && !clipAudio() ? 'bpm' : (L.beat || 'bpm');
+  // The clip paces the pulse unless you say otherwise: what you are stylising is usually cut to
+  // something already, and taking the timing from it is how the layer moves with the edit rather
+  // than across it. A count you set, or a track you bring, are the two ways of saying otherwise.
+  const at = L.beat === 'clip' && !clipAudio() ? 'bpm' : (L.beat || (clipAudio() ? 'clip' : 'bpm'));
+  // How far a hit swings this layer belongs to the beat, not to the picture: it means nothing
+  // without one. So it leads the bottom row rather than sitting among blur and opacity.
+  // Speed is the row; this is depth. How far each hit carries the layer, not how often one comes.
+  const swing = dial(i, 'amount', 'swing', L.amount ?? 1,
+    'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way');
   const line = at === 'bpm'
-    ? `${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'Beats per minute — drag it, double-click for 120')}
-       <select class="model" data-div="${i}" title="How often a hit lands">${
-         [[0.5, 'every 2 beats'], [1, 'every beat'], [2, 'every ½ beat'], [4, 'every ¼ beat']].map(([v, t]) =>
-           `<option value="${v}"${+(L.division || 1) === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
+    ? `${swing}
+       ${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'How fast it pulses, in beats per minute — drag it, double-click for 120', '', 's2')}
+       <button class="chip metro${METRO.at === i ? ' on' : ''}" data-metro="${i}"
+         title="Tick it out loud — the speed you have set, as a click, so you can judge the cue without rendering anything"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`
     : at === 'clip'
-      ? `<span class="snd">${state.clip.name}</span>`
-      : `<span class="snd">${L.audioName || 'no sound yet'}</span>
+      ? `${swing}<span class="snd s3">${state.clip.name}</span>`
+      : `${swing}<span class="snd s2">${L.audioName || 'no sound yet'}</span>
          <button class="chip" data-snd="${i}">${L.audio ? 'change' : 'load…'}</button>`;
-  const ways = [['bpm', 'BPM', 'A count: exact, repeatable, and it matches whatever you cut this to later']]
-    .concat(clipAudio() ? [['clip', 'Clip', 'The sound already in your clip — and the render keeps it, so what you see pulsing is what you will hear']] : [])
-    .concat([['file', 'Sound', 'A track you load: the music this is actually cut to']]);
+  // Not "BPM": that is the name of the box underneath, and a tab and the value under it should
+  // not answer to the same word. Pulse is the layer moving to a speed you set. The clip leads,
+  // because pacing the layer to what it is going over is what you get without choosing anything.
+  const ways = (clipAudio() ? [['clip', 'Clip', 'Paced by the clip itself — the default: the hits land where the clip’s own beats land, so the layer moves with the edit']] : [])
+    .concat([['bpm', 'Pulse', 'A speed you set: so many beats a minute, exact and repeatable, however fast you want it']])
+    .concat([['file', 'Import', 'Paced by a track you load — the layer follows its timing, whether or not that track is ever heard']]);
   return `<span class="beat">
       <div class="seg" data-beat="${i}" style="grid-template-columns:repeat(${ways.length},1fr)">${
         ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
@@ -3324,14 +3398,6 @@ function renderLayers() {
   $('layersBox').hidden = !layersOn();
   if (!layersOn()) return;
   const rows = layers().slice(0, LAYER_MAX);
-  // One dial as three cells of the grid above, so the columns are the grid's and not the row's.
-  // One value: a name, the number, and the proportion as the fill behind them. Drag it sideways.
-  const dial = (i, k, label, v, title, unit = '') => {
-    const n = Math.round((v || 0) * 100);
-    return `<span class="num${label ? '' : ' bare'}" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
-          title="${title} \u2014 drag sideways to change it, double-click for its default">
-        ${label ? `<b>${label}</b>` : ''}<i>${n}${unit}</i></span>`;
-  };
   // Three numbers on one track: black point, the grey that bends everything between, white point.
   const levels = (i, L) => {
     const b = L.black ?? 0, m = L.mid ?? 0.5, w = L.white ?? 1;
@@ -3346,48 +3412,47 @@ function renderLayers() {
   };
   $('layers').innerHTML = rows.map((raw, i) => {
     const L = layerDefaults(raw);
+    // What is about the whole layer goes under the rule: a matte's levels, a pulse's beat.
+    const bottom = L.matte ? (L.mask ? '' : `<span class="beat"><div class="bl">${levels(i, L)}</div></span>`)
+                           : (L.pulse ? beatRow(i, L) : '');
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
-      <span class="tile" draggable="true" data-swap="${i}"
-            title="Drag to reorder \u00b7 double-click to put a different video or picture in it">${
+      <span class="hd" draggable="true"
+            title="Drag to reorder \u2014 the order of the stack is the composite">
+        <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
+        ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
+        <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
+        <button class="x" title="Remove">\u2715</button>
+      </span>
+      <span class="tile" data-swap="${i}"
+            title="Double-click to put a different video or picture in it">${
         layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
       <span class="side">
-        <span class="hd">
-          <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
-          ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
-          <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
-          <button class="x" title="Remove">\u2715</button>
-        </span>
         <span class="ctl">${L.matte ? `
-          <span class="mt" title="This layer is a luma matte for the one below it: its brightness is that layer's alpha">LUMA MATTE</span>
           <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Invert: swap what is in for what is out">invert</button>
           <button class="chip" data-unmatte="${i}" title="Put it back to an ordinary layer with a blend mode, in colour">rgb</button>`
-        : `<select data-mode="${i}" title="How this layer is laid over what is under it">${
-            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>
-           ${dial(i, 'opacity', '', L.opacity, 'Opacity: how strongly this layer is laid over what is under it', '%')}`}
+        : `<select class="wide" data-mode="${i}" title="How this layer is laid over what is under it">${
+            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>`}
         </span>
-        <span class="dials">${L.matte ? `
-          ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
-          ${L.mask ? '' : levels(i, L)}` : `
-          ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}
-          ${L.pulse ? dial(i, 'amount', 'swing', L.amount ?? 1, 'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way') : ''}`}
+        <span class="dials">${L.matte
+          ? dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte', '', 'wide')
+          : `${dial(i, 'opacity', 'opacity', L.opacity, 'Opacity: how strongly this layer is laid over what is under it', '%')}
+             ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}`}
         </span>
       </span>
-      ${L.pulse && !L.matte ? beatRow(i, L) : ''}</div>`;
+      ${bottom}</div>`;
   }).join('')
     + ((bs => bs ? `<div class="lay base" title="${bs.name}">
+      <span class="hd"><span class="nm">${bs.name}</span></span>
       <span class="tile" data-swap="base"
             title="The ${bs.image ? 'picture' : 'clip'}, always the bottom of the stack \u00b7 double-click to load a different one"><img src="${
         bs.image ? `/api/image/file?${qs({ path: bs.path })}` : `/api/video/thumbnail?${qs({ path: bs.path })}`}" alt="" draggable="false"><b class="band">SOURCE</b></span>
       <span class="side">
-        <span class="hd"><span class="nm">${bs.name}</span></span>
-        <span class="dials">
-          ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
-          ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
-        </span>
+        <span class="ctl">${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%', 'wide')}</span>
+        <span class="dials">${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it', '', 'wide')}</span>
       </span>
       ${(bs.pic || bs.image) ? `<span class="beat"><div class="bl">
         ${numBox('base', 'secs', 'length', 0, "A picture has everything a clip has but a length. Give it one and it becomes the source: repainted every frame, with the stack over it. At nothing it is frame 1 instead, and the camera carries it on")}
-        <span class="snd" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
+        <span class="snd s3" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
           : 'no length — the picture is animated'}</span></div></span>` : ''}</div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
   // The boxes that are not percentages paint themselves from what they are for.
@@ -3902,9 +3967,14 @@ function listDrag(host, list, sel = '.ref', after = renderH3) {
   host.addEventListener('dragstart', e => {
     const row = e.target.closest(sel);
     if (!row || row.dataset.i == null) return;   // the base row is not one of the movable ones
+    // The handle has marks on it -- hide, matte, remove. Pressing one of those is pressing it,
+    // not picking the card up, and a drag started from a button never ends anywhere useful.
+    if (e.target.closest('button')) return e.preventDefault();
     DRAG_AT = +row.dataset.i; DRAG_FROM = host;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/dwarp-slot', String(DRAG_AT));
+    // What you grabbed was the header; what you are moving is the card, so that is the ghost.
+    try { e.dataTransfer.setDragImage(row, 24, 16); } catch (err) {}
     row.classList.add('drag');
   });
   const clear = () => host.querySelectorAll(sel).forEach(r => r.classList.remove('drag', 'over'));
@@ -4707,11 +4777,14 @@ async function setClipPath(path, name) {
   save(); renderClip();
 }
 
-// "animate →": a still you like, on to Image mode to be animated (Text / Image / Video Frame alike).
+// "use frame →": the frame under the transport, on to Image mode to be animated. A one-frame
+// run is the obvious case, but the frame you stopped a 192-frame render on is just as good a
+// picture -- scrub to it, take it, and animate that.
 $('animateLink').onclick = async () => {
-  if (!viewRun || frames.length !== 1) return;
+  if (!viewRun || !frames.length) return;
+  const at = frames[Math.min(Math.max(frameIdx, 0), frames.length - 1)];
   try {
-    const res = await api(`/api/runs/${viewRun}/as_input?${qs({ frame: frames[0] })}`, { method: 'POST' });
+    const res = await api(`/api/runs/${viewRun}/as_input?${qs({ frame: at })}`, { method: 'POST' });
     await useInput(res);                                   // Image mode, this frame as the picture
     if (adAllowed() && !state.ad.on) { state.ad.on = true; applyAdProfile(true); }
     renderControls(); setControlTabs(); save();
@@ -5808,8 +5881,9 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
        batches rather than one by one, and even a short Preview renders one full window. With <b>Settings → Smooth long
        clips</b> on, a long clip renders in one pass instead, the windows blended at every step so the whole clip shares one
        motion (no drift from window to window) — it needs more VRAM.</p>
-    <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>animate →</b> (under the stage) sends it
-       to Image mode as the picture, with Motion on. Works on any Frame run.</p>
+    <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>use frame →</b> (under the stage) sends it
+       to Image mode as the picture, with Motion on. It works on any run — scrub a render to the frame you want and
+       take that one.</p>
     <table>
       <tr><td><b>Quality</b></td><td>Video: <b>TemporalDiff</b> (follows the clip, strongest style). Image: <b>AnimateDiff v2</b>
           (moves a still, takes motion LoRAs). 20 steps, CFG 7.</td></tr>
@@ -6575,7 +6649,7 @@ async function showRun(runId, { follow = false } = {}) {
   $('playBtn').title = runHasSound() ? 'Play the mp4 with its sound (space)' : 'Play frames (space)';
   $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife && !POST_OPTS.cloud?.length));
-  $('animateLink').classList.toggle('hide', frames.length !== 1);   // a Frame: send it on to be animated
+  $('animateLink').classList.remove('hide');          // whatever frame you are on, on to be animated
   if (switched || !follow) renderOutputs(runId);
   if (switched && !$('enh').hidden) openEnhance();
   document.querySelectorAll('.run').forEach(el => el.classList.toggle('on', el.dataset.id === runId));

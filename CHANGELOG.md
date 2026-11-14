@@ -4,6 +4,34 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **A layer is a card.** It has a header — the name, and the marks for matte, hide and remove —
+  a shade brighter than the card, running corner to corner, with an outline round the whole thing
+  and twice as much air between one card and the next. You drag a layer by that header now, not by
+  its picture: a card is picked up by its lid, and the thumbnail is the thing you most want to
+  double-click. Pressing hide or remove no longer picks the card up by accident.
+- **The thumbnail is 16:9**, across the left half of the card — the shape of the thing being
+  rendered, rather than a square crop of it.
+- **The card is halved, and each half halved again.** Four columns, one 6px gap between everything,
+  so the picture's edges and every control in the card land on the same five lines. The right half
+  stretches to the picture's height and splits into rows of equal height. A value box carries its
+  name above the number instead of beside it, because at a quarter of the card a label and a number
+  on one line cut each other in half.
+- **One corner radius, everywhere.** Cards, value boxes, selects, chips and thumbnails all round by
+  the same very small amount, so a control sits inside a card instead of arguing with it.
+- **A pulse is paced by the clip by default.** The tabs are **Clip · Pulse · Import** — what sets
+  the speed of the layer, not where a sound comes from. The clip leads, because pacing the layer to
+  what it is going over is what you get without choosing anything; Pulse is a speed you set and
+  Import is a track you bring. "BPM" is no longer a tab, since that is the name of the box
+  underneath it, and the hits-per-beat dropdown is gone — a pulse is a pulse, and types of pulse
+  can come back as types.
+- **The pulse ticks out loud.** A metronome beside the bpm box clicks at the speed you have set, so
+  you can judge the cue without rendering anything — and it reads the number as you drag it, so the
+  clicking speeds up under your hand. Scheduled on the audio clock, so it does not drift while the
+  page is busy drawing.
+- **"animate →" is "use frame →", and it works on any run.** It used to appear only on a one-frame
+  Frame. Scrub a render to the frame you want — while it plays, if you like — and that frame
+  becomes Image mode's picture with Motion on.
+
 - **A layer row has a bottom row.** The beat and the length were squeezed into the right-hand
   column under the dials, lining up with nothing. The row is a grid now — picture, properties, and
   a row across both of them, ruled off with a hairline — which is where anything belonging to the
