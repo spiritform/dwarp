@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -78,6 +79,25 @@ def write_meta(run_id: str, **fields) -> dict:
     return meta
 
 
+# ------------------------------------------------------------------ asking a file about itself
+def probe_field(src: Path | str, *args: str) -> str:
+    """One ffprobe field, or "" if ffprobe has nothing to say about it. Here rather than in the
+    engine because the engine, post and the registry all need to ask, and asking must not cost a
+    torch import."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", *args, "-of", "default=nw=1:nk=1", str(src)],
+                           capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    lines = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    return lines[0] if lines else ""
+
+
+def has_audio(src: Path | str) -> bool:
+    """Does this file carry a soundtrack?"""
+    return bool(probe_field(src, "-select_streams", "a:0", "-show_entries", "stream=codec_name"))
+
+
 def adopt(video: Path, *, came: str, verb: str, detail: str = "", rate: float = 24.0,
           ui: dict | None = None, source: str = "", move: bool = True) -> str:
     """Take a finished video and make it a run of its own.
@@ -94,6 +114,10 @@ def adopt(video: Path, *, came: str, verb: str, detail: str = "", rate: float = 
         dest = path / "video.mp4"
         shutil.move(str(video), str(dest)) if move else shutil.copy2(str(video), str(dest))
         extract(dest, path / "frames")
+        # It arrives as a finished file: if there is sound on it, the run says so, the same way the
+        # assembler marks a render it has put the clip's audio back on.
+        if has_audio(dest):
+            (path / "sound.json").write_text(json.dumps({"from": "adopted"}), encoding="utf-8")
         write_meta(rid, label=f"{verb} · {came}".strip(" · "), fps=float(rate),
                    ui={**(ui or {}), "kind": verb, "source_run": source, "post": detail})
     except BaseException:
@@ -195,8 +219,11 @@ def timing(run_id: str) -> dict | None:
 
 
 def has_sound(run_id: str) -> bool:
-    """Does the run's mp4 carry audio? Only a cloud render can: its soundtrack comes down with the
-    picture. Every other mode assembles the mp4 from frames, so there is nothing to hear."""
+    """Does the run's mp4 carry audio? A cloud render's soundtrack comes down with the picture. A
+    local render is assembled from PNGs, which are silent -- but the clip's own audio goes back on
+    at the end, and when it does the assembler leaves sound.json behind to say so."""
+    if (run_dir(run_id) / "sound.json").is_file():
+        return True
     try:
         job = json.loads((run_dir(run_id) / "job.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):

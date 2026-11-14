@@ -2,6 +2,16 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-14
+
+- **A render keeps the clip's sound.** The frames are PNGs and silent, so an SD render always came
+  out mute. Now, once the mp4 is assembled, the clip's own audio goes back on it — the exact span
+  the run covers, since frame n is source frame (frame_start + n) × nth, cut to what was actually
+  rendered, so a render you stopped half way gets the half you have pictures for. Nothing to take
+  (a still, text-to-video, a silent clip) and it stays silent. Playing a run on the stage switches
+  to the file when there is sound to hear, and the downloaded mp4 drops into an edit with its audio
+  already in place. An upscale or a smooth carries it across too.
+
 ## 2026-11-12
 
 - **A still layer no longer fails the render.** Every layer was read over the clip's trimmed range,

@@ -153,7 +153,7 @@ class JobManager:
         if job.kind == "video":
             job.stage, job.message = "assembling", "assembling mp4"
             self._touch(job)
-            assemble(str(run_path), job.payload["fps"])
+            assemble(str(run_path), job.payload["fps"], log=lambda line: self._log(job, line))
             self._log(job, "assembled video.mp4")
             return
 
@@ -175,7 +175,7 @@ class JobManager:
             # like any other run and can be played, downloaded, enhanced or fed back in.
             job.stage, job.message = "assembling", "assembling mp4"
             self._touch(job)
-            assemble(str(run_path), job.payload.get("fps", 24))
+            assemble(str(run_path), job.payload.get("fps", 24), log=lambda line: self._log(job, line))
             self._log(job, f"assembled video.mp4 ({len(written)} frames"
                            f"{', stopped early' if job.cancel_requested else ''})")
         took = time.time() - t0

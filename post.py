@@ -247,6 +247,28 @@ def start_tracks(src: str, dest_dir: Path, *, points: int = 24, length: int = 81
     return job
 
 
+def carry_sound(made: Path, source: Path) -> None:
+    """An enhance keeps the soundtrack it was given.
+
+    Upscaling changes the pixels and smoothing changes the frame rate, but neither changes how long
+    the thing runs -- so the audio that fitted the run still fits what came out of it, and can be
+    copied across without being touched. The picture is copied too: this is a remux, not a re-encode.
+    """
+    import runs as rr
+
+    src = source / "video.mp4"
+    if not made.is_file() or not src.is_file() or not rr.has_audio(src) or rr.has_audio(made):
+        return
+    tmp = made.with_suffix(".snd.mp4")
+    try:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(made), "-i", str(src),
+                        "-map", "0:v:0", "-map", "1:a:0", "-c", "copy",
+                        "-movflags", "+faststart", str(tmp)], check=True)
+        os.replace(tmp, made)
+    except (OSError, subprocess.CalledProcessError):
+        tmp.unlink(missing_ok=True)        # the picture is the point; sound is not worth failing over
+
+
 def promote(job: dict, made: Path, source: Path, verb: str, detail: str, rate: float) -> str:
     """Put a finished post video in the runs list as its own run.
 
@@ -257,6 +279,7 @@ def promote(job: dict, made: Path, source: Path, verb: str, detail: str, rate: f
     import runs as rr
 
     came = rr.came_from(source.name)
+    carry_sound(made, source)
     say(job, "extracting frames for the run")
     rid = rr.adopt(made, came=came, verb=verb, detail=detail, rate=rate,
                    ui=rr.read_meta(source.name).get("ui") or {}, source=source.name)

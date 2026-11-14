@@ -6396,8 +6396,10 @@ function makeStageVideo() {                // one <video> over the still, shared
   $('divider').insertAdjacentHTML('beforebegin', '<video id="vidSrc" playsinline loop></video>');   // under the Save button
   return $('vidSrc');
 }
-// Does the run on show carry its own soundtrack? Only H3 does — the cloud sends picture and audio
-// in one file. Everything else is an mp4 built from PNGs, so stepping the frames loses nothing.
+// Does the run on show carry its own soundtrack? H3's comes down from the cloud with the picture;
+// a local render is built from silent PNGs, but the clip's own audio goes back on the mp4 at the
+// end, so most renders of a video have one. The frames never do, which is why playback switches to
+// the file when this is true.
 function runHasSound(id = viewRun) {
   return !!(id && frames.length > 1 && runsCache.find(r => r.id === id)?.sound);
 }

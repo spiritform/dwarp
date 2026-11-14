@@ -1449,9 +1449,67 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     return written
 
 
-def assemble(out_dir: str, fps: float) -> Path:
+def _restore_sound(out: Path, target: Path, log=lambda s: None) -> None:
+    """Put the clip's own audio back on the finished mp4.
+
+    The frames are PNGs and carry no sound, but the clip they came from usually does, and a run
+    lines up with it exactly: frame n is source frame (frame_start + n) * nth, and the mp4 is timed
+    to play at the clip's own rate. So the audio that belongs to this run is that span of the
+    original, cut to the length of what was rendered -- stop a render half way and you get half the
+    sound, which is the half you have pictures for.
+
+    Silent source, a still, text-to-video, Refine over a folder of frames: nothing to take, and the
+    marker is cleared so the run does not claim a soundtrack it has not got.
+    """
+    import runs as rr                    # the registry owns the probe: it must not cost a torch import
+
+    mark = out / "sound.json"
+    try:
+        job = json.loads((out / "job.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        job = {}
+    src = Path(str(job.get("video") or ""))
+    ok = (src.is_file() and not job.get("t2v_frames")
+          and src.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+          and rr.has_audio(src))
+    if not ok:
+        mark.unlink(missing_ok=True)
+        return
+    rate = rr.probe_field(src, "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate") or "0/0"
+    try:
+        num, _, den = rate.partition("/")
+        src_fps = float(num) / float(den or 1)
+        secs = float(rr.probe_field(target, "-show_entries", "format=duration"))
+    except (TypeError, ValueError, ZeroDivisionError):
+        mark.unlink(missing_ok=True)
+        return
+    if src_fps <= 0 or secs <= 0:
+        mark.unlink(missing_ok=True)
+        return
+    start = max(0.0, int(job.get("frame_start", 0)) * max(1, int(job.get("nth", 1))) / src_fps)
+    tmp = target.with_suffix(".snd.mp4")
+    try:
+        # The picture is already encoded: it is copied, not touched. No -shortest -- audio that runs
+        # out before the picture does must not take the rest of the render with it.
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(target),
+                        "-ss", f"{start:.3f}", "-t", f"{secs:.3f}", "-i", str(src),
+                        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart", str(tmp)], check=True)
+        os.replace(tmp, target)
+    except (OSError, subprocess.CalledProcessError) as e:
+        tmp.unlink(missing_ok=True)
+        mark.unlink(missing_ok=True)
+        log(f"could not put the clip's audio back: {e}")
+        return
+    mark.write_text(json.dumps({"from": src.name, "start": round(start, 3), "seconds": round(secs, 3)}),
+                    encoding="utf-8")
+    log(f"sound from {src.name} · {start:.2f}s → {start + secs:.2f}s")
+
+
+def assemble(out_dir: str, fps: float, log=lambda s: None) -> Path:
     """frames/ -> video.mp4 at `fps`; a run rendered on twos / threes (job.hold) holds each frame so the
-    file plays at the clip's own rate and drops into its edit timeline."""
+    file plays at the clip's own rate and drops into its edit timeline. The clip's audio goes back on
+    the end of it, since the file is meant to drop into that timeline and be heard."""
     out = Path(out_dir)
     target = out / "video.mp4"
     try:
@@ -1462,4 +1520,5 @@ def assemble(out_dir: str, fps: float) -> Path:
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", f"{fps:g}", "-i", str(out / "frames" / "%06d.png"),
                     *rate, "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(target)],
                    check=True)
+    _restore_sound(out, target, log)
     return target
