@@ -4,6 +4,24 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **Layers in Image → Video.** The stack was tied to the clip, so loading a picture took the card
+  away — but a picture is a source like any other, and putting something over it is the obvious
+  thing to want. The bottom of the stack is now whichever source the mode has, and when that is a
+  picture the plate is a picture: flattened to the one frame the render starts from, which is what
+  the stage, the live Diff and the job all read. A video on the stack contributes its first frame,
+  since that is the only frame of it that could have been used. Pulse is not offered there — a beat
+  over a single frame is one frame of it.
+- **Pulse: a layer that moves on a beat.** Next to add video / matte / noise there is now **add
+  pulse** — a layer drawn at the render's size and length whose content follows a beat. Five kinds
+  to start: **Burst** (static inside a ring opening out of the middle), **Grain** (static thickening
+  on the hit), **Bloom** (a soft disc of light), **Flash** (the flat frame) and **Rings**. The beat
+  comes from a BPM you type, from the clip's own soundtrack, or from a track you load — all three
+  end up as the same signal, so the patterns cannot tell them apart. After that it is an ordinary
+  layer: the blend mode decides how a hit reads (screen to bloom, multiply to stomp), and under Warp
+  the paint from one hit is carried into the frames after it. Each kind rests at black or mid grey,
+  so a pulse layer between hits costs you nothing.
+
+
 - **A render keeps the clip's sound.** The frames are PNGs and silent, so an SD render always came
   out mute. Now, once the mp4 is assembled, the clip's own audio goes back on it — the exact span
   the run covers, since frame n is source frame (frame_start + n) × nth, cut to what was actually

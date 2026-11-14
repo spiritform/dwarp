@@ -455,7 +455,10 @@
   #layers .tile { cursor: grab; }
   #layers .tile:active { cursor: grabbing; }
   #layers .lay.base .tile { cursor: pointer; }
-  #layers .tile { position: relative; align-self: stretch; width: 90px;
+  /* A square, the same in every row. It used to stretch to the row, which was the same thing
+     while every row was the same height -- a pulse layer has a beat under its dials and is taller,
+     and its picture grew into a column beside the others. */
+  #layers .tile { position: relative; align-self: flex-start; width: 90px; height: 90px;
                   border-radius: 5px; flex: none;
                   overflow: hidden; background: #1b1a20; display: flex; align-items: center;
                   justify-content: center; color: var(--faint); }
@@ -519,6 +522,16 @@
   #briefForm .sublabel:first-child { margin-top: 0; }
   #briefForm .brow { margin-top: 16px; }
   /* A slot's role sits under the slot itself: this is what that picture, or that clip, is for. */
+  /* The beat of a pulse layer, under its dials: where it comes from, then what it is set to. */
+  #layers .beat { grid-column: 1 / -1; margin-top: 8px; }
+  #layers .beat .seg { grid-template-columns: repeat(3, 1fr); }
+  #layers .beat .seg button { font-size: 11px; padding: 6px 4px; }
+  #layers .beat .bl { display: flex; align-items: center; gap: 6px; margin-top: 6px;
+                      color: var(--faint); font-size: 11px; }
+  #layers .beat .bl input.line { width: 64px; padding: 6px 8px; text-align: center; }
+  #layers .beat .bl select { flex: 1; min-width: 0; }
+  #layers .beat .bl .snd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                           white-space: nowrap; }
   .roles { margin-top: 8px; }
   .roles .brow + .brow { margin-top: 8px; }
   .roles .brow > b { display: block; font-size: 11px; font-weight: 600; color: var(--faint);
@@ -1231,9 +1244,11 @@
       <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
+      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, from a BPM you type or from a sound. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
     </div>
     </div></div>
     <input type="file" id="layerFile" accept="video/*,image/*" hidden>
+    <input type="file" id="pulseFile" accept="audio/*,video/*" hidden>
   </section>
 
   <section id="guideBox">
@@ -2752,6 +2767,7 @@ $('h3Aspect').onclick = e => {
 // Flat red / green / blue regions, drawn here and handed over as one of the contexts. The model has
 // no idea what red means until the brief says so, which is why the legend travels with the mask.
 var MASK_PATTERNS = [], MASK_READY = false;                                  // var: read from above
+var PULSE_PATTERNS = [];                   // the kinds of pulse layer, from the engine
 var MASK_GREY = '#9a98a3';      // the mask's own frame: it hands colours out, it does not wear one
 var MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];
 var MASK_COLOUR_NAMES = ['red', 'green', 'blue'];        // engine/masks.py draws them in this order
@@ -2762,6 +2778,11 @@ function maskBody(pattern) {
   if (!isH3() && state.clip?.source) {
     const s = state.clip.source;
     return { pattern, width: s.width, height: s.height, frames: s.frames, fps: s.fps || 24 };
+  }
+  // Image -> Video: the frame is the render's, and there is one of it.
+  if (stillBase()) {
+    const [width, height] = t2vDims(state.size);
+    return { pattern, width, height, frames: 1, fps: 1 };
   }
   const [width, height] = comfySize();
   return { pattern, width, height, frames: h3Frames(h3Seconds()), fps: wf().fps || 24 };
@@ -2791,10 +2812,10 @@ var ML = { at: -1 };                                     // the slot being picke
 // thin strips with no pattern readable in any of them. The mask that renders is still drawn at the
 // render's own size; this is only the picture of it, and one shape means one cached file per pattern.
 function maskPreviewSize() { return [256, 144]; }
-function toggleMaskLib(open = $('maskLib').hidden, at = -1) {
+function toggleMaskLib(open = $('maskLib').hidden, at = -1, kind = 'matte') {
   $('maskLib').hidden = !open;
   if (!open) return;
-  ML.at = at;
+  ML.at = at; ML.kind = kind;
   toggleHelp(false); toggleSettings(false);
   if (!$('runsPanel').hidden) toggleRunsPanel(false);
   if (!$('shapeLib').hidden) toggleShapeLib(false);
@@ -2802,6 +2823,7 @@ function toggleMaskLib(open = $('maskLib').hidden, at = -1) {
   paintMaskLib();
 }
 function paintMaskLib() {
+  if (ML.kind === 'pulse') return paintPulseLib();
   if (!MASK_PATTERNS.length) {
     // Before boot's /api/masks lands the list is empty for a moment, and that is not the same thing
     // as a server too old to draw them. Telling you to restart over a race is worse than saying wait.
@@ -2828,9 +2850,81 @@ function paintMaskLib() {
 }
 $('maskLib').addEventListener('click', e => {
   const card = e.target.closest('.sl-card'); if (!card) return;
-  makeMatte(card.dataset.pattern, ML.at);
+  const pick = card.dataset.pattern;
   toggleMaskLib(false);
+  if (ML.kind === 'pulse') return makePulse(pick, ML.at);
+  makeMatte(pick, ML.at);
 });
+// The same grid, pointed at the pulse patterns. Each one is a loop at a steady count, so what the
+// card does is what the layer will do -- a pattern you cannot see before you pick it is a guess.
+function paintPulseLib() {
+  if (!PULSE_PATTERNS.length) {
+    $('maskLib').innerHTML = `<div class="rs-head"><h3>Pulse</h3><div class="rs-info">${
+      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the patterns\u2026'
+    }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
+    $('mlClose').onclick = () => toggleMaskLib(false);
+    return;
+  }
+  const at = ML.at >= 0 ? layers()[ML.at] : null, cur = at && at.pulse;
+  const [pw, ph] = maskPreviewSize();
+  const card = p => `<div class="sl-card${p.id === cur ? ' on' : ''}" data-pattern="${p.id}" title="${p.note}">
+      <div class="thumb"><video src="/api/pulse/preview?${qs({ kind: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
+        <span class="tag">${p.base === 'grey' ? 'mid grey at rest' : 'black at rest'}</span></div>
+      <b>${p.label}</b><span class="note">${p.note}</span></div>`;
+  $('maskLib').innerHTML = `<div class="rs-head">
+      <h3>Pulse</h3>
+      <div class="rs-info">A layer drawn at this render's size and length that moves on a beat \u2014
+        from a BPM you type, from the clip's own sound, or from a track you load. It is an ordinary
+        layer after that: the <b>blend mode</b> is what decides how a hit reads, and under Warp the
+        paint from one hit is carried into the frames after it.</div>
+      <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
+    </div><div class="sl-grid">${PULSE_PATTERNS.map(card).join('')}</div>`;
+  playTiles($('maskLib'));
+  $('mlClose').onclick = () => toggleMaskLib(false);
+}
+// Everything a pulse layer needs to be drawn: the frame it is going over, and the beat it is on.
+function pulseBody(L) {
+  const b = maskBody(L.pulse);
+  return { kind: L.pulse, width: b.width, height: b.height, frames: b.frames, fps: b.fps,
+           amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1,
+           audio: L.beat === 'clip' ? (state.clip?.path || '') : (L.beat === 'file' ? (L.audio || '') : '') };
+}
+async function makePulse(kind, at = -1) {
+  try {
+    setStatus('drawing the pulse\u2026', 'live');
+    const was = at >= 0 ? layers()[at] : null;
+    const L = Object.assign({ pulse: kind, beat: 'bpm', bpm: 120, division: 1, amount: 1,
+                              audio: '', audioName: '' }, was || {}, { pulse: kind });
+    const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                               body: JSON.stringify(pulseBody(L)) });
+    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse` });
+    if (was) Object.assign(was, L);
+    else layers().unshift(layerDefaults(Object.assign(L, { mode: 'screen', opacity: 0.7 })));
+    renderLayers(); paintSums(); save(); stageSource();
+    setStatus(`${r.label} \u00b7 ${r.frames} frames at ${r.width}\u00d7${r.height}`, 'done');
+  } catch (e) {
+    setStatus('could not draw that pulse: ' + e.message, 'bad');
+  }
+}
+// Redrawn when the beat changes, which means ffmpeg: debounced, and only the file under the layer
+// moves -- the row is not rebuilt, so the box you are typing in keeps the cursor.
+var pulseTimers = {};
+function needPulse(i, now) {
+  const L = layers()[i];
+  if (!L || !L.pulse) return;
+  clearTimeout(pulseTimers[i]);
+  pulseTimers[i] = setTimeout(async () => {
+    try {
+      const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                                 body: JSON.stringify(pulseBody(L)) });
+      if (layers()[i] !== L) return;             // the stack moved while it was drawing
+      L.path = r.path; L.name = `${r.label.toLowerCase()} pulse`;
+      needPaint(); needPlate(); pushLayers(); save();
+    } catch (e) {
+      setStatus('could not draw that pulse: ' + e.message, 'bad');
+    }
+  }, now ? 0 : 350);
+}
 // A drawn pattern as a layer that mattes the one below it. Same generator as before; it draws in
 // black and white now, because the luma is the matte and red and green are 0.27 and 0.63 of it.
 async function makeMatte(pattern, at) {
@@ -2896,7 +2990,17 @@ function layerDefaults(L) {
 // reason a matte can sit in the stack and be looked at rather than hiding inside a slot.
 function matteFor(i) { const a = layers()[i - 1]; return a && a.matte ? a : null; }
 function drawnLayers() { return layers().filter(L => !L.matte && !L.hidden); }
-function layersOn() { return !state.t2v; }
+// The stack goes over whatever this mode's source is: the clip, or the picture Image -> Video
+// starts from. Text -> Video has no source to stand on, and the cloud takes a clip rather than a
+// plate of its own, so neither gets the card.
+function layersOn() { return !state.t2v || !!baseSrc(); }
+// The bottom of the stack, in the only two forms it comes in.
+function baseSrc() {
+  if (!state.t2v) return state.clip ? { path: state.clip.path, name: state.clip.name } : null;
+  return !isH3() && state.i2v && state.image
+    ? { path: state.image.path, name: state.image.name, image: true } : null;
+}
+function stillBase() { return !!(baseSrc() || {}).image; }
 // What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
@@ -2905,8 +3009,9 @@ function layerJob() {
   // the live preview, the server's plate and the render all come through here.
   const stack = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L)).filter(L => !L.hidden);
   if (!stack.length && plain) return [];   // all of them hidden is the clip on its own, not a flatten
-  if (state.clip) stack.push({ path: state.clip.path, mode: 'normal', matte: false,
-                               opacity: b.opacity, blur: b.blur });
+  const src = baseSrc();
+  if (src) stack.push({ path: src.path, mode: 'normal', matte: false,
+                        opacity: b.opacity, blur: b.blur });
   const drawn = stack.filter(L => !L.matte);
   return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
 }
@@ -2932,7 +3037,7 @@ function paintNum(el, v) {
   el.style.setProperty('--f', n + '%');
   el.querySelector('i').textContent = n + (el.dataset.unit || '');
 }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1 };
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1 };
 // Drag sideways to change it: 1 per 2 px, Shift for quarters, the same feel as the seed field.
 $('layers').addEventListener('pointerdown', e => {
   const el = e.target.closest('.num');
@@ -2953,6 +3058,7 @@ $('layers').addEventListener('pointerdown', e => {
     const step = (ev.shiftKey ? 0.25 : 1) / 100;
     L[k] = Math.min(1, Math.max(0, +(from + dx * step).toFixed(4)));
     paintNum(el, L[k]);
+    if (k === 'amount') return needPulse(+which);     // a different picture, not a different blend
     needPaint(); needPlate(); pushLayers();
   };
   const up = () => {
@@ -2968,6 +3074,46 @@ $('layers').addEventListener('pointerdown', e => {
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
 });
+$('layers').addEventListener('click', e => {
+  const btn = e.target.closest('.beat .seg button'), seg = btn && btn.closest('[data-beat]');
+  if (seg) {
+    const i = +seg.dataset.beat, L = layers()[i];
+    if (!L || L.beat === btn.dataset.b) return;
+    L.beat = btn.dataset.b;
+    renderLayers(); save();
+    // Nothing to read yet is not an error: pick the file first and the layer is redrawn then.
+    if (L.beat !== 'file' || L.audio) needPulse(i, true);
+    return;
+  }
+  const snd = e.target.closest('[data-snd]');
+  if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
+});
+$('layers').addEventListener('input', e => {
+  const bpm = e.target.closest('[data-bpm]'), div = e.target.closest('[data-div]');
+  const el = bpm || div;
+  if (!el) return;
+  const i = +(el.dataset.bpm ?? el.dataset.div), L = layers()[i];
+  if (!L) return;
+  if (bpm) L.bpm = Math.min(240, Math.max(40, +el.value || 120));
+  else L.division = +el.value || 1;
+  needPulse(i);
+});
+// Which pulse layer asked for a sound, remembered until the picker answers.
+var PULSE_AT = -1;
+$('pulseFile').onchange = async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  const L = layers()[PULSE_AT];
+  if (!f || !L) return;
+  try {
+    setStatus('loading the sound\u2026', 'live');
+    const r = await api(`/api/upload?filename=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+    L.audio = r.path; L.audioName = f.name; L.beat = 'file';
+    renderLayers(); save(); needPulse(PULSE_AT, true);
+  } catch (err) {
+    setStatus('could not load that sound: ' + err.message, 'bad');
+  }
+};
 const LVL_GAP = 0.02;                      // black and white may meet, but not cross
 $('layers').addEventListener('pointerdown', e => {
   const bar = e.target.closest('.lvl');
@@ -3011,6 +3157,10 @@ $('layers').addEventListener('pointerdown', e => {
   move(e);
 });
 function layerTile(L) {
+  if (L.pulse) {
+    const [pw, ph] = maskPreviewSize();
+    return `<video src="/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
+  }
   if (L.mask) {
     const [pw, ph] = maskPreviewSize();
     return `<video src="/api/masks/preview?${qs({ pattern: L.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
@@ -3019,6 +3169,29 @@ function layerTile(L) {
                       : `/api/video/thumbnail?${qs({ path: L.path, frame: 0 })}`;
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>`
        + `<img src="${src}" alt="" draggable="false">`;
+}
+// Where a pulse layer's beat comes from, and what it is set to. Three sources, one row, because
+// they are the same question answered three ways -- and only the answer you picked is asked about.
+function beatRow(i, L) {
+  const at = L.beat || 'bpm';
+  const line = at === 'bpm'
+    ? `<input class="line" type="number" min="40" max="240" step="1" value="${L.bpm || 120}" data-bpm="${i}"
+              title="Beats per minute">
+       <span>bpm</span>
+       <select class="model" data-div="${i}" title="How often a hit lands">${
+         [[0.5, 'every 2 beats'], [1, 'every beat'], [2, 'every \u00bd beat'], [4, 'every \u00bc beat']].map(([v, t]) =>
+           `<option value="${v}"${+(L.division || 1) === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
+    : at === 'clip'
+      ? `<span class="snd">${state.clip ? state.clip.name : 'load a clip first'}</span>`
+      : `<span class="snd">${L.audioName || 'no sound yet'}</span>
+         <button class="chip" data-snd="${i}">${L.audio ? 'change' : 'load\u2026'}</button>`;
+  return `<span class="beat">
+      <div class="seg" data-beat="${i}">
+        <button data-b="bpm"${at === 'bpm' ? ' class="on"' : ''} title="A count you type: exact, repeatable, and it matches whatever you cut this to later">BPM</button>
+        <button data-b="clip"${at === 'clip' ? ' class="on"' : ''} title="The clip's own soundtrack \u2014 what you see pulsing is what you will hear">Clip</button>
+        <button data-b="file"${at === 'file' ? ' class="on"' : ''} title="A track you load: the music this is actually cut to">Sound</button>
+      </div>
+      <div class="bl">${line}</div></span>`;
 }
 function renderLayers() {
   $('layersBox').hidden = !layersOn();
@@ -3068,24 +3241,29 @@ function renderLayers() {
           ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
           ${L.mask ? '' : levels(i, L)}` : `
           ${dial(i, 'opacity', 'opacity', L.opacity, 'How strongly this layer is laid over what is under it', '%')}
-          ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}`}
+          ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}
+          ${L.pulse ? dial(i, 'amount', 'amount', L.amount ?? 1, 'How far a hit swings this layer \u2014 at 0 it sits at rest and nothing happens') : ''}`}
         </span>
+        ${L.pulse && !L.matte ? beatRow(i, L) : ''}
       </span></div>`;
   }).join('')
-    + (state.clip ? `<div class="lay base" title="${state.clip.name}">
+    + ((bs => bs ? `<div class="lay base" title="${bs.name}">
       <span class="tile" data-swap="base"
-            title="The clip, always the bottom of the stack \u00b7 double-click to load a different one"><img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="" draggable="false"><b class="band">SOURCE</b></span>
+            title="The ${bs.image ? 'picture' : 'clip'}, always the bottom of the stack \u00b7 double-click to load a different one"><img src="${
+        bs.image ? `/api/image/file?${qs({ path: bs.path })}` : `/api/video/thumbnail?${qs({ path: bs.path })}`}" alt="" draggable="false"><b class="band">SOURCE</b></span>
       <span class="side">
-        <span class="hd"><span class="nm">${state.clip.name}</span></span>
+        <span class="hd"><span class="nm">${bs.name}</span></span>
         <span class="dials">
           ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
           ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
         </span>
-      </span></div>` : '');
+      </span></div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
+  // A beat over a single frame is one frame of it: not a pulse, and not worth offering.
+  $('addPulse').hidden = stillBase();
   needPlate();
   if (typeof applyView === 'function') applyView();
 }
@@ -3106,8 +3284,11 @@ function needPlate(now) {
   plateTimer = setTimeout(() => {
     const asked = want;
     setStatus('compositing the layers\u2026', 'live');
-    api('/api/layers/plate', { method: 'POST', headers: { 'content-type': 'application/json' },
-                               body: JSON.stringify({ layers: layerJob() }) })
+    api(stillBase() ? '/api/layers/still' : '/api/layers/plate',
+        { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(stillBase()
+            ? { layers: layerJob(), width: t2vDims(state.size)[0], height: t2vDims(state.size)[1] }
+            : { layers: layerJob() }) })
       .then(r => {
         if (asked !== PLATE_WANT) return;            // something moved while it was compositing
         PLATE = r; setStatus(`plate \u00b7 ${r.layers} layers \u00b7 ${r.width}\u00d7${r.height}`, 'done');
@@ -3125,8 +3306,9 @@ function rendering() {
   return !!job && !['completed', 'cancelled', 'failed'].includes(job.state);
 }
 function stageSource() {                   // not the older toSource(): that one is the Frame scrub
-  if (!state.clip || state.t2v) return;
   if (rendering()) return;
+  if (picMode()) { if (view !== 'src') { view = 'src'; setControlTabs(); } return paintFrame(); }
+  if (!state.clip || state.t2v) return;
   if (clipMode() && view === 'src') return;
   view = 'src'; showClip();
 }
@@ -3134,6 +3316,7 @@ function stageSource() {                   // not the older toSource(): that one
 function sourcePath() { return PLATE ? PLATE.path : (state.clip ? state.clip.path : ''); }
 function repaintSource() {
   if (rendering()) return;        // showClip() drops viewRun, which would take the Output tab with it
+  if (picMode()) paintFrame();    // Image mode: the stage is the picture, and now it is the plate
   if (typeof showClip === 'function' && clipMode()) showClip();
   if (typeof paintPlate === 'function') paintPlate();
 }
@@ -3322,6 +3505,7 @@ $('layerAdds').onclick = e => {
   if (!add) return;
   if (add.dataset.add === 'matte') return toggleMaskLib(true, -1);
   if (add.dataset.add === 'noise') return addNoise();
+  if (add.dataset.add === 'pulse') return toggleMaskLib(true, -1, 'pulse');
   $('layerFile').click();
 };
 // Static, cut to whatever it is going over. A different lever from Denoise: that asks the model to
@@ -3349,12 +3533,17 @@ $('layers').addEventListener('dblclick', e => {
     if (!L) return;
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
+    if (num.dataset.k === 'amount') return needPulse(+num.dataset.lv, true);
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
   const tile = e.target.closest('[data-swap]');
   if (!tile) return;
   e.preventDefault();
+  // A pulse layer is drawn, not loaded: its tile opens the patterns rather than the file picker,
+  // and the one you pick replaces the pattern without disturbing the beat or the blend.
+  const row = layers()[+tile.dataset.swap];
+  if (row && row.pulse) return toggleMaskLib(true, +tile.dataset.swap, 'pulse');
   LAYER_SWAP = tile.dataset.swap;
   $('layerFile').click();
 });
@@ -4781,8 +4970,11 @@ function renderSize() {
 function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view === 'src' || view === 'mask'); }
 // Image -> Video with no run on show: the picture is the source (Source / live Diff), at render size
 function picMode() { return state.t2v && state.i2v && !!state.image && !viewRun; }
+// The picture the render starts from: the plate when there is a stack over it, the picture itself
+// when there is not. One place, so the stage, the live Diff and the job cannot disagree.
+function picSource() { return (PLATE && stillBase() && PLATE.path) || (state.image || {}).path || ''; }
 function picFrameUrl(kind) {
-  return `/api/diff/base?${qs({ path: state.image.path, frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind, ...depthQ(kind) })}`;
+  return `/api/diff/base?${qs({ path: picSource(), frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind, ...depthQ(kind) })}`;
 }
 function oneFrameRun() { return !clipMode() && frames.length <= 1 && !!state.clip && !state.t2v; }
 // The frames the run on show will have when it finishes, while it is still being made; 0 otherwise.
@@ -5019,7 +5211,7 @@ async function buildConfig(kind) {
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
-    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? state.image.path : '', ...camJob() } : {}),
+    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? picSource() : '', ...camJob() } : {}),
     ...shapeJob(kind),
   };
   // Frame with a keyframe selected: that keyframe's prompt, whatever the frame
@@ -7183,11 +7375,12 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   // in milliseconds. The model folders — loras, embeddings, motion modules, checkpoints — are not
   // here any more: they are fetched by the controls that show them (see `need`), which in Comfy
   // mode is never.
-  const [postOpts, cloudWf, fieldKinds, maskPats] = await Promise.all([
+  const [postOpts, cloudWf, fieldKinds, maskPats, pulsePats] = await Promise.all([
     api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null })),
     api('/api/comfy/workflows').catch(() => ({ workflows: [] })),
     api('/api/fields').catch(() => ({ kinds: [] })),
     api('/api/masks').catch(() => ({ patterns: [] })),
+    api('/api/pulse/patterns').catch(() => ({ patterns: [] })),
   ]);
   POST_OPTS = postOpts;
   // "hidden" parks a workflow without deleting it: out of the picker, still in the manifest
@@ -7195,6 +7388,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   CLOUD_WF = (cloudWf.workflows || []).filter(w => !w.hidden);
   FIELD_KINDS = fieldKinds.kinds || [];            // drawn motion
   MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
+  PULSE_PATTERNS = pulsePats.patterns || [];
   if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned

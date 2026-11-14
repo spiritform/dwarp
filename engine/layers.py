@@ -195,12 +195,16 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
             steps.append(f"{chain}[s{n}]blend=all_mode={drawn['mode']}:all_opacity={op:.4f}[b{n}]")
             chain = f"[b{n}]"
 
-    steps.append(f"{chain}format=yuv420p[out]")
+    # A picture asks for the same graph and a different tail: Image -> Video starts from one frame,
+    # so its plate is one frame, written as a picture rather than as a clip of length 1.
+    one = dest.suffix.lower() == ".png"
+    steps.append(f"{chain}format={'rgb24' if one else 'yuv420p'}[out]")
     cmd = (["ffmpeg", "-v", "error", "-y"] + inputs
-           + ["-filter_complex", ";".join(steps), "-map", "[out]",
-              "-frames:v", str(frames), "-r", f"{fps:.6f}",
-              "-c:v", "libx264", "-crf", "17", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-              str(dest)])
+           + ["-filter_complex", ";".join(steps), "-map", "[out]"]
+           + (["-frames:v", "1", "-update", "1", str(dest)] if one else
+              ["-frames:v", str(frames), "-r", f"{fps:.6f}",
+               "-c:v", "libx264", "-crf", "17", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+               str(dest)]))
     done = subprocess.run(cmd, capture_output=True)
     if done.returncode or not dest.is_file():
         # ffmpeg says what is actually wrong on its last line; the first is the filtergraph's own
@@ -293,6 +297,29 @@ def plate(dest_dir: Path, layers, *, width: int = 0, height: int = 0, frames: in
         flatten(stack, out, width=width, height=height, frames=frames, fps=fps)
     return {"path": str(out), "name": out.name, "width": width, "height": height,
             "frames": frames, "fps": round(fps, 3), "layers": len(pairs)}
+
+
+def plate_still(dest_dir: Path, layers, *, width: int = 0, height: int = 0) -> dict:
+    """The flattened stack as one picture.
+
+    Image -> Video renders out of a single frame, so there is nothing for a plate to be a clip of:
+    the stack is flattened to the picture the render starts from. A layer that is a video gives its
+    first frame, which is the only frame of it that could have been used.
+    """
+    stack = clean(layers)
+    pairs = plan(stack)
+    if not pairs:
+        raise ValueError("a plate needs at least one layer that is not a matte")
+    if not (width and height):
+        bw, bh, _, _ = probe(pairs[0][0]["path"])
+        width, height = width or bw, height or bh
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    out = dest_dir / f"plate-{_key(stack, width, height, 1, 1.0)}.png"
+    if not (out.is_file() and out.stat().st_size):
+        flatten(stack, out, width=width, height=height, frames=1, fps=1.0)
+    return {"path": str(out), "name": out.name, "width": width, "height": height,
+            "frames": 1, "fps": 1.0, "layers": len(pairs), "image": True}
 
 
 # ------------------------------------------------------------------ live: composited per frame

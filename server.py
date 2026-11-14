@@ -61,6 +61,7 @@ def warm() -> None:
 INPUTS = HERE / "inputs"
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".gif"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}          # Image -> Video's picture
+AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}   # a beat for a pulse layer
 jobs = JobManager()
 
 
@@ -119,7 +120,8 @@ def probe(path: str) -> dict:
     if not duration or fps > 240:          # e.g. a browser-recorded WebM: no duration, "1000 fps" = its clock
         fps, duration = _measured_rate(path, frames) or (fps, duration)
     return {"width": int(st["width"]), "height": int(st["height"]), "fps": fps, "frames": frames,
-            "duration": duration, "codec": st.get("codec_name", "")}
+            "duration": duration, "codec": st.get("codec_name", ""),
+            "audio": runs.has_audio(path)}      # is there a beat in here to drive a pulse layer
 
 
 def _measured_rate(path: str, frames: int) -> tuple[float, float] | None:
@@ -358,8 +360,8 @@ def build_app() -> FastAPI:
     @app.post("/api/upload")
     async def upload(request: Request, filename: str = "clip.mp4"):
         suffix = Path(filename).suffix.lower()
-        if suffix not in VIDEO_EXTS | IMAGE_EXTS:
-            raise HTTPException(422, detail=f"Not a video or image file: {filename}")
+        if suffix not in VIDEO_EXTS | IMAGE_EXTS | AUDIO_EXTS:
+            raise HTTPException(422, detail=f"Not a video, image or audio file: {filename}")
         stem = re.sub(r"[^\w\-]+", "_", Path(filename).stem)[:60] or "clip"
         target = INPUTS / f"{stem}-{uuid.uuid4().hex[:6]}{suffix}"
         size = 0
@@ -370,6 +372,8 @@ def build_app() -> FastAPI:
         if size == 0:
             target.unlink(missing_ok=True)
             raise HTTPException(422, detail="Empty upload")
+        if suffix in AUDIO_EXTS:                 # a beat: there is nothing to look at, only to read
+            return {"path": str(target), "name": filename, "bytes": size, "audio": True}
         if suffix in IMAGE_EXTS:                 # a picture: its size sets Image -> Video's aspect
             from PIL import Image
             try:
@@ -933,6 +937,22 @@ def build_app() -> FastAPI:
         except (RuntimeError, ValueError) as exc:
             raise HTTPException(422, detail=f"could not flatten the layers: {exc}") from None
 
+    @app.post("/api/layers/still")
+    async def layers_still(request: Request):
+        """The stack flattened to one picture, for Image -> Video: what the render starts from."""
+        from engine import layers as layerlib
+        body = await request.json()
+        stack = body.get("layers") or []
+        if not isinstance(stack, list) or not stack:
+            raise HTTPException(422, detail="No layers to flatten")
+        try:
+            return await asyncio.to_thread(
+                layerlib.plate_still, INPUTS / "plates", stack,
+                width=max(0, min(4096, int(body.get("width", 0)))),
+                height=max(0, min(4096, int(body.get("height", 0)))))
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(422, detail=f"could not flatten the layers: {exc}") from None
+
     @app.post("/api/layers/noise")
     async def layers_noise(request: Request):
         """Monochrome static as a layer. Cut to the size and length of whatever it is going over,
@@ -950,6 +970,59 @@ def build_app() -> FastAPI:
                 seed=int(body.get("seed", 0)))
         except (RuntimeError, ValueError, TypeError) as exc:
             raise HTTPException(422, detail=f"could not make the noise: {exc}") from None
+
+    @app.get("/api/pulse/patterns")
+    def pulse_patterns():
+        """The kinds of pulse layer there are. Data, so the picker follows the engine."""
+        from engine import pulse
+        return pulse.catalogue()
+
+    @app.get("/api/pulse/preview")
+    def pulse_preview(kind: str = "burst", width: int = 256, height: int = 144):
+        """One pattern as a small loop at a steady count, for the picker."""
+        from engine import pulse
+        try:
+            out = pulse.preview(INPUTS / "pulse" / "_preview", kind, width, height)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not draw that preview: {exc}") from None
+        return FileResponse(out, media_type="video/mp4", headers={"Cache-Control": "max-age=3600"})
+
+    @app.post("/api/pulse/envelope")
+    async def pulse_envelope(request: Request):
+        """The signal on its own, so the panel can draw what the layer is about to do."""
+        from engine import pulse
+        body = await request.json()
+        try:
+            return {"env": await asyncio.to_thread(
+                pulse.envelope,
+                max(1, min(4096, int(body.get("frames", 124)))),
+                max(1.0, min(120.0, float(body.get("fps", 24)))),
+                bpm=float(body.get("bpm", 120.0)), division=float(body.get("division", 1.0)),
+                audio=str(body.get("audio") or ""), band=str(body.get("band") or "all"),
+                start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)),
+                attack=float(body.get("attack", 0.02)), release=float(body.get("release", 0.22)))}
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not read that beat: {exc}") from None
+
+    @app.post("/api/layers/pulse")
+    async def layers_pulse(request: Request):
+        """A pulse layer, cut to the size and length of whatever it is going over. Named after what
+        is in it, beat and all, so asking twice costs one stat()."""
+        from engine import pulse
+        body = await request.json()
+        try:
+            return await asyncio.to_thread(
+                pulse.clip, INPUTS / "pulse", kind=str(body.get("kind") or "burst"),
+                width=max(16, min(4096, int(body.get("width", 768)))),
+                height=max(16, min(4096, int(body.get("height", 768)))),
+                frames=max(2, min(4096, int(body.get("frames", 124)))),
+                fps=max(1.0, min(120.0, float(body.get("fps", 24)))),
+                amount=float(body.get("amount", 1.0)), seed=int(body.get("seed", 0)),
+                bpm=float(body.get("bpm", 120.0)), division=float(body.get("division", 1.0)),
+                audio=str(body.get("audio") or ""), band=str(body.get("band") or "all"),
+                start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)))
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not make the pulse: {exc}") from None
 
     @app.get("/api/masks/preview")
     def mask_preview(pattern: str = "circle", width: int = 256, height: int = 144,
