@@ -4,6 +4,15 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **A pulse tile beats at its own speed.** The thumbnail is a loop drawn at a steady 120, so it
+  now plays at bpm/120 — the number has a picture of itself beside it, and it keeps up while you
+  drag. Nothing is redrawn for it: the same loop, faster.
+- **Play no longer sticks on a one-frame run.** It was starting a loop over a single frame: the
+  button flipped to pause and nothing could move. Pressing play there now drops back to Source
+  and plays what actually moves — the still with the stack over it — which is where scrubbing
+  already took you.
+- **A picture's length is whole seconds.** Tenths were a precision nobody was using; the floor is
+  a second, and below the dash the picture is animated as before.
 - **The bar under the stage reads copy settings · use frame → · enhance.** "use settings" is
   **copy settings** again, and the two that take something out of a run and put it back in the panel
   now sit together; enhance follows, since it is the one that leaves the run as it is.

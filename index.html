@@ -3157,7 +3157,7 @@ const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount:
 // like. One table, so a box only has to say which of them it is.
 const NUM_SPEC = {
   bpm:  { min: 40, max: 240, step: 1, text: v => Math.round(v) },
-  secs: { min: 0, max: 30, step: 0.1, text: v => v >= 0.2 ? v.toFixed(1) : '—' },
+  secs: { min: 0, max: 30, step: 1, text: v => v >= 0.2 ? String(Math.max(1, Math.round(v))) : '—' },
 };
 function numSpec(el) {
   return NUM_SPEC[el.dataset.k]
@@ -3187,6 +3187,8 @@ $('layers').addEventListener('pointerdown', e => {
     // animated into painted, and that rebuilds the panel out from under the pointer.
     if (k === 'secs') { picSecs = v; return; }
     L[k] = v;
+    // The tile keeps up with the number under your hand; the clip itself is redrawn after.
+    if (k === 'bpm') pulseRate(+which);
     if (k === 'amount' || k === 'bpm') return needPulse(+which);   // a different picture, not a blend
     needPaint(); needPlate(); pushLayers();
   };
@@ -3210,7 +3212,7 @@ $('layers').addEventListener('click', e => {
     const i = +seg.dataset.beat, L = layers()[i];
     if (!L || L.beat === btn.dataset.b) return;
     L.beat = btn.dataset.b;
-    renderLayers(); save();
+    renderLayers(); save(); pulseRates();
     // Nothing to read yet is not an error: pick the file first and the layer is redrawn then.
     if (L.beat !== 'file' || L.audio) needPulse(i, true);
     return;
@@ -3240,8 +3242,11 @@ $('pulseFile').onchange = async e => {
 // a picture with no length is frame 1 of something the camera moves through; above it, it is the
 // source. So the one box is also the only thing left of the mode switch.
 function commitSecs() {
-  const v = picSecs;
+  // Whole seconds. Below the floor there is no length at all, which is the picture being animated;
+  // above it the shortest thing worth rendering is a second, so that is where it starts.
+  const v = picSecs < 0.2 ? picSecs : Math.max(1, Math.round(picSecs));
   if (v < 0.2) { if (stillClip()) setPicHow('animate'); return; }
+  picSecs = v;
   if (!stillClip()) return setPicHow('paint', v);
   state.clip.secs = v; stillLen();
   const read = $('stillLenV'); if (read) read.textContent = `seconds · ${stillFrames()} frames`;
@@ -3290,6 +3295,24 @@ $('layers').addEventListener('pointerdown', e => {
   bar.addEventListener('pointercancel', up);
   move(e);
 });
+// The tile is a two-second loop the server draws at a steady 120 (engine/pulse.py PREVIEW_BPM).
+// Play it at bpm/120 and the picture in the panel beats at the speed the layer is set to -- so the
+// number has a picture of itself beside it, and dragging it is something you watch rather than
+// read. Nothing is redrawn for this: it is the same loop, faster. On a beat taken from a track
+// there is no number to go by, so it runs at the speed it was drawn.
+const PREVIEW_BPM = 120;
+function pulseRate(i) {
+  const L = layers()[i];
+  if (!L || !L.pulse) return;
+  const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
+  if (!v) return;
+  const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
+  const want = at === 'bpm' ? (L.bpm || 120) * (L.division || 1) / PREVIEW_BPM : 1;
+  // defaultPlaybackRate too: a tile that lost its source and reloads comes back at this speed
+  // rather than at 1, and the loop you are watching does not quietly change tempo.
+  v.playbackRate = v.defaultPlaybackRate = Math.min(4, Math.max(0.25, want));
+}
+function pulseRates() { layers().forEach((L, i) => { if (L.pulse) pulseRate(i); }); }
 function layerTile(L) {
   if (L.pulse) {
     const [pw, ph] = maskPreviewSize();
@@ -3461,6 +3484,7 @@ function renderLayers() {
     paintNum(el, (layers()[+el.dataset.lv] || {}).bpm || 120));
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
+  pulseRates();                            // each pulse tile beats at its own speed
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
   // A beat over a single frame is one frame of it: not a pulse, and not worth offering. A picture
   // with a duration is not a single frame, so there it is offered like anywhere else.
@@ -6928,7 +6952,14 @@ function togglePlay() {
     return;
   }
   if (clipMode()) { if (view === 'src') playClip(); return; }   // Diff is drawn per frame: scrub it
-  if (!frames.length) return;
+  // A one-frame run has nothing to run through, and the transport under it is the clip's anyway
+  // — scrubbing it drops back to Source. So does pressing play: what moves here is the source,
+  // the still with the stack over it, and the button used to latch on a loop of one frame.
+  if (oneFrameRun()) {
+    if (stillClip() && !PLATE) return;     // a picture with nothing over it does not move
+    toSource(); return playClip();
+  }
+  if (frames.length < 2) return;           // nothing to play, so nothing to stop either
   if (view === 'out' && runHasSound()) return playOut();        // H3: play the file, sound and all
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
   $('playBtn').textContent = '❚❚';
