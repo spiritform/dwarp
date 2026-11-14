@@ -62,6 +62,7 @@ class RenderJob:
     frame_start: int = 0                 # in extracted-frame units
     frame_end: int = -1                  # inclusive; -1 = to the end
     nth: int = 1                         # use every nth source frame
+    source_frames: int = 0               # a still source lasts this many frames (0 = as long as it is)
     lora: str = ""                       # a LoRA file for the checkpoint ("" = none), at lora_weight
     lora_weight: float = 0.8
     # Style ref (IP-Adapter): a picture whose look steers every frame. style_only: only the layers that carry
@@ -1107,6 +1108,11 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             src_paths = stack.paths
         else:
             src_paths = extract_frames(job, out / "src")
+            # A picture as the source: it is one frame, and the length is the one you asked for.
+            # Boil repaints each of them from the same picture with its own noise; Warp has no
+            # motion to follow, so the paint builds on itself instead.
+            if len(src_paths) == 1 and job.source_frames > 1:
+                src_paths = src_paths * job.source_frames
         total = len(src_paths)
         log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
 

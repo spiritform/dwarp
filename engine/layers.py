@@ -395,8 +395,12 @@ class FrameStack:
             self.frames[k] = extract(one, Path(out) / "layers" / f"{k}")
             log(f"  {Path(L['path']).name} \u00b7 {len(self.frames[k])} frames"
                 + (" \u00b7 matte" if L["matte"] else f" \u00b7 {L['mode']} {L['opacity'] * 100:.0f}%"))
+        # How long the stack runs. The base usually says -- it is the clip -- but a picture at the
+        # bottom is one frame and still has a length, the one that was asked for. Every layer is
+        # looked up by frame number and loops, so a one-frame base simply repeats under the rest.
         base = self.frames[self.pairs[0][0]]
-        self.paths = [self.dir / f"{i:06d}.jpg" for i in range(len(base))]
+        n = int(getattr(job, "source_frames", 0) or 0) if len(base) == 1 else 0
+        self.paths = [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
         self.done: dict[int, str] = {}
 
     def _frame(self, k: int, i: int):

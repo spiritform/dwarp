@@ -17,7 +17,8 @@
     --accent-2: #ffb36b;
     --ok: #7bd88f;
     --bad: #ff5d6c;
-    --radius: 10px;
+    --radius: 8px;                       /* surfaces: cards, the source slot, a layer row */
+    --radius-sm: 4px;                    /* controls: value boxes, selects, chips, thumbnails */
   }
   * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #34333b transparent; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -98,11 +99,18 @@
   .clip-empty:hover { background: #24232a; color: var(--text); }
   .clip-empty small { display: block; color: var(--faint); margin-top: 4px; }
   /* the Video and Image drop slots: one size and type, whichever mode */
-  #clipBox > .clip-empty { height: 90px; padding: 0 12px; box-sizing: border-box; display: flex; flex-direction: column;
-                           justify-content: center; font-size: 13px; }
-  #clipBox > .clip-empty small { font-size: 11px; }
+  /* Input, and (with nothing loaded) Size / Duration under it: two cards, one gap. */
+  #clipBox { display: flex; flex-direction: column; gap: 12px; }
+  #clipBox .clip-empty { height: 90px; padding: 0 12px; box-sizing: border-box; display: flex; flex-direction: column;
+                         align-items: center; justify-content: center; font-size: 13px; margin-bottom: 8px; }
+  #clipBox .clip-empty small { font-size: 11px; }
+  #clipBox .clip-empty svg { width: 19px; height: 19px; margin-bottom: 7px; opacity: .75; }
+  /* Inside the Input card the slot is the only thing in it: the card is the box, not this. */
+  #clipBox .card-body > .clip-empty, #clipBox .card-body > .clip { background: none; }
+  #clipBox .card-body > .clip-empty { background: #25242b; }
+  #clipBox .card-body > .clip-empty:hover { background: #2d2c33; }
   .clip-top { display: flex; gap: 10px; padding: 10px; align-items: center; }
-  .clip-thumb { position: relative; flex: none; width: 56px; height: 56px; border: 0; padding: 0; border-radius: 6px;
+  .clip-thumb { position: relative; flex: none; width: 56px; height: 56px; border: 0; padding: 0; border-radius: var(--radius-sm);
                 overflow: hidden; background: #000; cursor: pointer; }
   .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .clip-thumb svg { position: absolute; inset: 0; margin: auto; width: 22px; height: 22px; opacity: 0; transition: opacity .15s; }
@@ -115,12 +123,12 @@
   .clip-del { flex: none; align-self: flex-start; background: none; border: 0; color: var(--faint);
                cursor: pointer; font-size: 10px; font-weight: 700; padding: 3px 5px; }
   .clip-del:hover { color: #ff9a8a; }
-  .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: 5px; overflow: hidden;
+  .range { position: relative; height: 34px; margin: 0 10px 10px; border-radius: var(--radius-sm); overflow: hidden;
            display: flex; background: #000; touch-action: none; }
   .range img { flex: 1; min-width: 0; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
   .range, .range-text { user-select: none; -webkit-user-select: none; touch-action: none; }   /* trimming must not select or drag the strip */
   .range .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.65); pointer-events: none; }
-  .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 4px; cursor: grab; }
+  .range .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: var(--radius-sm); cursor: grab; }
   .range.sliding .sel { cursor: grabbing; }   /* dragging inside the selection slides it, length kept */
   .range .h { position: absolute; top: -2px; bottom: -2px; width: 10px; background: var(--accent); cursor: ew-resize; }
   .range .h.l { left: -5px; border-radius: 3px 0 0 3px; } .range .h.r { right: -5px; border-radius: 0 3px 3px 0; }
@@ -128,7 +136,7 @@
   .keys-label { color: #a9a7b1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
                 margin: 2px 10px 6px; display: flex; justify-content: space-between; }
   .keys-label a { color: #ff9a8a; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 600; }
-  .keys { position: relative; height: 16px; margin: 8px 0 8px; border-radius: 4px; background: rgba(255,255,255,.05);
+  .keys { position: relative; height: 16px; margin: 8px 0 8px; border-radius: var(--radius-sm); background: rgba(255,255,255,.05);
           cursor: copy; touch-action: none; }
   .keys:hover { background: rgba(255,255,255,.08); }
   /* the keyframe bar's delete: a ✕ in a small circle, far right */
@@ -148,7 +156,7 @@
   .keys:hover .ghost.show { display: block; }
   /* scrub peek: the source frame under the pointer, floating over the filmstrip */
   .keys .peek { position: absolute; bottom: 20px; width: 112px; margin-left: -56px; display: none; pointer-events: none;
-                border-radius: 5px; overflow: hidden; background: #000; z-index: 3;
+                border-radius: var(--radius-sm); overflow: hidden; background: #000; z-index: 3;
                 box-shadow: 0 6px 18px rgba(0,0,0,.6); }
   .keys .peek img { display: block; width: 100%; }
   .keys .peek span { position: absolute; left: 4px; bottom: 3px; font-size: 10px; color: #fff; background: rgba(0,0,0,.6);
@@ -167,7 +175,7 @@
   /* a keyframe picked: the lane and its bar are one grey panel (lane on top, delete + blend under it) */
   .keywrap { margin: 8px 0 6px; }
   .keywrap .keys { margin: 0; }
-  .keywrap:has(.keybar:not([hidden])) .keys { border-radius: 4px 4px 0 0; }
+  .keywrap:has(.keybar:not([hidden])) .keys { border-radius: var(--radius-sm) 4px 0 0; }
   .keybar b { color: #a9a7b1; font-weight: 600; }
   .keybar a { color: #ff9a8a; cursor: pointer; }
   .keybar .slider { flex: 1; margin: 0; display: flex; align-items: center; gap: 8px; }
@@ -189,8 +197,8 @@
   .mode { margin-bottom: 4px; }
   .sublabel { margin: 12px 0 -4px; }
   select.model { width: 100%; margin-top: 8px; background: var(--panel-2); color: var(--text); border: 0;
-                 border-radius: 8px; padding: 7px 8px; font: inherit; }
-  .preset-model { margin-top: 10px; padding: 9px 11px; border-radius: 8px; background: var(--panel-2);
+                 border-radius: var(--radius); padding: 7px 8px; font: inherit; }
+  .preset-model { margin-top: 10px; padding: 9px 11px; border-radius: var(--radius); background: var(--panel-2);
                   border-left: 2px solid var(--accent); font-size: 12px; line-height: 1.45; }
   .preset-model .ckpt { color: var(--accent-2); font-size: 11px; margin-bottom: 4px; }
   .preset-model .words { color: var(--text); }
@@ -213,7 +221,7 @@
   #holdBox.off, #ddBox.off, #ddInvert.off { display: none; }   /* off: its sliders go away */
   /* ControlNet / DepthDiff: two tabs over one slot (both can be on at once) — a lighter
      cousin of .seg: no fill, thin line, small caps */
-  .gtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border-radius: 8px;
+  .gtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border-radius: var(--radius);
            overflow: hidden; margin-bottom: 8px; }
   .gtabs button { background: #2a2930; border: 0; padding: 5px 0; cursor: pointer; color: #b3b1bb;   /* the other tab: clearly there */
                   font: inherit; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
@@ -227,13 +235,13 @@
                           align-items: center; gap: 5px; color: var(--dim); }   /* the dropdowns' grey */
   #styleRef .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #styleRef .clip-empty svg { width: 18px; height: 18px; }
-  #styleRef .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: 8px; padding: 6px; }
-  #styleRef .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: 5px; cursor: pointer; flex: none; }
+  #styleRef .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: var(--radius); padding: 6px; }
+  #styleRef .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); cursor: pointer; flex: none; }
   #styleRef .ref span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
   #styleRef .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
   #styleRef .ref button:hover { color: #ff9a8a; }
   #shapeSlot .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
-    align-items: center; gap: 6px; border-radius: 8px; }
+    align-items: center; gap: 6px; border-radius: var(--radius); }
   #shapeSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #shapeSlot .clip-empty svg { width: 18px; height: 18px; }
   #shapeSlot, #trackSlot { margin-bottom: 8px; }          /* breathing room under the slot, empty or loaded */
@@ -241,12 +249,12 @@
   #h3MotionLabel { margin-bottom: 8px; }                  /* the slot is a picture: it needs the air */
   #tkWay { margin-top: 8px; }
   #trackSlot .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex;
-            flex-direction: column; align-items: center; gap: 5px; border-radius: 8px; cursor: pointer;
+            flex-direction: column; align-items: center; gap: 5px; border-radius: var(--radius); cursor: pointer;
             color: var(--faint); text-align: center; }
   #trackSlot .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #trackSlot .clip-empty svg { width: 18px; height: 18px; }
   /* the preview is the whole point of measuring: it gets the width, not a thumbnail's worth */
-  #trackSlot .tk { background: #25242b; border-radius: 8px; overflow: hidden; }
+  #trackSlot .tk { background: #25242b; border-radius: var(--radius); overflow: hidden; }
   #trackSlot .tk video { display: block; width: 100%; background: #000; cursor: pointer; }
   #trackSlot .tk canvas { display: block; width: 100%; background: #0f0e13; cursor: pointer; }
   #trackSlot .tk canvas.draw { cursor: crosshair; touch-action: none; }
@@ -261,7 +269,7 @@
   #trackSlot .meta a { color: var(--accent-2); font-size: 11px; cursor: pointer; }
   #trackSlot .meta button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   #trackSlot .meta button:hover { color: #ff9a8a; }
-  #trackSlot .busy { background: #25242b; border-radius: 8px; padding: 10px 12px; font-size: 11px; color: var(--dim);
+  #trackSlot .busy { background: #25242b; border-radius: var(--radius); padding: 10px 12px; font-size: 11px; color: var(--dim);
             overflow-wrap: anywhere; }   /* the first line carries the file name: it has to wrap, not spill */
   #trackSlot .bar { height: 3px; background: #35343d; border-radius: 2px; margin-top: 7px; overflow: hidden; }
   #trackSlot .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
@@ -297,10 +305,10 @@
   #h3Vids { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; margin-top: 8px; }
   #h3Vids .ref, #h3Vids .clip-empty { font-size: 11px; }
   #h3Vids .ref { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative;
-                 background: #25242b; border-radius: 8px; padding: 6px; cursor: grab; }
+                 background: #25242b; border-radius: var(--radius); padding: 6px; cursor: grab; }
   #h3Vids .ref.drag { opacity: .35; }                       /* the one in your hand */
   #h3Vids .ref.over { background: #34333b; }                /* where it would land */
-  #h3Vids .tile { width: 100%; aspect-ratio: 16 / 9; border-radius: 5px; overflow: hidden;
+  #h3Vids .tile { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); overflow: hidden;
                   position: relative; display: flex; background: #1b1a20; color: var(--faint);
                   align-items: center; justify-content: center; }
   /* the colour this slot wears in the mask, as the frame of the picture it stands for: the answer to
@@ -310,7 +318,7 @@
     border-radius: inherit; box-shadow: inset 0 0 0 2px var(--key); pointer-events: none; z-index: 4; }
   /* the clip is <Video 1>, so it wears a colour too -- one coloured slot and one plain one reads as
      a bug, not as a key */
-  .clip-thumb.keyed::before { border-radius: 6px; }
+  .clip-thumb.keyed::before { border-radius: var(--radius-sm); }
   .clip-meta .vtag { font-weight: 600; }
   #h3Vids .tile svg { width: 18px; height: 18px; }
   #h3Vids .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -330,13 +338,13 @@
   #h3Vids .ref span.nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                          font-size: 11px; color: #c9c7cf; }
   #h3Vids .ref > button.x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; padding: 0;
-    border-radius: 5px; background: rgba(14,13,18,.62); color: #cfcdd6; z-index: 5; display: none;
+    border-radius: var(--radius-sm); background: rgba(14,13,18,.62); color: #cfcdd6; z-index: 5; display: none;
     font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
   #h3Vids .ref:hover > button.x { display: block; }
   #h3Vids .ref > button.x:hover { background: var(--bad); color: #fff; }
   #h3Vids .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 10px; font-weight: 700; padding: 4px 8px; }
   #h3Vids .ref button:hover { color: #ff9a8a; }
-  #h3Vids .ref select { background: #2b2a31; color: var(--text); border: 0; border-radius: 6px;
+  #h3Vids .ref select { background: #2b2a31; color: var(--text); border: 0; border-radius: var(--radius-sm);
                         padding: 4px 6px; font: inherit; font-size: 11px; flex: 1; min-width: 0; }
   /* a colour band per video the mask speaks for: stretched, since the tile centres its icon */
   #h3Vids .tile i { flex: 1; align-self: stretch; display: block; }
@@ -345,7 +353,7 @@
   #h3Vids .tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   /* the pattern picker: the chip a filename gets, but it opens the library */
   #h3Vids .ref button.pick { flex: 1; min-width: 0; background: #2b2a31; color: var(--text); border: 0;
-    border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 11px; text-align: left; cursor: pointer;
+    border-radius: var(--radius-sm); padding: 4px 8px; font: inherit; font-size: 11px; text-align: left; cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #h3Vids .ref button.pick:hover { background: #34333b; color: var(--text); }
   /* the colour-mask library: the Shape library's grid, in the frame shape you are rendering */
@@ -353,7 +361,7 @@
   #maskLib .sl-card .note { display: block; font-size: 10px; color: var(--faint); line-height: 1.35;
                             white-space: normal; margin-top: 2px; }
   #h3Vids .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
-                        align-items: center; gap: 6px; border-radius: 8px; color: var(--dim); cursor: pointer; text-align: center; }
+                        align-items: center; gap: 6px; border-radius: var(--radius); color: var(--dim); cursor: pointer; text-align: center; }
   /* once a slot is filled the next one is a line, not a landing strip */
   #h3Refs .clip-empty.slim, #h3Vids .clip-empty.slim { flex-direction: row; padding: 8px 10px; gap: 7px; }
   /* a video or a mask: the same move, two sources. Alongside a card they stack; on their own,
@@ -366,18 +374,18 @@
   #h3Refs .clip-empty.slim svg, #h3Vids .clip-empty.slim svg { width: 13px; height: 13px; }
   #h3Vids .clip-empty:hover { background: #2d2c33; color: var(--text); }
   #h3Vids .clip-empty svg { width: 18px; height: 18px; }
-  body.runDrag #h3Vids, body.dragging #h3Vids { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #h3Vids, body.dragging #h3Vids { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   /* The same card the video contexts wear. The tag was faint grey type beside a 38px thumbnail,
      which is not where your eye goes -- and <Picture 1> is what the prompt calls it. */
   #h3Refs .ref { flex: 0 0 calc(50% - 3px); min-width: 0; position: relative;
-                 background: #25242b; border-radius: 8px; padding: 6px; cursor: grab; }
+                 background: #25242b; border-radius: var(--radius); padding: 6px; cursor: grab; }
   #h3Refs .ref.drag { opacity: .35; }
   #h3Refs .ref.over { background: #34333b; }
   #h3Refs .tile { display: block; position: relative; width: 100%; aspect-ratio: 16 / 9;
-                  border-radius: 5px; overflow: hidden; background: #1b1a20; }
+                  border-radius: var(--radius-sm); overflow: hidden; background: #1b1a20; }
   #h3Refs .ref img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   #h3Refs .ref > button.x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; padding: 0;
-    border: 0; border-radius: 5px; background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; z-index: 5;
+    border: 0; border-radius: var(--radius-sm); background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; z-index: 5;
     display: none; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
   #h3Refs .ref:hover > button.x { display: block; }
   #h3Refs .ref > button.x:hover { background: var(--bad); color: #fff; }
@@ -386,7 +394,7 @@
   #h3Refs .adds .clip-empty.slim { justify-content: center; }
   #h3Refs .adds.wide { flex: 1 1 100%; }
   #h3Refs .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
-    align-items: center; gap: 6px; border-radius: 8px; color: var(--faint); cursor: pointer; text-align: center; }
+    align-items: center; gap: 6px; border-radius: var(--radius); color: var(--faint); cursor: pointer; text-align: center; }
   #h3Refs .clip-empty:hover { background: #2d2c33; color: var(--text); }
   /* A slot that means something is drawn as the card it will become: the same picture-shaped well,
      the same band in the same place, so an empty first frame reads as a picture that is missing
@@ -398,35 +406,40 @@
   #h3Refs .clip-empty.slot .band { background: rgba(16,15,20,.6); color: var(--dim); }
   #h3Refs .clip-empty.slot:hover .band { color: var(--text); }
   #h3Refs .clip-empty svg { width: 18px; height: 18px; }
-  body.runDrag #h3Refs, body.dragging #h3Refs { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #h3Refs, body.dragging #h3Refs { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   /* Layers: one stacked source per row, the matte sitting in the stack where you can see it */
   #layers { display: flex; flex-direction: column; gap: 6px; }
   /* Square thumbnail down the left, everything else stacked beside it: the row is a picture and
      its settings, which is how you read a stack -- by the pictures, top to bottom. */
-  #layers .lay { position: relative; display: flex; gap: 8px; align-items: stretch;
-                 background: #25242b; border-radius: 8px; padding: 6px; }
+  /* Picture, properties, and a row under both of them. Anything that belongs to the whole layer
+     rather than to one column goes in that bottom row, where it lines up with the row above it. */
+  #layers .lay { position: relative; display: grid; grid-template-columns: 90px 1fr; gap: 6px;
+                 align-items: start; background: #25242b; border-radius: var(--radius); padding: 6px; }
   /* Three rows: what it is, how strongly, how softly. The floor is the tile's width, so the
      picture beside them is square and every row in the stack is the same height. */
   #layers .side { flex: 1 1 0; min-width: 0; min-height: 90px;
-                  display: flex; flex-direction: column; gap: 7px; }
+                  display: flex; flex-direction: column; gap: 6px; }
   /* One row of values, dragged rather than aimed at. The fill behind the text is the proportion,
      so nothing is lost by not having a track -- and two fit where one slider used to go. */
-  #layers .dials { display: flex; gap: 7px; align-items: stretch; }
-  #layers .num { flex: 1 1 0; min-width: 0; height: 32px; border-radius: 6px; box-sizing: border-box;
+  #layers .dials { display: flex; gap: 6px; align-items: stretch; }
+  #layers .num { flex: 1 1 0; min-width: 0; height: 28px; border-radius: var(--radius-sm); box-sizing: border-box;
                  padding: 0 8px; display: flex; align-items: center; justify-content: space-between;
                  gap: 5px; cursor: ew-resize; user-select: none; touch-action: none;
                  background: linear-gradient(90deg, #46434f 0 var(--f),
                                              #2b2a31 var(--f)); }
   #layers .num:hover { background: linear-gradient(90deg, #524e5e 0 var(--f),
                                                    #322f3a var(--f)); }
-  #layers .num b { font-size: 9px; font-weight: 500; letter-spacing: .04em; color: var(--dim);
+  #layers .num b { font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--dim);
+                   text-transform: uppercase;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Beside the blend mode a number needs no name: the mode is the sentence, this is how much. */
+  #layers .num.bare { justify-content: center; }
   #layers .num i { font-size: 12px; font-style: normal; color: #f1eff4; flex: none; }
   #layers .num.dragging b, #layers .num.dragging i { color: var(--accent-2); }
   /* The levels bar is painted with the curve it makes: black up to the black point, white from the
      white point, the ramp between them. Dragging the grey handle slides where the half-way value
      lands, which is the gamma -- the same thing the engine's lut is built from. */
-  #layers .lvl { position: relative; flex: 2 1 0; min-width: 0; height: 32px; border-radius: 6px;
+  #layers .lvl { position: relative; flex: 2 1 0; min-width: 0; height: 28px; border-radius: var(--radius-sm);
                  cursor: ew-resize; touch-action: none;
                  background: linear-gradient(90deg, #121117 0, #121117 var(--b),
                                              #e9e8ee var(--w), #e9e8ee 100%); }
@@ -438,7 +451,7 @@
   #layers .lvl .hw { background: #fff; }
   /* select, chips, the eye and the delete are one row of controls, so they are one height */
   #layers select, #layers .chip, #layers .x, #layers .eye { height: 22px; box-sizing: border-box;
-    border: 0; border-radius: 6px; font: inherit; flex: none; }
+    border: 0; border-radius: var(--radius-sm); font: inherit; flex: none; }
   #layers select { padding: 0 5px; font-size: 11px; line-height: 1; flex: 1 1 0; min-width: 0; }
   #layers .chip { padding: 0 7px; font-size: 10px; }
   /* matte as a mark rather than a word: the dropdown next to it is the thing you read */
@@ -459,7 +472,7 @@
      while every row was the same height -- a pulse layer has a beat under its dials and is taller,
      and its picture grew into a column beside the others. */
   #layers .tile { position: relative; align-self: flex-start; width: 90px; height: 90px;
-                  border-radius: 5px; flex: none;
+                  border-radius: var(--radius-sm); flex: none;
                   overflow: hidden; background: #1b1a20; display: flex; align-items: center;
                   justify-content: center; color: var(--faint); }
   #layers .tile img, #layers .tile video { position: absolute; inset: 0; width: 100%; height: 100%;
@@ -468,10 +481,18 @@
   #layers .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: rgba(16,15,20,.86);
                   color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-align: center;
                   padding: 2px 0; line-height: 1; }
-  #layers .hd { display: flex; gap: 5px; align-items: center; min-width: 0; height: 22px; }
-  #layers .ctl { display: flex; gap: 5px; align-items: center; min-width: 0; }
+  #layers .hd { display: flex; gap: 6px; align-items: center; min-width: 0; height: 22px; }
+  #layers .ctl { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  /* The blend mode and how much of it: one sentence, so one row. Three value boxes side by side
+     were narrow enough to cut their own labels in half, which is not a label. */
+  #layers .ctl select { height: 28px; }
+  /* Two halves, all the way down. A fixed right-hand column lined the rows up and then ate the
+     left one -- the panel is not wide enough for a column that does not give anything back. Equal
+     halves line up just as well, and every gap in the card is the same six pixels. A row with one
+     number in it takes the whole width rather than leaving a hole. */
+  #layers .ctl > *, #layers .dials > * { flex: 1 1 0; min-width: 0; }
   /* where the blend mode would be, when there is no blend mode to choose */
-  #layers .mt { flex: 1 1 0; min-width: 0; height: 22px; box-sizing: border-box; border-radius: 6px;
+  #layers .mt { flex: 1 1 0; min-width: 0; height: 22px; box-sizing: border-box; border-radius: var(--radius-sm);
                 background: #2b2a31; display: flex; align-items: center; padding: 0 8px;
                 font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--accent-2);
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -504,10 +525,13 @@
   #layerAdds { display: flex; gap: 6px; margin-top: 6px; }
   #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
     display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
-    border-radius: 8px; color: var(--dim); cursor: pointer; white-space: nowrap; }
+    border-radius: var(--radius); color: var(--dim); cursor: pointer; white-space: nowrap; }
   #layerAdds .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  /* An explicit display beats the browser's own [hidden] rule, so hiding one of these has to say
+     so here: "add pulse" is taken away over a still source, and used to stay anyway. */
+  #layerAdds .clip-empty[hidden] { display: none; }
   #layerAdds .clip-empty svg { width: 13px; height: 13px; }
-  body.runDrag #layers, body.dragging #layers { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #layers, body.dragging #layers { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
   .cloudnote .bad { color: #ff9a8a; }
@@ -523,12 +547,16 @@
   #briefForm .brow { margin-top: 16px; }
   /* A slot's role sits under the slot itself: this is what that picture, or that clip, is for. */
   /* The beat of a pulse layer, under its dials: where it comes from, then what it is set to. */
-  #layers .beat { grid-column: 1 / -1; margin-top: 8px; }
-  #layers .beat .seg { grid-template-columns: repeat(3, 1fr); }
+  /* The bottom row is about the whole layer, not about the column it used to sit in, so it is
+     ruled off from the two above it. The one hairline in the panel, and it earns its keep. */
+  /* The grid's own gap above the rule, the same gap below it. */
+  #layers .beat { grid-column: 1 / -1; padding-top: 6px;
+                  border-top: 1px solid rgba(255,255,255,.075); }
+  #layers .beat .seg { grid-template-columns: repeat(3, 1fr); margin-bottom: 6px; }
   #layers .beat .seg button { font-size: 11px; padding: 6px 4px; }
-  #layers .beat .bl { display: flex; align-items: center; gap: 6px; margin-top: 6px;
+  #layers .beat .bl { display: flex; align-items: center; gap: 6px;
                       color: var(--faint); font-size: 11px; }
-  #layers .beat .bl input.line { width: 64px; padding: 6px 8px; text-align: center; }
+  #layers .beat .bl .num { flex: 0 0 104px; }       /* a value box, like the dials above it */
   #layers .beat .bl select { flex: 1; min-width: 0; }
   #layers .beat .bl .snd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
                            white-space: nowrap; }
@@ -547,7 +575,7 @@
   #briefFoot { margin: 14px 0 8px; }
   .vidkey { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
   .vidkey b { font-size: 9px; font-weight: 700; letter-spacing: .06em; line-height: 1; cursor: pointer;
-              padding: 4px 6px; border-radius: 4px; background: #232228; color: #fff;
+              padding: 4px 6px; border-radius: var(--radius-sm); background: #232228; color: #fff;
               box-shadow: inset 0 0 0 2px var(--key, #9a98a3); }
   .vidkey b:hover { background: #2e2d35; }
   .cloudnote a { color: var(--accent-2); text-decoration: none; white-space: nowrap; }
@@ -563,7 +591,7 @@
   .ddrow { display: flex; gap: 6px; margin-bottom: 14px; }
   .ddrow .seg { flex: 1; }
   /* a lighter grey than the segs so it reads as a switch on the mask, not another source */
-  .invert { flex: none; padding: 0 12px; background: #34333b; border: 0; border-radius: 8px;
+  .invert { flex: none; padding: 0 12px; background: #34333b; border: 0; border-radius: var(--radius);
             color: #c9c7cf; cursor: pointer; font: inherit; font-size: 12px; }
   .invert:hover { background: #3c3b43; }
   .invert.on { background: rgba(255,106,61,.22); color: var(--text); }
@@ -579,25 +607,25 @@
   .ends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; margin-top: 3px; }
   input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
 
-  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; border-radius: 8px; overflow: hidden; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; border-radius: var(--radius); overflow: hidden; }
   /* a class that sets display beats the hidden attribute, so every one of ours has to say so itself:
      without this a Sound or Length row stays on screen for a workflow that has no such control */
   .seg[hidden], .pair[hidden], .slider[hidden] { display: none; }
   .seed { display: flex; gap: 6px; }
-  .seed-tag { display: grid; place-items: center; padding: 0 10px; border-radius: 8px;
+  .seed-tag { display: grid; place-items: center; padding: 0 10px; border-radius: var(--radius);
               background: var(--panel-2); color: var(--dim); font-size: 12px; flex: none; }
   .seed input { flex: 1; min-width: 0; background: var(--panel-2); color: var(--text); border: 0;
-                border-radius: 8px; padding: 7px 9px; font: inherit; font-variant-numeric: tabular-nums; }
+                border-radius: var(--radius); padding: 7px 9px; font: inherit; font-variant-numeric: tabular-nums; }
   .seed input:disabled { color: var(--faint); }
   .seed input:not(:disabled):not(:focus) { cursor: ew-resize; }   /* drag left / right to change it, click to type */
   .seed input.dragging { background: #24232a; }
-  .seed button { width: 36px; background: var(--panel-2); border: 0; border-radius: 8px; cursor: pointer; color: var(--text); }
+  .seed button { width: 36px; background: var(--panel-2); border: 0; border-radius: var(--radius); cursor: pointer; color: var(--text); }
   .seed button:hover { background: #24232a; }
   .seed button.on { background: rgba(255,106,61,.16); }
   .seg button { background: var(--panel-2); color: var(--dim); border: 0; padding: 7px 0; cursor: pointer; }
   .seg button.on { background: var(--line); color: var(--text); }
   /* the big switches (model family, Warp / Boil) stand out: the picked one is white with dark text */
-  #mode button.on, #frameMode button.on, #srcMode button.on { background: #ecebef; color: #16161a; font-weight: 600; }
+  #mode button.on, #frameMode button.on { background: #ecebef; color: #16161a; font-weight: 600; }
   /* Text -> Video card: in place of the clip card */
   .t2vbody { padding: 12px 10px 4px; }
   .t2vbody .ons { margin: 0 0 10px; }
@@ -609,7 +637,7 @@
   .btn { border-radius: var(--radius); padding: 11px 0; font-weight: 600; cursor: pointer; border: 0; }
   /* Frame / Preview / Render live in the bar under the transport, so they never scroll out of view */
   .stage-foot .actions { display: flex; gap: 8px; margin-right: 8px; padding-right: 14px; }
-  .stage-foot .btn { padding: 6px 14px; font-size: 12px; border-radius: 7px; line-height: normal; }
+  .stage-foot .btn { padding: 6px 14px; font-size: 12px; border-radius: var(--radius-sm); line-height: normal; }
   .btn.test { background: var(--panel-2); color: var(--text); }
   .btn.test:hover { background: #24232a; }
   .btn.go { background: var(--accent); color: #1a0d07; }
@@ -620,8 +648,8 @@
   /* ---------- right: stage ---------- */
   main { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: #0a0a0c; }   /* the viewport: a touch darker than the page */
   .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: #111114; }   /* the tab row: the runs band's colour */
-  .toggle { display: flex; background: var(--panel); border-radius: 8px; padding: 2px; }
-  .toggle button { background: none; border: 0; color: var(--dim); padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  .toggle { display: flex; background: var(--panel); border-radius: var(--radius); padding: 2px; }
+  .toggle button { background: none; border: 0; color: var(--dim); padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer; }
   .toggle button.on { background: var(--line); color: var(--text); }
 
   .status { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -638,7 +666,7 @@
   /* the chip's own drop-down, as wide as the chip: one row per reading, each with a thin gradient bar */
   .gpuchip { position: relative; }
   .gpupop { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20; display: none; padding: 9px 10px 8px;
-            background: #16161a; border-radius: 7px; box-shadow: 0 10px 28px rgba(0,0,0,.55); white-space: normal; cursor: default; }
+            background: #16161a; border-radius: var(--radius-sm); box-shadow: 0 10px 28px rgba(0,0,0,.55); white-space: normal; cursor: default; }
   .gpuchip:hover .gpupop { display: block; }
   .gpupop .gname { font-size: 10px; font-weight: 700; letter-spacing: .4px; color: var(--text); margin-bottom: 7px; }
   .gpupop .row { margin: 0 0 7px; }
@@ -670,7 +698,7 @@
   .brand.busy path:nth-child(5) { animation-delay: .64s; }
   @keyframes busyLetter { 0%, 60%, 100% { opacity: .2; } 25% { opacity: 1; } }
   @keyframes busyIn { from { opacity: 0; } }
-  .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 6px; overflow: hidden;
+  .frame { position: relative; max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); overflow: hidden;
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   .frame img { display: block; -webkit-user-drag: none; }
   .frame video { position: absolute; top: 0; left: 0; object-fit: fill; background: #000; }
@@ -685,12 +713,12 @@
            background: #fff; color: #000; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 13px; }
   /* save: downloads whatever the frame shows; appears on hover */
   .frame .save { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: grid; place-items: center;
-                 background: rgba(0,0,0,.6); border: 0; border-radius: 7px; color: #e8e6e3;
+                 background: rgba(0,0,0,.6); border: 0; border-radius: var(--radius-sm); color: #e8e6e3;
                  cursor: pointer; opacity: 0; transition: opacity .15s; }
   .frame:hover .save { opacity: 1; }
   .frame .save:hover { background: rgba(0,0,0,.85); color: #fff; }
   .placeholder { color: var(--faint); text-align: center; }
-  .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }   /* Image -> Video's picture */
+  .stage-pic { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm); }   /* Image -> Video's picture */
   .placeholder b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 4px; }
   /* the empty stage: just the name, big and quiet */
   .wordmark { user-select: none; pointer-events: none; display: flex; }
@@ -700,7 +728,7 @@
   .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
   /* the transport: a contained dark strip with a flat, squared track and a playhead line — a timeline, not a setting */
   .scrub { display: flex; align-items: center; gap: 10px; margin: 0 18px 6px 12px; padding: 6px 10px 6px 6px;   /* ▶ lines up with Frame below (12 + 6 = the bar's 18) */
-           background: #070709; border-radius: 6px; }
+           background: #070709; border-radius: var(--radius-sm); }
   .scrub button { background: #1f1e24; border: 0; color: var(--text); width: 28px; height: 24px; border-radius: 3px; cursor: pointer; font-size: 11px; }
   .scrub button:hover { background: #2a2930; }
   #scrubRange { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; cursor: pointer; }
@@ -724,7 +752,7 @@
   .stage-foot { display: flex; gap: 8px; padding: 10px 18px; color: var(--dim); font-size: 12px; align-items: center;
                 background: #111114; }                   /* one band with the runs under it */
   .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 0;
-                 border-radius: 7px; padding: 6px 12px; white-space: nowrap; }
+                 border-radius: var(--radius-sm); padding: 6px 12px; white-space: nowrap; }
   .stage-foot a:hover { background: #34333b; color: #fff; }
   /* ✕ next to Render, only while something is running */
   .stage-foot #cancelLink { color: #ff9a8a; padding: 6px 10px; }
@@ -743,7 +771,7 @@
 
   .outputs { display: flex; gap: 8px; }
   /* an enhanced mp4: the chip plays it, its ✕ takes it off the list (the file stays) */
-  .outchip { display: inline-flex; align-items: center; background: #2a2930; border-radius: 7px; }
+  .outchip { display: inline-flex; align-items: center; background: #2a2930; border-radius: var(--radius-sm); }
   .outchip:hover { background: #34333b; }
   .stage-foot .outchip a { background: none; }
   .stage-foot .outchip a.outx { padding: 6px 10px 6px 2px; color: var(--faint); }
@@ -756,7 +784,7 @@
   .enh .row { margin-bottom: 12px; }
   .enh .label { margin-bottom: 6px; }
   .enh select { width: 100%; background: var(--panel-2); color: var(--text); border: 0;
-                border-radius: 8px; padding: 7px 8px; font: inherit; margin-bottom: 6px; }
+                border-radius: var(--radius); padding: 7px 8px; font: inherit; margin-bottom: 6px; }
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
   .enh .seg button { color: #c9c7cf; }     /* unpicked options read clearly; the pick is the fill */
   .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
@@ -765,7 +793,7 @@
   .enh textarea { min-height: 84px; }
   .enh .btn { width: 100%; }
 
-  .logbtn { background: var(--panel-2); border: 0; color: var(--dim); border-radius: 6px; padding: 3px 9px;
+  .logbtn { background: var(--panel-2); border: 0; color: var(--dim); border-radius: var(--radius-sm); padding: 3px 9px;
             cursor: pointer; font-size: 11px; flex: none; }
   .logbtn:hover, .logbtn.on { color: var(--text); background: #2a2930; }
   .logbtn.new::after { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
@@ -783,7 +811,7 @@
   .helppanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
   /* get-started tour: everything dimmed but one area (the hole's shadow is the dim), a card beside it */
   .tour { position: fixed; inset: 0; z-index: 60; }
-  .tour-hole { position: fixed; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(6,6,8,.74); pointer-events: none;
+  .tour-hole { position: fixed; border-radius: var(--radius); box-shadow: 0 0 0 200vmax rgba(6,6,8,.74); pointer-events: none;
                transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
   .tour-card { position: fixed; width: 320px; padding: 16px 18px 14px; border-radius: var(--radius); background: var(--panel-2);
                box-shadow: 0 10px 40px rgba(0,0,0,.5); font-size: 12.5px; line-height: 1.55; color: #c9c7cf;
@@ -795,7 +823,7 @@
   .tour-card .tc-foot { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
   .tour-card .tc-skip { margin-right: auto; color: var(--faint); cursor: pointer; font-size: 11.5px; }
   .tour-card .tc-skip:hover { color: var(--dim); }
-  .tour-card button { border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
+  .tour-card button { border: 0; border-radius: var(--radius); padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
                       background: var(--panel); color: var(--text); }
   .tour-card button:hover { background: #24232a; }
   .tour-card button.next { background: var(--accent); color: #1a0d07; }
@@ -809,7 +837,7 @@
   .helppanel b { color: var(--text); font-weight: 600; }
   .helppanel .close { position: sticky; top: 0; float: right; }
   .helppanel .htabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 40px 18px 0; }
-  .helppanel .htabs button { background: var(--panel-2); border: 0; color: var(--dim); border-radius: 6px;
+  .helppanel .htabs button { background: var(--panel-2); border: 0; color: var(--dim); border-radius: var(--radius-sm);
                padding: 4px 11px; cursor: pointer; font: inherit; font-size: 11.5px; }
   .helppanel .htabs button:hover { color: var(--text); }
   .helppanel .htabs button.on { color: var(--text); background: rgba(255,106,61,.2); }
@@ -824,7 +852,7 @@
   #h3AspectRow { margin-top: 12px; }
   #h3Refs { margin-bottom: 14px; }
   .setrow input[type=text], .setrow input[type=password] { width: 100%; box-sizing: border-box; background: var(--panel-2); color: var(--text); border: 0;
-               border-radius: 8px; padding: 8px 10px; font: 12px ui-monospace, Consolas, monospace; }
+               border-radius: var(--radius); padding: 8px 10px; font: 12px ui-monospace, Consolas, monospace; }
   .setrow input:focus { outline: 0; background: #2d2c33; }
   /* a key where the path rows have their folder button, so the fields line up */
   .setrow .keyicon { color: var(--dim); padding: 4px; display: flex; flex: none; }
@@ -835,9 +863,9 @@
   .setrow .fold:hover { color: var(--text); }
   .setrow label { display: flex; gap: 8px; align-items: center; cursor: pointer; margin: 6px 0; }
   .setrow .ok { color: #7fd68a; } .setrow .bad { color: var(--bad); }
-  .setbtn { background: var(--panel-2); color: var(--text); border: 0; border-radius: 7px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+  .setbtn { background: var(--panel-2); color: var(--text); border: 0; border-radius: var(--radius-sm); padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
   .setbtn:hover { background: #2d2c33; }
-  .helppanel pre { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto;
+  .helppanel pre { background: var(--panel-2); border-radius: var(--radius); padding: 10px 12px; overflow-x: auto;
                    font: 11.5px/1.6 ui-monospace, Consolas, monospace; color: #c9c7cf; white-space: pre-wrap; }
   .helppanel ul { margin: 6px 0; padding-left: 18px; }
   .helppanel li { margin: 4px 0; }
@@ -862,11 +890,11 @@
   .runs { scrollbar-width: auto; scrollbar-color: #4a4852 transparent; }
   .runs::-webkit-scrollbar { height: 12px; }
   .runs::-webkit-scrollbar-thumb { background: #44424c; border: 3px solid transparent; background-clip: padding-box;
-           border-radius: 6px; min-width: 48px; }
+           border-radius: var(--radius-sm); min-width: 48px; }
   .runs::-webkit-scrollbar-thumb:hover { background: #5d5b68; background-clip: padding-box; }
   .runs .empty { color: var(--faint); font-size: 12px; align-self: center; }
   .run { flex: none; width: 124px; cursor: pointer; user-select: none; -webkit-user-select: none; }
-  .run .thumb { width: 124px; height: 70px; border-radius: 6px; border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
+  .run .thumb { width: 124px; height: 70px; border-radius: var(--radius-sm); border: 1px solid transparent; overflow: hidden; background: #000; position: relative; }
   /* the thumbnail stays natively draggable: that is how a run is dropped on a video / picture slot */
   .run .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .run .thumb .badge { position: absolute; top: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 3px; }
@@ -876,7 +904,7 @@
   .run.on .thumb { border-color: var(--accent); }
   /* The delete control, wherever it sits on a picture -- a run card, a library card, a video slot.
      One subtle rounded box with a small bold x, rather than three not-quite-matching black circles. */
-  .run .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 5px; border: 0;
+  .run .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: var(--radius-sm); border: 0;
             background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; display: none;
             font-size: 10px; font-weight: 700; line-height: 17px; padding: 0; text-align: center; }
   .run .x:hover { background: var(--bad); color: #fff; }
@@ -917,9 +945,9 @@
     /* base-select makes the select a real box and lays its text out from the top of it */
     select { align-items: center; align-content: center; }
     select::picker-icon { display: none; }                 /* the chevron above stands in */
-    ::picker(select) { background: #1d1d22; color: var(--text); border: 0; border-radius: 8px; padding: 4px;
+    ::picker(select) { background: #1d1d22; color: var(--text); border: 0; border-radius: var(--radius); padding: 4px;
                        margin-top: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.55); }
-    option { padding: 6px 12px; border-radius: 5px; }
+    option { padding: 6px 12px; border-radius: var(--radius-sm); }
     option::checkmark { display: none; }
     option:hover, option:focus-visible { background: rgba(255,106,61,.22); outline: 0; }
     option:checked { color: var(--accent); }
@@ -941,17 +969,17 @@
   .rs-info .setbtn.danger { background: rgba(255,90,90,.16); color: #ff8a8a; }
   .rs-info .setbtn.danger:hover, .rs-info .setbtn.danger.go { background: var(--bad); color: #fff; }
   .rs-head .close { float: none; position: static; width: 30px; height: 30px; padding: 0; display: grid; place-items: center;
-                    border-radius: 7px; background: #2a2930; color: #d4d2da; }   /* a square, as tall as the dropdown */
+                    border-radius: var(--radius-sm); background: #2a2930; color: #d4d2da; }   /* a square, as tall as the dropdown */
   .rs-head .close:hover { background: #34333b; color: #fff; }
   .rs-head select, .rs-info .setbtn { height: 30px; box-sizing: border-box; }   /* one height across the header */
-  .rs-head select { background-color: #2a2930; color: var(--text); border: 0; border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 12px; }
+  .rs-head select { background-color: #2a2930; color: var(--text); border: 0; border-radius: var(--radius-sm); padding: 6px 10px; font: inherit; font-size: 12px; }
   .rs-empty { color: var(--dim); font-size: 12px; }
   .rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 12px; }
   .rs-card { cursor: pointer; min-width: 0; }
   .rs-more { grid-column: 1 / -1; height: 1px; }   /* near the view: the next rows get built */
   #runsPanel { user-select: none; -webkit-user-select: none; }   /* shift-click picks runs, never page text */
   .rs-card img { -webkit-user-drag: none; }
-  .rs-card .thumb { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #000; position: relative; }
+  .rs-card .thumb { aspect-ratio: 16 / 9; border-radius: var(--radius-sm); overflow: hidden; background: #000; position: relative; }
   .rs-card .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .rs-card .tag { position: absolute; bottom: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.75); color: var(--dim); padding: 1px 5px; border-radius: 3px; }
   .rs-card.on .thumb { box-shadow: 0 0 0 2px var(--accent); }   /* the run on the stage, as in the strip */
@@ -966,13 +994,13 @@
   #shapeLib { user-select: none; -webkit-user-select: none; }
   .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px 12px; }
   .sl-card { cursor: pointer; min-width: 0; }
-  .sl-card .thumb { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: #000; position: relative; }
+  .sl-card .thumb { aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; background: #000; position: relative; }
   .sl-card .thumb img, .sl-card .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
   .sl-card:hover .thumb { box-shadow: 0 0 0 2px var(--accent-2); }
   .sl-card.on .thumb { box-shadow: 0 0 0 2px var(--accent); }
   .sl-card b { display: block; font-size: 11px; font-weight: 600; margin-top: 5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sl-card .tag { position: absolute; bottom: 4px; left: 4px; font-size: 9px; background: rgba(0,0,0,.75); color: var(--dim); padding: 1px 5px; border-radius: 3px; z-index: 1; }
-  .sl-card .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 5px; border: 0; z-index: 1;
+  .sl-card .x { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: var(--radius-sm); border: 0; z-index: 1;
                 background: rgba(14,13,18,.62); color: #cfcdd6; cursor: pointer; display: none;
                 font-size: 10px; font-weight: 700; line-height: 17px; padding: 0; text-align: center; }
   .sl-card:hover .x, .sl-card .x.armed { display: block; }
@@ -993,7 +1021,7 @@
      video contexts all wanting video, "anywhere" is not an answer to where it goes. */
   body.runDrag #clipBox, body.dragging #clipBox,
   body.runDrag #trackSlot, body.dragging #trackSlot,
-  body.runDrag #styleRef, body.dragging #styleRef { background: rgba(255,106,61,.14); border-radius: 8px; }
+  body.runDrag #styleRef, body.dragging #styleRef { background: rgba(255,106,61,.14); border-radius: var(--radius); }
 </style>
 </head>
 <body class="intro">
@@ -1001,7 +1029,6 @@
 <aside>
 
   <section>
-    <div class="seg" id="srcMode" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px"><button data-s="v2v" title="Video → Video: restyle a video">Video</button><button data-s="i2v" title="Image → Video: your picture is frame 1, a camera move carries it on">Image</button><button data-s="t2v" title="Text → Video: the prompt paints frame 1, a camera move carries it on">Text</button></div>
     <div id="clipBox"></div>
     <div id="vidRole" class="roles" hidden></div>
     <input type="file" id="fileInput" accept="video/*,image/*" hidden>
@@ -1492,7 +1519,6 @@ function intro() {
     // the tab pill as one piece (its tabs come and go as runs load), wiped in left to right
     [q('#view'), { clipPath: ['inset(0 100% 0 0)', 'inset(0 0% 0 0)'], duration: 520, easing: 'easeOutCubic' }, 600, 0],
     [q('#status, .barbtns > *'), fade, 870, 90],
-    [q('#srcMode > button'), fade, 80, 90],                                 // Video · Image · Text
     [rows, { translateY: [10, 0], duration: 520, easing: 'easeOutCubic' }, 200, 40],   // panel rows rise in, top to bottom, with the film strip's motion
     [q('.stage-wrap'), {}, 150, 0],
     [q('.stage-foot .actions > *'), fade, 360, 90],                        // Frame · Preview · Render · Live
@@ -1658,6 +1684,40 @@ const laneFps = () => state.t2v ? T2V_FPS : (state.clip.source.fps || 24);
 const curVideo = () => state.t2v ? '' : state.clip?.path;     // what a live job of this panel renders from
 // Image -> Video is Text -> Video (state.t2v: no clip, a camera) with a picture as frame 1 (state.i2v)
 function srcKind() { return !state.t2v ? 'v2v' : state.i2v ? 'i2v' : 't2v'; }
+// What is loaded is what this is. A clip -- or a picture given a length, which is a clip in
+// everything but how many different frames are in it -- renders from a source. A picture without
+// one is frame 1, and the camera carries it on. Nothing at all is the prompt alone. Called wherever
+// the source changes, so the flags everything reads cannot go stale.
+function syncMode() {
+  state.t2v = !state.clip;
+  state.i2v = !!state.image && !state.clip;
+}
+function loadedPic() {
+  if (state.image) return { ...state.image };
+  return stillClip() ? { path: state.clip.path, name: state.clip.name,
+                         width: state.clip.source.width, height: state.clip.source.height } : null;
+}
+// The same picture, in the two things it can be. A length makes it the source; taking the length
+// away gives it back to the camera. Nothing is uploaded again -- it is one file either way.
+function setPicHow(how, secs, pic = loadedPic()) {
+  if (!pic) return;
+  if (how === 'paint') {
+    state.image = null;
+    state.clip = { path: pic.path, name: pic.name, image: true,
+                   secs: secs || (state.clip || {}).secs || 4,
+                   source: { width: pic.width, height: pic.height, fps: STILL_FPS, frames: 96, duration: 4 } };
+    stillLen();
+    state.range = [0, 1]; clipFrame = 0;
+  } else {
+    state.clip = null;
+    state.image = { path: pic.path, name: pic.name, width: pic.width, height: pic.height };
+  }
+  syncMode();
+  state.keySel = -1;
+  renderClip(); renderControls(); paintKeys(); paintLive(); updateEst();
+  if (!viewRun) { if (how === 'paint') showClip(); else clearStage(); }
+  save();
+}
 function t2vDims(size) {                    // long side = size, the picked aspect (or the picture's), multiples of 8
   const [a, b] = state.i2v && state.image ? [state.image.width, state.image.height]
                : (state.t2vAspect || '1:1').split(':').map(Number), k = size / Math.max(a, b);
@@ -1666,20 +1726,37 @@ function t2vDims(size) {                    // long side = size, the picked aspe
 // The depth model (Settings): MiDaS, or ZipDepth (~20x lighter) — for the depth ControlNet, DepthDiff and the 3D camera
 function depthModel() { return state.depthModel === 'zip' ? 'zip' : 'midas'; }
 function depthQ(kind) { return kind === 'depth' ? { depth_model: depthModel() } : {}; }   // the live Depth / Diff views follow it
+// Everything that can be the source lives in one card, so there is one place in the panel the
+// question "what is this made from?" is answered.
+function inputCard(inner, sum) {
+  return `<div class="card" data-card="input">
+    <div class="card-head" title="What this renders from: a video, a picture, or nothing at all">
+      <span class="title">Input</span><span class="sum">${sum || ''}</span><span class="chev">▾</span></div>
+    <div class="card-body">${inner}</div></div>`;
+}
+function emptySlot() {
+  return `<div class="clip-empty" id="pick" title="A video, or a picture — a picture is animated, or give it a length in Layers and it is painted instead">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      Import media</div>`;
+}
 function imageCard() {
   const im = state.image;
-  if (!im) return `<div class="clip-empty pic-empty" id="pick" style="margin-bottom:12px">Drop an image here<small>or click to choose</small></div>`;
-  return `<div class="clip" style="margin-bottom:12px"><div class="clip-top">
+  if (!im) return emptySlot();
+  return `<div class="clip"><div class="clip-top">
       <button class="clip-thumb" id="swap" title="Replace image (or drop one anywhere)">
         <img src="/api/image/file?${qs({ path: im.path })}" alt="">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
       </button>
-      <div style="flex:1"><div class="clip-name" title="${im.path}">${im.name}</div><div class="clip-meta">${im.width}×${im.height}</div></div>
-      <button class="clip-del" id="imgDel" title="Remove the image">✕</button>
+      <div style="flex:1"><div class="clip-name" title="${im.path}">${im.name}</div><div class="clip-meta">${im.width}×${im.height} · animated</div></div>
+      <button class="clip-del" id="imgDel" title="Remove the picture">✕</button>
     </div></div>`;
 }
 function renderT2V() {
-  $('clipBox').innerHTML = (state.i2v ? imageCard() : '') + `<div class="card" data-card="length">
+  // Nothing loaded is where you start, so the slot to load something is here too -- it was not,
+  // back when Text -> Video was a tab you had to pick on purpose.
+  $('clipBox').innerHTML = inputCard(imageCard(), state.image
+    ? `${state.image.width}×${state.image.height} · animated`
+    : 'nothing yet · the prompt paints it') + `<div class="card" data-card="length">
     <div class="card-head"><span class="title">Size / Duration</span><span class="sum" id="t2vLenV"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider"><input type="range" id="t2vLen" min="1" max="30" step="0.5"></div>
@@ -1692,8 +1769,8 @@ function renderT2V() {
   $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
   ($('pick') || $('swap'))?.addEventListener('click', () => $('fileInput').click());
-  $('imgDel')?.addEventListener('click', () => {   // back to "Drop an image here"
-    state.image = null; renderClip(); renderControls(); if (!viewRun) clearStage(); save();
+  $('imgDel')?.addEventListener('click', () => {   // nothing loaded is the prompt on its own
+    state.image = null; syncMode(); renderClip(); renderControls(); if (!viewRun) clearStage(); save();
   });
   $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
   applyCards(); paintT2V(); renderH3();
@@ -2996,11 +3073,25 @@ function drawnLayers() { return layers().filter(L => !L.matte && !L.hidden); }
 function layersOn() { return !state.t2v || !!baseSrc(); }
 // The bottom of the stack, in the only two forms it comes in.
 function baseSrc() {
-  if (!state.t2v) return state.clip ? { path: state.clip.path, name: state.clip.name } : null;
+  if (!state.t2v) return state.clip
+    ? { path: state.clip.path, name: state.clip.name, pic: stillClip() } : null;
   return !isH3() && state.i2v && state.image
     ? { path: state.image.path, name: state.image.name, image: true } : null;
 }
 function stillBase() { return !!(baseSrc() || {}).image; }
+// A picture in the source slot of Video mode. It renders like a clip -- the stack over it, the warp,
+// the trim, the mp4 -- on a length it is given rather than one it came with.
+function stillClip() { return !!(state.clip && state.clip.image); }
+const STILL_FPS = 24;
+function stillSecs() { return Math.min(30, Math.max(0.2, +(state.clip || {}).secs || 4)); }
+function stillFrames() { return Math.max(1, Math.round(stillSecs() * STILL_FPS)); }
+// Kept on the clip itself, so everything that reads source.frames -- the transport, the plate, the
+// length a drawn layer is cut to -- sees the length without knowing a picture is underneath.
+function stillLen() {
+  if (!stillClip()) return;
+  state.clip.secs = stillSecs();
+  Object.assign(state.clip.source, { fps: STILL_FPS, frames: stillFrames(), duration: stillSecs() });
+}
 // What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
@@ -3033,32 +3124,50 @@ function paintLvl(bar, L) {
 // A value box carries its own number: the fill is the proportion and the text is the value, so
 // setting it is one place rather than three.
 function paintNum(el, v) {
-  const n = Math.round((v || 0) * 100);
-  el.style.setProperty('--f', n + '%');
-  el.querySelector('i').textContent = n + (el.dataset.unit || '');
+  const sp = numSpec(el);
+  el.style.setProperty('--f', Math.round(((v || 0) - sp.min) / (sp.max - sp.min) * 100) + '%');
+  el.querySelector('i').textContent = sp.text(v || 0);
 }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1 };
+// A length while the picture has none: there is no still to keep it on until it has one.
+var picSecs = 0;
+function secsNow() { return stillClip() ? stillSecs() : picSecs; }
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, bpm: 120, secs: 4 };
+// Most of these are 0..1 shown as a percentage. Two are not: a count in beats per minute, and a
+// length in seconds whose floor is "none at all", which is what a picture being animated looks
+// like. One table, so a box only has to say which of them it is.
+const NUM_SPEC = {
+  bpm:  { min: 40, max: 240, step: 1, text: v => Math.round(v) },
+  secs: { min: 0, max: 30, step: 0.1, text: v => v >= 0.2 ? v.toFixed(1) : '—' },
+};
+function numSpec(el) {
+  return NUM_SPEC[el.dataset.k]
+      || { min: 0, max: 1, step: 0.01, text: v => Math.round((v || 0) * 100) + (el.dataset.unit || '') };
+}
 // Drag sideways to change it: 1 per 2 px, Shift for quarters, the same feel as the seed field.
 $('layers').addEventListener('pointerdown', e => {
   const el = e.target.closest('.num');
   if (!el) return;
   const which = el.dataset.lv, k = el.dataset.k;
-  const L = which === 'base' ? baseLayer() : layers()[+which];
+  const L = k === 'secs' ? (state.clip || {}) : which === 'base' ? baseLayer() : layers()[+which];
   if (!L) return;
   e.preventDefault();
   stageSource();
-  const from = L[k] ?? NUM_DEFAULT[k] ?? 0, x0 = e.clientX;
+  const sp = numSpec(el);
+  const from = (k === 'secs' ? secsNow() : L[k] ?? NUM_DEFAULT[k] ?? sp.min), x0 = e.clientX;
   let moved = false;
   const move = ev => {
     const dx = ev.clientX - x0;
     if (!moved && Math.abs(dx) < 3) return;
     moved = true; el.classList.add('dragging');
-    // A pixel is a percent. At two pixels per percent the pointer ran away from the number and the
-    // box felt like it was sliding under you rather than being carried; Shift still gives quarters.
-    const step = (ev.shiftKey ? 0.25 : 1) / 100;
-    L[k] = Math.min(1, Math.max(0, +(from + dx * step).toFixed(4)));
-    paintNum(el, L[k]);
-    if (k === 'amount') return needPulse(+which);     // a different picture, not a different blend
+    // A pixel is a step. At two pixels per step the pointer ran away from the number and the box
+    // felt like it was sliding under you rather than being carried; Shift still gives quarters.
+    const v = Math.min(sp.max, Math.max(sp.min, +(from + dx * (ev.shiftKey ? sp.step / 4 : sp.step)).toFixed(4)));
+    paintNum(el, v);
+    // A length is not committed while it is moving: crossing its floor turns a picture from
+    // animated into painted, and that rebuilds the panel out from under the pointer.
+    if (k === 'secs') { picSecs = v; return; }
+    L[k] = v;
+    if (k === 'amount' || k === 'bpm') return needPulse(+which);   // a different picture, not a blend
     needPaint(); needPlate(); pushLayers();
   };
   const up = () => {
@@ -3067,6 +3176,7 @@ $('layers').addEventListener('pointerdown', e => {
     el.removeEventListener('pointerup', up);
     el.removeEventListener('pointercancel', up);
     try { el.releasePointerCapture(e.pointerId); } catch {}
+    if (moved && k === 'secs') return commitSecs();
     if (moved) { paintSums(); save(); }
   };
   el.setPointerCapture(e.pointerId);
@@ -3089,13 +3199,11 @@ $('layers').addEventListener('click', e => {
   if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
 });
 $('layers').addEventListener('input', e => {
-  const bpm = e.target.closest('[data-bpm]'), div = e.target.closest('[data-div]');
-  const el = bpm || div;
-  if (!el) return;
-  const i = +(el.dataset.bpm ?? el.dataset.div), L = layers()[i];
+  const div = e.target.closest('[data-div]');
+  if (!div) return;
+  const i = +div.dataset.div, L = layers()[i];
   if (!L) return;
-  if (bpm) L.bpm = Math.min(240, Math.max(40, +el.value || 120));
-  else L.division = +el.value || 1;
+  L.division = +div.value || 1;
   needPulse(i);
 });
 // Which pulse layer asked for a sound, remembered until the picker answers.
@@ -3114,6 +3222,18 @@ $('pulseFile').onchange = async e => {
     setStatus('could not load that sound: ' + err.message, 'bad');
   }
 };
+// What the length box means when you let go of it. Below its floor the picture has no length, and
+// a picture with no length is frame 1 of something the camera moves through; above it, it is the
+// source. So the one box is also the only thing left of the mode switch.
+function commitSecs() {
+  const v = picSecs;
+  if (v < 0.2) { if (stillClip()) setPicHow('animate'); return; }
+  if (!stillClip()) return setPicHow('paint', v);
+  state.clip.secs = v; stillLen();
+  const read = $('stillLenV'); if (read) read.textContent = `seconds · ${stillFrames()} frames`;
+  renderClip.meta && renderClip.meta();
+  setupTransport(); needPlate(); updateEst(); paintSums(); save();
+}
 const LVL_GAP = 0.02;                      // black and white may meet, but not cross
 $('layers').addEventListener('pointerdown', e => {
   const bar = e.target.closest('.lvl');
@@ -3170,27 +3290,34 @@ function layerTile(L) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>`
        + `<img src="${src}" alt="" draggable="false">`;
 }
+// One value box, the same shape as the dials above it. Drawn here rather than in renderLayers
+// because the bottom row has them too, and they are the same thing wherever they sit.
+function numBox(lv, k, label, v, title, unit = '') {
+  return `<span class="num" data-lv="${lv}" data-k="${k}" data-unit="${unit}"
+        title="${title} — drag sideways to change it, double-click for its default"><b>${label}</b><i></i></span>`;
+}
 // Where a pulse layer's beat comes from, and what it is set to. Three sources, one row, because
 // they are the same question answered three ways -- and only the answer you picked is asked about.
+// Is there a beat in what is already loaded? The probe says so, and a source with nothing to read
+// -- a picture, a silent clip, nothing at all -- should not be offered as one.
+function clipAudio() { return !!(state.clip && state.clip.source && state.clip.source.audio); }
 function beatRow(i, L) {
-  const at = L.beat || 'bpm';
+  const at = L.beat === 'clip' && !clipAudio() ? 'bpm' : (L.beat || 'bpm');
   const line = at === 'bpm'
-    ? `<input class="line" type="number" min="40" max="240" step="1" value="${L.bpm || 120}" data-bpm="${i}"
-              title="Beats per minute">
-       <span>bpm</span>
+    ? `${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'Beats per minute — drag it, double-click for 120')}
        <select class="model" data-div="${i}" title="How often a hit lands">${
-         [[0.5, 'every 2 beats'], [1, 'every beat'], [2, 'every \u00bd beat'], [4, 'every \u00bc beat']].map(([v, t]) =>
+         [[0.5, 'every 2 beats'], [1, 'every beat'], [2, 'every ½ beat'], [4, 'every ¼ beat']].map(([v, t]) =>
            `<option value="${v}"${+(L.division || 1) === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
     : at === 'clip'
-      ? `<span class="snd">${state.clip ? state.clip.name : 'load a clip first'}</span>`
+      ? `<span class="snd">${state.clip.name}</span>`
       : `<span class="snd">${L.audioName || 'no sound yet'}</span>
-         <button class="chip" data-snd="${i}">${L.audio ? 'change' : 'load\u2026'}</button>`;
+         <button class="chip" data-snd="${i}">${L.audio ? 'change' : 'load…'}</button>`;
+  const ways = [['bpm', 'BPM', 'A count: exact, repeatable, and it matches whatever you cut this to later']]
+    .concat(clipAudio() ? [['clip', 'Clip', 'The sound already in your clip — and the render keeps it, so what you see pulsing is what you will hear']] : [])
+    .concat([['file', 'Sound', 'A track you load: the music this is actually cut to']]);
   return `<span class="beat">
-      <div class="seg" data-beat="${i}">
-        <button data-b="bpm"${at === 'bpm' ? ' class="on"' : ''} title="A count you type: exact, repeatable, and it matches whatever you cut this to later">BPM</button>
-        <button data-b="clip"${at === 'clip' ? ' class="on"' : ''} title="The clip's own soundtrack \u2014 what you see pulsing is what you will hear">Clip</button>
-        <button data-b="file"${at === 'file' ? ' class="on"' : ''} title="A track you load: the music this is actually cut to">Sound</button>
-      </div>
+      <div class="seg" data-beat="${i}" style="grid-template-columns:repeat(${ways.length},1fr)">${
+        ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
       <div class="bl">${line}</div></span>`;
 }
 function renderLayers() {
@@ -3201,9 +3328,9 @@ function renderLayers() {
   // One value: a name, the number, and the proportion as the fill behind them. Drag it sideways.
   const dial = (i, k, label, v, title, unit = '') => {
     const n = Math.round((v || 0) * 100);
-    return `<span class="num" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
+    return `<span class="num${label ? '' : ' bare'}" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
           title="${title} \u2014 drag sideways to change it, double-click for its default">
-        <b>${label}</b><i>${n}${unit}</i></span>`;
+        ${label ? `<b>${label}</b>` : ''}<i>${n}${unit}</i></span>`;
   };
   // Three numbers on one track: black point, the grey that bends everything between, white point.
   const levels = (i, L) => {
@@ -3235,17 +3362,17 @@ function renderLayers() {
           <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Invert: swap what is in for what is out">invert</button>
           <button class="chip" data-unmatte="${i}" title="Put it back to an ordinary layer with a blend mode, in colour">rgb</button>`
         : `<select data-mode="${i}" title="How this layer is laid over what is under it">${
-            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>`}
+            BLEND_MODES.map(m => `<option${m === L.mode ? ' selected' : ''}>${m}</option>`).join('')}</select>
+           ${dial(i, 'opacity', '', L.opacity, 'Opacity: how strongly this layer is laid over what is under it', '%')}`}
         </span>
         <span class="dials">${L.matte ? `
           ${dial(i, 'blur', 'feather', L.blur, 'Soften the edge of the matte')}
           ${L.mask ? '' : levels(i, L)}` : `
-          ${dial(i, 'opacity', 'opacity', L.opacity, 'How strongly this layer is laid over what is under it', '%')}
           ${dial(i, 'blur', 'blur', L.blur, 'Soften this layer before it is laid down')}
-          ${L.pulse ? dial(i, 'amount', 'amount', L.amount ?? 1, 'How far a hit swings this layer \u2014 at 0 it sits at rest and nothing happens') : ''}`}
+          ${L.pulse ? dial(i, 'amount', 'swing', L.amount ?? 1, 'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way') : ''}`}
         </span>
-        ${L.pulse && !L.matte ? beatRow(i, L) : ''}
-      </span></div>`;
+      </span>
+      ${L.pulse && !L.matte ? beatRow(i, L) : ''}</div>`;
   }).join('')
     + ((bs => bs ? `<div class="lay base" title="${bs.name}">
       <span class="tile" data-swap="base"
@@ -3257,12 +3384,21 @@ function renderLayers() {
           ${dial('base', 'opacity', 'opacity', baseLayer().opacity, 'Nothing is under the source, so turning this down fades it to black', '%')}
           ${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it')}
         </span>
-      </span></div>` : '')(baseSrc()));
+      </span>
+      ${(bs.pic || bs.image) ? `<span class="beat"><div class="bl">
+        ${numBox('base', 'secs', 'length', 0, "A picture has everything a clip has but a length. Give it one and it becomes the source: repainted every frame, with the stack over it. At nothing it is frame 1 instead, and the camera carries it on")}
+        <span class="snd" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
+          : 'no length — the picture is animated'}</span></div></span>` : ''}</div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
+  // The boxes that are not percentages paint themselves from what they are for.
+  $('layers').querySelectorAll('.num[data-k="secs"]').forEach(el => paintNum(el, picSecs = secsNow()));
+  $('layers').querySelectorAll('.num[data-k="bpm"]').forEach(el =>
+    paintNum(el, (layers()[+el.dataset.lv] || {}).bpm || 120));
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
-  // A beat over a single frame is one frame of it: not a pulse, and not worth offering.
+  // A beat over a single frame is one frame of it: not a pulse, and not worth offering. A picture
+  // with a duration is not a single frame, so there it is offered like anywhere else.
   $('addPulse').hidden = stillBase();
   needPlate();
   if (typeof applyView === 'function') applyView();
@@ -3288,7 +3424,12 @@ function needPlate(now) {
         { method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify(stillBase()
             ? { layers: layerJob(), width: t2vDims(state.size)[0], height: t2vDims(state.size)[1] }
-            : { layers: layerJob() }) })
+            // A picture at the bottom is one frame, so the flatten cannot read the length off it:
+            // the length is the one the picture was given, and it has to be said out loud.
+            : stillClip()
+              ? { layers: layerJob(), width: state.clip.source.width, height: state.clip.source.height,
+                  frames: stillFrames(), fps: STILL_FPS }
+              : { layers: layerJob() }) })
       .then(r => {
         if (asked !== PLATE_WANT) return;            // something moved while it was compositing
         PLATE = r; setStatus(`plate \u00b7 ${r.layers} layers \u00b7 ${r.width}\u00d7${r.height}`, 'done');
@@ -3529,11 +3670,13 @@ var LAYER_SWAP = null;
 $('layers').addEventListener('dblclick', e => {
   const num = e.target.closest('.num');
   if (num) {
-    const L = num.dataset.lv === 'base' ? baseLayer() : layers()[+num.dataset.lv];
+    const L = num.dataset.k === 'secs' ? (state.clip || {})
+            : num.dataset.lv === 'base' ? baseLayer() : layers()[+num.dataset.lv];
     if (!L) return;
+    if (num.dataset.k === 'secs') { picSecs = NUM_DEFAULT.secs; paintNum(num, picSecs); return commitSecs(); }
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
-    if (num.dataset.k === 'amount') return needPulse(+num.dataset.lv, true);
+    if (num.dataset.k === 'amount' || num.dataset.k === 'bpm') return needPulse(+num.dataset.lv, true);
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
@@ -4184,13 +4327,48 @@ function renderClip() {
   parkSize();
   if (state.t2v) return renderT2V();
   const box = $('clipBox');
-  if (!state.clip) {
-    box.innerHTML = `<div class="clip-empty" id="pick">Drop a video here<small>or click to choose</small></div>`;
+  if (!state.clip) {                       // only reachable mid-swap: syncMode puts this in t2v
+    box.innerHTML = inputCard(emptySlot(), 'nothing yet');
     $('pick').onclick = () => $('fileInput').click();
     return;
   }
   const s = state.clip.source;
-  box.innerHTML = `<div class="clip">
+  // A picture has no frames to strip and nothing to trim: its card is the picture, its size, and the
+  // length it was given. Everything else on it is the same as a clip's.
+  if (stillClip()) {
+    stillLen();
+    box.innerHTML = inputCard(`<div class="clip">
+      <div class="clip-top">
+        <button class="clip-thumb" id="swap" title="Replace the picture (or drop one anywhere)">
+          <img src="/api/image/file?${qs({ path: state.clip.path })}" alt="">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+        </button>
+        <div id="clipInfo" title="Show the source on the stage" style="cursor:pointer;flex:1">
+          <div class="clip-name" title="${state.clip.path}">${state.clip.name}</div>
+          <div class="clip-meta" id="stillMeta">${s.width}\u00d7${s.height} \u00b7 a still \u00b7 ${s.frames} frames \u00b7 ${(+s.duration).toFixed(1)}s</div></div>
+        <button class="clip-del" id="clipDel" title="Remove the picture">\u2715</button>
+      </div>
+      <div class="ons" id="clipSizeRow" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
+      <div class="ons" id="clipFpsRow" title="Draw every frame, or every 2nd / 3rd and hold it">
+        <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
+      </div>
+    </div>`, `a still · ${stillSecs().toFixed(1)}s`);
+    $('clipSizeRow').hidden = $('clipFpsRow').hidden = isH3();
+    renderClip.meta = () => { const m = $('stillMeta'); if (m) m.textContent =
+      `${s.width}\u00d7${s.height} \u00b7 a still \u00b7 ${stillFrames()} frames \u00b7 ${stillSecs().toFixed(1)}s`; };
+    if (typeof renderLayers === 'function') renderLayers();
+    $('swap').onclick = () => $('fileInput').click();
+    $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; renderClip(); save(); };
+    $('clipInfo').onclick = showClip;
+    $('clipDel').onclick = () => {
+      stopPlay(); state.clip = null; syncMode(); renderClip(); renderControls(); paintKeys();
+      if (!viewRun) clearStage(); save();
+    };
+    $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
+    applyCards();                          // the card is new: it does not know it was folded
+    return;
+  }
+  box.innerHTML = inputCard(`<div class="clip">
     <div class="clip-top">
       <button class="clip-thumb" id="swap" title="Replace video (or drop one anywhere)">
         <img src="/api/video/thumbnail?${qs({ path: state.clip.path })}" alt="">
@@ -4211,7 +4389,7 @@ function renderClip() {
     <div class="ons" id="clipFpsRow" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at the clip's fps">
       <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
     </div>
-  </div>`;
+  </div>`, `${s.frames} frames · ${s.width}×${s.height}`);
   $('clipSizeRow').hidden = $('clipFpsRow').hidden = isH3();   // H3 picks its own size and runs at 24 fps
   paintClipKey();
   if (typeof renderLayers === 'function') renderLayers();   // the clip is the base of the stack
@@ -4219,10 +4397,11 @@ function renderClip() {
   bindRange();
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintRange(); save(); };
   $('clipInfo').onclick = showClip;
-  $('clipDel').onclick = () => {           // back to "Drop a video here"
-    stopPlay(); state.clip = null; renderClip(); renderControls(); paintKeys(); if (!viewRun) clearStage(); save();
+  $('clipDel').onclick = () => {           // nothing loaded is the prompt on its own
+    stopPlay(); state.clip = null; syncMode(); renderClip(); renderControls(); paintKeys(); if (!viewRun) clearStage(); save();
   };
   $('clipBox').querySelector('.sizeSlot').appendChild($('size'));
+  applyCards();
   paintRange();
 }
 
@@ -4231,7 +4410,7 @@ function rangeFrames() {
   return [Math.round(state.range[0] * (n - 1)), Math.round(state.range[1] * (n - 1))];
 }
 function paintRange() {
-  if (!state.clip || state.t2v) return;
+  if (!state.clip || state.t2v || stillClip()) return;   // no strip, nothing to shade
   const [a, b] = state.range, d = state.clip.source.duration;
   $('sel').style.left = a * 100 + '%'; $('sel').style.width = (b - a) * 100 + '%';
   $('shadeL').style.width = a * 100 + '%'; $('shadeR').style.width = (1 - b) * 100 + '%';
@@ -4518,6 +4697,11 @@ $('blend').oninput = e => { state.blend = +e.target.value; paintKeys(); save(); 
 
 async function setClipPath(path, name) {
   const probe = await api(`/api/video/probe?${qs({ path })}`);
+  if (probe.source && probe.source.frames <= 1) {    // a picture: it takes a length, not a probe
+    return setPicHow('paint', (state.clip || {}).secs,
+                     { path, name: name || path.split(/[\\/]/).pop(),
+                       width: probe.source.width, height: probe.source.height });
+  }
   if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; clipFrame = 0; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
   save(); renderClip();
@@ -4536,12 +4720,14 @@ $('animateLink').onclick = async () => {
 };
 async function useInput(res) {             // an uploaded (or run-fed) file on the server: the picture or the clip
   if (res.image) {
-    state.image = { path: res.path, name: res.name, width: res.width, height: res.height };
-    state.t2v = state.i2v = true; state.keySel = -1;
-    renderClip(); renderControls(); paintLive(); updateEst(); if (!viewRun) clearStage(); save();
-    setStatus('image loaded'); return;
+    // Swapping one picture for another keeps what it was being used for; a new one is animated,
+    // which is what a picture on its own means.
+    const how = stillClip() ? 'paint' : 'animate';
+    setPicHow(how, null, { path: res.path, name: res.name, width: res.width, height: res.height });
+    setStatus(how === 'paint' ? 'picture loaded' : 'picture loaded — give it a length in Layers to paint it instead');
+    return;
   }
-  try { state.t2v = state.i2v = false; await setClipPath(res.path, res.name); setStatus('clip loaded'); renderControls(); showClip(); }
+  try { state.image = null; await setClipPath(res.path, res.name); syncMode(); setStatus('clip loaded'); renderControls(); showClip(); }
   catch (e) { setStatus('could not read video: ' + e.message, 'bad'); renderClip(); }
 }
 function uploadFile(file) {
@@ -4810,7 +4996,6 @@ function renderControls() {
   });
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
-  [...$('srcMode').children].forEach(b => b.classList.toggle('on', b.dataset.s === srcKind()));
   $('camBox').hidden = !state.t2v || isH3(); if (state.t2v && !isH3()) paintCam();
   $('guideBox').hidden = (state.t2v && !state.i2v) || isH3();   // Text -> Video: nothing to guide by.
   // H3: nothing is painted here, so there is no ControlNet or DepthDiff to steer it
@@ -4928,13 +5113,6 @@ $('styleEnd').oninput = e => {
 };
 $('styleNext').oninput = e => { state.frameLock = +(+e.target.value).toFixed(2); $('styleNextV').textContent = state.frameLock.toFixed(2); save(); pushDials(); };
 $('styleNext').ondblclick = () => { state.frameLock = 0.35; renderControls(); save(); };
-$('srcMode').onclick = e => {
-  const m = e.target.dataset.s; if (!m || m === srcKind()) return;
-  state.t2v = m !== 'v2v'; state.i2v = m === 'i2v'; state.keySel = -1;
-  renderClip(); renderControls(); paintLive(); updateEst();
-  if (!viewRun) state.t2v || !state.clip ? clearStage() : showClip();
-  save();
-};
 $('edgePad').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.edgePad = +v; renderControls(); save(); };
 $('shapeFit').onclick = e => { const v = e.target.dataset.v; if (v == null) return; state.shapeFit = v; renderControls(); save(); if (shapeMode()) paintFrame(); };
 $('frameMode').onclick = e => {
@@ -5009,7 +5187,10 @@ function setupTransport() {
 }
 function clipFrameUrl(kind) {
   const [w, h] = renderSize();
-  return `/api/diff/base?${qs({ path: sourcePath(), frame: clipFrame, width: w, height: h, kind, ...depthQ(kind) })}`;
+  // A still on its own has one frame however far along the transport is; with a stack over it the
+  // plate is a clip like any other and scrubs properly.
+  const at = stillClip() && !PLATE ? 0 : clipFrame;
+  return `/api/diff/base?${qs({ path: sourcePath(), frame: at, width: w, height: h, kind, ...depthQ(kind) })}`;
 }
 function showClip() {
   if (!state.clip || state.t2v) return clearStage();
@@ -5167,6 +5348,12 @@ async function buildConfig(kind) {
     if (kind === 'frame') end = start;
     end = Math.min(end, probe.max_frame);
     W = probe.render.width; H = probe.render.height;
+    // A picture is one frame as far as ffprobe is concerned, and the length is the one it was given.
+    if (stillClip()) {
+      start = 0;
+      end = kind === 'frame' ? 0 : Math.floor((stillFrames() - 1) / nth);
+      if (kind === 'test') end = Math.min(end, TEST.frames - 1);
+    }
   }
 
   // Hold: how tightly ControlNets pin the source's structure. Low = the render
@@ -5192,6 +5379,8 @@ async function buildConfig(kind) {
     negative: [embedNeg() ? embedOn() : '', state.negative.trim(), 'bad quality, low quality, blurry, text, watermark', p.negative].filter(Boolean).join(', '),
     width: W, height: H,
     frame_start: start, frame_end: end, nth,
+    // A still source lasts as long as it was asked to: the engine repeats the one frame it has.
+    source_frames: stillClip() ? end - start + 1 : 0,
     style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
     style_next: !t2v && state.fresh ? -1 : nextStyle(),      // Frame Lock (Text / Image too: later frames)
     diff: !t2v && !state.fresh && (state.frameLock ?? 0) > 0,      // Warp: uncovered pixels repaint at Denoise
@@ -5281,8 +5470,7 @@ const HELP = {
     <h4>Boil</h4>
     <p>Every frame is repainted fresh from its source, so the strokes shimmer and redraw like hand-painted animation.</p>
     <h4>Text → Video</h4>
-    <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. No video at all (<b>Text</b> in the switch at
-       the top). The prompt paints frame 1; every next frame is the previous one moved
+    <p>The animation mode of <a href="https://github.com/deforum-art/deforum-stable-diffusion" target="_blank">Deforum</a> (and <a href="https://github.com/alembics/disco-diffusion" target="_blank">Disco Diffusion</a> before it), built into DWARP. Nothing loaded at all. The prompt paints frame 1; every next frame is the previous one moved
        by a <b>camera</b> (zoom, rotate, pan — per frame) and repainted, so the picture keeps travelling and turning into
        new things. <b>Denoise</b> paints frame 1; <b>Frame Lock</b> sets how much every later frame keeps — higher is
        steadier and stops a long run from overcooking (colours and contrast climbing), lower changes faster. Prompt
@@ -5294,9 +5482,10 @@ const HELP = {
        Zoom becomes a dolly, Rotate a roll, and <b>Turn</b> / <b>Tilt</b> swing the camera. The depth it used is on the
        Depth tab.</p>
     <h4>Image → Video</h4>
-    <p>Text → Video with your picture as frame 1: drop an image (or pick <b>Image</b> in the switch). Frame 1 is the
+    <p>Text → Video with your picture as frame 1: import an image and this is what you get. Frame 1 is the
        picture repainted at your Denoise, then the camera carries it on — 3D works especially well on photos. Its
-       aspect comes from the picture. Unlike Text → Video, <b>ControlNet</b> and <b>DepthDiff</b> stay: they read each
+       aspect comes from the picture. Give the picture a <b>length</b> in Layers and it stops being frame 1 and
+       becomes the source instead: repainted every frame, with the stack over it, like a clip. Unlike Text → Video, <b>ControlNet</b> and <b>DepthDiff</b> stay: they read each
        frame's start, so a depth ControlNet keeps the picture's layout while the style comes in. Frame Lock works as
        in Text → Video.</p>
     <h4>Shape</h4>
@@ -5311,7 +5500,8 @@ const HELP = {
        and see the map live in the <b>Diff</b> tab before you render.</p>
     <h4>The loop</h4>
     <ol>
-      <li><b>Drop a video</b> anywhere in the window.</li>
+      <li><b>Import media</b>: drop a video or a picture anywhere in the window. What you load is what
+          this renders — nothing at all and the prompt paints it alone.</li>
       <li><b>Trim</b> with the handles on the filmstrip — see <i>Timeline</i>.</li>
       <li>Pick a <b>mode</b>, a <b>look</b> (Oil paint, Anime, … — it adds style words and picks an SD 1.5 model;
           <b>Raw</b> adds nothing) and write a <b>prompt</b> for what's in the shot.</li>
@@ -5520,7 +5710,7 @@ const HELP = {
     <h4>What you give it</h4>
     <table>
       <tr><th></th><th>Where it comes from</th><th>Call it</th></tr>
-      <tr><td><b>Clip</b></td><td>The video loaded on the <b>Video</b> tab — only the trimmed range, up to 15 s,
+      <tr><td><b>Clip</b></td><td>The video loaded as the source — only the trimmed range, up to 15 s,
           which is all H3 looks at. Its sound goes with it.</td><td><b>&lt;Video 1&gt;</b>, <b>&lt;Audio 1&gt;</b></td></tr>
       <tr><td><b>Pictures</b></td><td>Up to nine, in the <b>References</b> slot: click, drop a file, or drag a frame
           straight off the stage. A face, a costume, a product, or a painted DWARP frame for its whole look.</td>
@@ -5819,12 +6009,10 @@ function toggleHelp(open = $('helpPanel').hidden) {
 // Stops whose area is hidden in the current mode are skipped; collapsed cards open for their stop only.
 var TOUR_KEY = 'dwarp.tourSeen';
 var TOUR = [
-  { at: () => [$('srcMode')], title: 'Start here', text: () =>
-    `Pick what you start from: <b>Video</b> restyles a clip, <b>Image</b> animates a picture, <b>Text</b> paints from the prompt alone.` },
-  { at: () => [$('clipBox')], title: () => srcKind() === 'v2v' ? 'Your clip' : srcKind() === 'i2v' ? 'Your picture' : 'Size / Duration', text: () =>
-    (srcKind() === 'v2v' ? `Drop a video here (or anywhere on the page) and drag the strip's ends to pick the part to render. `
-      : srcKind() === 'i2v' ? `Drop a picture here: it becomes frame 1. The slider sets how long the video runs. `
-      : `How long the video runs, and its <b>Aspect</b>. `) +
+  { at: () => [$('clipBox')], title: () => srcKind() === 'v2v' ? 'Your source' : srcKind() === 'i2v' ? 'Your picture' : 'Start here', text: () =>
+    (srcKind() === 'v2v' ? `What you loaded is what gets rendered — drag the strip's ends to pick the part of a clip you want. `
+      : srcKind() === 'i2v' ? `Your picture is frame 1 and the camera carries it on. Give it a length in <b>Layers</b> and it becomes the source instead, repainted every frame. `
+      : `Import a video or a picture here, or drop one anywhere on the page — with nothing loaded the prompt paints it alone. How long it runs, and its <b>Aspect</b>. `) +
     `<b>Size</b> is the long side in pixels: bigger is sharper and slower. <b>FPS</b> paints every frame, or every 2nd / 3rd and holds it, like animation on twos.` },
   { at: () => [$('camBox')], title: 'Camera', text: () =>
     `How each frame moves on from the last. <b>Zoom</b>, <b>Rotate</b> and <b>Pan</b> are per frame, so small values go a long way.
@@ -7398,10 +7586,13 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   api('/api/config').then(c => { CFG_HAS_KEY = !!c.comfy_key; renderH3(); }).catch(() => {});
   renderControls(); paintLive();
   renderPresets();
-  if (state.clip) {
+  if (state.clip && !stillClip()) {
     try { await setClipPath(state.clip.path, state.clip.name).then(() => {}); }
     catch { state.clip = null; save(); }
   }
+  // The mode is no longer a thing that was clicked, so it is worked out from what is loaded -- and
+  // a session saved before the tabs went could have been left in one that no longer has a source.
+  syncMode();
   renderClip();
   intro();
   await refreshRuns();

@@ -4,6 +4,33 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **A layer row has a bottom row.** The beat and the length were squeezed into the right-hand
+  column under the dials, lining up with nothing. The row is a grid now — picture, properties, and
+  a row across both of them, ruled off with a hairline — which is where anything belonging to the
+  whole layer goes. Beats per minute and a still's length are value boxes like opacity and blur:
+  drag them, double-click to reset. The length box has a floor, and at nothing it reads as a dash,
+  which is the picture being animated rather than painted — so one box says both things, and it is
+  all that is left of the mode switch.
+- **The source is a card now: Input.** With the tabs gone it was the one thing in the panel with no
+  header, floating above the prompt — it folds, carries a line saying what is loaded (62 frames,
+  a still and its length, animated, or nothing yet) and reads like everything else. The import slot
+  is in it even when nothing is loaded, which it never used to be: that was a tab you picked on
+  purpose, and now it is simply where you start.
+- **No more Video / Image / Text tabs — what you load is the mode.** Three buttons were asking a
+  question the panel could already answer. Import media and it renders from it; import nothing and
+  the prompt paints it alone (Frame gives you one picture, Render a video). A picture is the only
+  genuinely ambiguous source, since it can be frame 1 of something the camera moves through or the
+  source itself — so that is the one question left, and it is not a mode either: it is the length a
+  picture hasn't got. Leave it empty and the picture is animated; type seconds into it and the
+  picture becomes the source, repainted every frame with the stack over it. The source slot says
+  **Import media**, and it takes either.
+- **A still can be the source, with a length you give it.** A picture has everything a clip has
+  except a length, so that is the only thing it asks for. The seconds box sits in the Layers panel on the
+  picture's own row, and everything follows from it — the stack is cut to that length, a pulse
+  layer has frames to move over, the transport scrubs it, and the mp4 comes out that long. Boil
+  repaints the same picture fresh every frame; Warp has no motion to follow, so the paint builds on
+  itself. (The Image tab still does what it did: that is where a picture goes to be animated, this
+  is where it goes to be painted.)
 - **Layers in Image → Video.** The stack was tied to the clip, so loading a picture took the card
   away — but a picture is a source like any other, and putting something over it is the obvious
   thing to want. The bottom of the stack is now whichever source the mode has, and when that is a
