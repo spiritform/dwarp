@@ -4,6 +4,44 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **The playhead stops where the render has got to.** It already did in the run's own view; the
+  Source and Diff views scrub the clip itself, so they let you drag off into frames that do not
+  exist yet and sit there looking at black. They stop at the frame being generated now — wherever
+  that frame sits in the clip, trim and twos included — and move on as it does. Playing the source
+  stops there too instead of running on ahead. When the render ends the clip scrubs end to end again.
+- **Refine is its own pass now.** It had been borrowing steps, CFG, sampler, schedule and the LoRA
+  from the render panel, which is how a ⚡ pick quietly drove a detail pass at 8 steps and CFG 3 —
+  and the panel might be on H3 or SD 1.5, where none of those numbers mean anything to an SDXL pass.
+  It carries its own, following the model you give it the way the panel's do, and its own LoRA
+  picker for a detail or realism LoRA that has nothing to do with what the render is using.
+- **Carry.** How much of the last refined frame, warped into this one, the next frame starts from.
+  It was fixed at 0.85, inherited from a render, where carrying the painted frame forward is the
+  whole point of the warp. In a detail pass it is why a long clip goes soft: every frame is
+  resampled once more than the one before it, a hundred frames deep. It starts at **0** now — each
+  frame detailed from the run's own frame, nothing accumulating — and goes up if a clip needs
+  steadying more than it needs edges.
+- **Refine repaints a tile at a time.** A new **Detail** row — off, 512, 768, 1024 — says how big a
+  bite the second pass takes. Off is one pass over the whole frame, as before. A tile smaller than
+  the frame means the model paints at the size it paints best at, inventing texture rather than
+  enlarging what is there, and it does that at 1×: this is about detail, not size. What holds the
+  picture together across a hard repaint is **Hold**, the tile ControlNet — so Denoise goes up to 1
+  now, and the panel says plainly when Hold is at 0 (each tile is replaced, not detailed) and when a
+  high Denoise will make a clip boil because every frame is painted from noise.
+- **A drawn layer follows the length it is drawn for.** A pulse, a drawn matte and static are all
+  made here at the frame's size and length, so changing a still's length left them at the old one
+  and the flatten looped or cut them — a pulse keeping time against nothing. They are redrawn now
+  whenever the frame moves under them: a new length, or another clip loaded. A layer you loaded off
+  disk is yours as it is and is never touched.
+- **Black is black again.** A pulse lays down what it draws, like every other layer, and the blend
+  mode decides how that reads. Driving a pulse's alpha from its own brightness was tried and taken
+  out: it made a pattern safe in every mode at the cost of half of them doing nothing at all. The
+  rule to keep instead is that a pattern made of light wants a mode that adds light — and the ◐ in
+  a pulse layer's header draws it the other way up, white at rest, which wants multiply.
+- **A blurred layer reaches the edge of the frame.** The preview's blur now carries the edge pixel
+  outward the way PIL and ffmpeg do, so a dark layer on multiply no longer leaves a bright rim all
+  the way round. The render was always right; it was the preview that lied.
+- **A still's FPS row says what it will draw.** On ones, twos or threes, with the drawing count for
+  the length you gave it — the clip card always filled those in, a picture never did.
 - **A picture arrives with a length.** Eight seconds, so an imported picture is a source you can
   stack over, pulse on and run a camera across from the moment it lands. Clear the length and it is
   frame 1 of something the camera carries on, as before — that is now something you ask for rather

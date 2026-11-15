@@ -529,7 +529,7 @@
   /* A hidden layer stays where it is, with everything it was set to, and simply stops counting. */
   #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
   #layers .lay.off .ctl, #layers .lay.off .beat, #layers .lay.off .nm { opacity: .38; }
-  #layerAdds { display: flex; gap: 6px; margin-top: 12px; }
+  #layerAdds { display: flex; gap: 6px; margin-bottom: 12px; }
   #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
     display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
     border-radius: var(--radius); color: var(--dim); cursor: pointer; white-space: nowrap; }
@@ -808,6 +808,7 @@
                 border-radius: var(--radius); padding: 7px 8px; font: inherit; margin-bottom: 6px; }
   .enh .seg { grid-template-columns: repeat(var(--n, 3), 1fr); }
   .enh .seg button { color: #c9c7cf; }     /* unpicked options read clearly; the pick is the fill */
+  .enh .seg button.idle { opacity: .45; }  /* a bite bigger than the frame: pickable, but it changes nothing */
   .enh .hint { color: var(--faint); font-size: 11px; margin-top: 5px; }
   .enh .cost { color: var(--accent-2); }                    /* what a cloud upscale will spend */
   .enh .ctl { margin-top: 10px; }                           /* one control a cloud upscaler declares */
@@ -1287,13 +1288,13 @@
     <div class="card" data-card="layers">
     <div class="card-head" title="Stack the sources into one picture before any of it is uploaded: a blend mode, an opacity, and a black and white layer that can act as a luma matte for the layer below it"><span class="title">Layers</span><span class="sum" id="sum_layers"></span><span class="chev">▾</span></div>
     <div class="card-body">
-    <div id="layers"></div>
     <div id="layerAdds">
       <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
       <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, paced by the clip, by a speed you set, or by a track you load. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
     </div>
+    <div id="layers"></div>
     </div></div>
     <input type="file" id="layerFile" accept="video/*,image/*" hidden>
     <input type="file" id="pulseFile" accept="audio/*,video/*" hidden>
@@ -1442,15 +1443,38 @@
         <div class="row">
           <select id="refModel"></select>
         </div>
+        <div class="pair" style="margin-top:6px">
+          <div><div class="sublabel">Sampler</div><select class="model" id="refSampler" title="How each step moves toward the image"></select></div>
+          <div><div class="sublabel">Schedule</div><select class="model" id="refSchedule" title="How the noise levels are spaced across the steps"></select></div>
+        </div>
+        <div class="pair" style="margin:10px 0 2px">
+          <div class="slider"><div class="slider-head"><b title="A detail pass has its own idea of enough: a distilled model wants 8, a regular one 20-30">Steps</b><span id="refStepsV"></span></div>
+            <input type="range" id="refSteps" min="4" max="50" step="1"></div>
+          <div class="slider"><div class="slider-head"><b title="How hard the prompt is pushed. Distilled models want 1-2; a regular SDXL 4-6">CFG</b><span id="refCfgV"></span></div>
+            <input type="range" id="refCfg" min="1" max="12" step="0.5"></div>
+        </div>
+        <div class="sublabel" id="refLoraLabel">LoRA</div>
+        <select class="model" id="refLora" title="A LoRA for this pass only — a detail or realism LoRA for the refine model, nothing to do with the one the render panel is using"></select>
+        <div class="slider" id="refLoraBox" style="margin:10px 0 2px">
+          <div class="slider-head"><b>Strength</b><span id="refLoraWV"></span></div>
+          <input type="range" id="refLoraW" min="0" max="1.5" step="0.05">
+        </div>
         <div class="row">
           <div class="label">Scale</div>
           <div class="seg" id="refScale" style="--n:3"><button data-v="1" title="Same size: a second diffusion pass over the run">1×</button><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
+        </div>
+        <div class="row">
+          <div class="label">Detail</div>
+          <div class="seg" id="refDetail" style="--n:4"><button data-v="0" title="One pass over the whole frame. A frame too big for the card is still split up — that is about memory, not detail">Off</button><button data-v="512" title="Repaint a tile at a time, 512 across: the most tiles, the most invention, the slowest">512</button><button data-v="768" title="Repaint a tile at a time, 768 across">768</button><button data-v="1024" title="Repaint a tile at a time, 1024 across: fewest tiles, closest to a plain pass">1024</button></div>
           <div class="hint" id="refSizeHint"></div>
         </div>
-        <div class="slider"><div class="slider-head"><b title="How much new noise goes in: low polishes, high repaints">Denoise</b><span id="refDenoiseV"></span></div>
-          <input type="range" id="refDenoise" min="0.1" max="0.8" step="0.01"></div>
+        <div class="slider"><div class="slider-head"><b title="How much new noise goes in: low polishes, high repaints. A tile repainted near 1 is invented from nothing but the prompt and whatever the tile ControlNet holds">Denoise</b><span id="refDenoiseV"></span></div>
+          <input type="range" id="refDenoise" min="0.1" max="1" step="0.01"></div>
         <div class="slider" id="refHoldBox"><div class="slider-head"><b title="How tightly each tile sticks to the run's frames (tile ControlNet): high keeps shapes and colour, low lets the prompt wander">Hold</b><span id="refHoldV"></span></div>
           <input type="range" id="refHold" min="0" max="1" step="0.05"></div>
+        <div class="slider"><div class="slider-head"><b title="How much of the last refined frame, warped into this one, the next frame starts from. It steadies a clip — and it is also what makes a long one go soft, because every frame is resampled once more than the one before it. At 0 each frame is detailed from the run's own frame and nothing accumulates">Carry</b><span id="refCarryV"></span></div>
+          <input type="range" id="refCarry" min="0" max="1" step="0.05"></div>
+        <div class="hint" id="refNote" style="margin:-2px 0 8px" hidden></div>
         <div class="row">
           <div class="label">Prompt <a class="randlink" id="refPromptReset" title="Back to the run's own prompt">run's prompt</a></div>
           <textarea id="refPrompt" spellcheck="false"></textarea>
@@ -1598,6 +1622,7 @@ function renderLora() {
   $('lora').value = loraOn();
   $('loraBox').hidden = !loraOn();
   $('loraW').value = state.loraW; $('loraWV').textContent = (+state.loraW).toFixed(2);
+  if (!$('enh').hidden) renderRefSampler();    // the Enhance panel has its own picker off the same list
 }
 // Samplers and the schedules each supports (first = its default) — mirrors SAMPLERS in engine/warp.py
 const SAMPLERS = {
@@ -1729,6 +1754,7 @@ function setPicHow(how, secs, pic = loadedPic()) {
                    source: { width: pic.width, height: pic.height, fps: STILL_FPS, frames: 96, duration: 4 } };
     stillLen();
     state.range = [0, 1]; clipFrame = 0;
+    freshenLayers();                     // the stack was drawn for whatever was here before
   } else {
     state.clip = null;
     state.image = { path: pic.path, name: pic.name, width: pic.width, height: pic.height };
@@ -3006,7 +3032,7 @@ async function makePulse(kind, at = -1) {
                               audio: '', audioName: '' }, was || {}, { pulse: kind });
     const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
                                                body: JSON.stringify(pulseBody(L)) });
-    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse`, base: r.base });
+    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse`, base: r.base }); madeAt(L, r);
     if (was) Object.assign(was, L);
     else layers().unshift(layerDefaults(Object.assign(L, { mode: 'screen', opacity: 0.7 })));
     renderLayers(); paintSums(); save(); stageSource();
@@ -3020,21 +3046,23 @@ async function makePulse(kind, at = -1) {
 var pulseTimers = {};
 function needPulse(i, now) {
   const L = layers()[i];
-  needEnv(i, now);                             // the beat's own alpha, for whatever needs it
   if (!L || !L.pulse) return;
   clearTimeout(pulseTimers[i]);
-  pulseTimers[i] = setTimeout(async () => {
-    try {
-      const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
-                                                 body: JSON.stringify(pulseBody(L)) });
-      if (layers()[i] !== L) return;             // the stack moved while it was drawing
-      L.path = r.path; L.name = `${r.label.toLowerCase()} pulse`;
-      pulseTile(i);                              // on a track, the tile is this clip: show the new one
-      needPaint(); needPlate(); pushLayers(); save();
-    } catch (e) {
-      setStatus('could not draw that pulse: ' + e.message, 'bad');
-    }
-  }, now ? 0 : 350);
+  pulseTimers[i] = setTimeout(() => drawPulse(i), now ? 0 : 350);
+}
+async function drawPulse(i) {
+  const L = layers()[i];
+  if (!L || !L.pulse) return;
+  try {
+    const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                               body: JSON.stringify(pulseBody(L)) });
+    if (layers()[i] !== L) return;               // the stack moved while it was drawing
+    L.path = r.path; L.name = `${r.label.toLowerCase()} pulse`; madeAt(L, r);
+    pulseTile(i);                                // on a track, the tile is this clip: show the new one
+    needPaint(); needPlate(); pushLayers(); save();
+  } catch (e) {
+    setStatus('could not draw that pulse: ' + e.message, 'bad');
+  }
 }
 // A drawn pattern as a layer that mattes the one below it. Same generator as before; it draws in
 // black and white now, because the luma is the matte and red and green are 0.27 and 0.63 of it.
@@ -3042,7 +3070,8 @@ async function makeMatte(pattern, at) {
   try {
     const r = await api('/api/masks', { method: 'POST', headers: { 'content-type': 'application/json' },
                                         body: JSON.stringify(maskBody(pattern)) });
-    const row = { path: r.path, name: r.name, mask: r.pattern, matte: true };
+    const row = { path: r.path, name: r.name, mask: r.pattern, matte: true,
+                  made: { width: r.width, height: r.height, frames: r.frames } };
     if (at >= 0 && layers()[at]) Object.assign(layers()[at], row);
     else layers().unshift(layerDefaults(row));
     renderLayers(); paintSums(); save(); stageSource();
@@ -3065,6 +3094,40 @@ function maskStale(v) {
 async function freshenMasks() {
   for (const [i, v] of h3Vids().entries()) {
     if (v.mask && maskStale(v)) await makeMask(v.mask, i);
+  }
+}
+// A drawn layer -- a pulse, a drawn matte, static -- is made here at the frame's size and length,
+// the same as a colour mask, so the same thing goes wrong with it: move the length and the file
+// under the layer is the wrong length, and the flatten loops it or cuts it off. A still is where
+// that bites, because its length is a number you type. They all have a generator behind them, so
+// they are simply drawn again -- ffmpeg, a second or two, no GPU. A layer you loaded off disk is
+// yours as it is and is never touched.
+function madeAt(L, r) { L.made = { width: r.width, height: r.height, frames: r.frames }; }
+function layerStale(L) {
+  const kind = L.pulse || L.mask || (L.noise ? 'circle' : '');
+  if (!kind || !L.path) return false;
+  const b = maskBody(kind), m = L.made;
+  return !m || m.width !== b.width || m.height !== b.height || m.frames !== b.frames;
+}
+async function freshenLayers() {
+  for (const [i, L] of layers().entries()) {
+    if (!layerStale(L)) continue;
+    if (L.pulse) await drawPulse(i);
+    else if (L.mask) await makeMatte(L.mask, i);
+    else await drawNoise(i);
+  }
+}
+async function drawNoise(i) {
+  const L = layers()[i], b = maskBody('circle');
+  if (!L) return;
+  try {
+    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
+    if (layers()[i] !== L) return;
+    L.path = r.path; madeAt(L, r);
+    renderLayers(); needPaint(); needPlate(); pushLayers(); save();
+  } catch (e) {
+    setStatus('could not make the noise: ' + e.message, 'bad');
   }
 }
 // ---- Layers: the stack, flattened to one clip before anything is uploaded
@@ -3129,48 +3192,13 @@ function stillLen() {
   Object.assign(state.clip.source, { fps: STILL_FPS, frames: stillFrames(), duration: stillSecs() });
 }
 // What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
-// A beat is an opacity, and at rest that opacity is nothing. That is the whole of it: a layer
-// that rests at 0% cannot do anything to the picture between hits, whatever blend mode it is on --
-// which is what went wrong with a bloom on overlay, where black means darken and the picture was
-// quietly crushed frame after frame. It also makes a pulse usable as a transition: it arrives out
-// of nothing and goes back to nothing.
-//
-// Nothing new had to be built for it. A matte already means "this layer's brightness is that
-// layer's alpha", and every compositor reads it -- the ffmpeg flatten, the per-frame one the render
-// uses, and the live preview in the panel. So a pulsing layer is handed a matte, and which matte
-// depends on what the layer rests as:
-//   a drawn pattern on black (bloom, burst, flash, rings) mattes itself -- its own light is its
-//     alpha, so black is transparent and the pattern keeps every bit of its motion, travelling
-//     rings and all;
-//   grain rests at mid grey on purpose, and anything else (a video, a picture) has no rest value
-//     at all, so those get the beat drawn on its own: a flat clip whose brightness is the envelope.
-const PULSE_BASE = { grain: 'grey' };           // everything else is drawn on black
-function pulseBase(L) { return L.base || PULSE_BASE[L.pulse] || 'black'; }
-function beats(L) { return !!(L && !L.matte && (L.pulse || L.beatOn)); }
-function pulseMatte(L) {
-  if (!beats(L)) return '';
-  return L.pulse && pulseBase(L) === 'black' ? L.path : (L.envPath || '');
-}
-// The flat envelope clip, for the layers that cannot be their own alpha. Small: it is one value a
-// frame, and whatever it is drawn at is scaled to the frame it mattes.
-var envTimers = {};
-function needEnv(i, now) {
-  const L = layers()[i];
-  if (!beats(L) || (L.pulse && pulseBase(L) === 'black')) return;
-  clearTimeout(envTimers[i]);
-  envTimers[i] = setTimeout(async () => {
-    const b = maskBody('flash');
-    try {
-      const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ kind: 'flash', width: 128, height: 72, frames: b.frames, fps: b.fps,
-                               amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1,
-                               audio: beatAudio(L), invert: !!L.pinvert }) });
-      if (layers()[i] !== L) return;
-      L.envPath = r.path;
-      needPaint(); needPlate(); pushLayers(); save();
-    } catch (e) { setStatus('could not draw that beat: ' + e.message, 'bad'); }
-  }, now ? 0 : 350);
-}
+// A pulse is a picture like any other layer: what it draws is what it lays down, and the blend
+// mode decides how that reads. Black is black -- it darkens on multiply, does nothing on screen --
+// rather than being treated as transparent. Driving the layer's alpha from its own brightness was
+// tried and taken out again: it made a pattern safe in every blend mode at the cost of making half
+// of them do nothing at all, which is a worse trade than knowing that a pattern made of light
+// wants a mode that adds light. A transition is a cross dissolve, and belongs somewhere else.
+function beats(L) { return !!(L && !L.matte && L.pulse); }
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
   if (!layersOn()) return [];
@@ -3181,19 +3209,8 @@ function layerJob() {
   const src = baseSrc();
   if (src) stack.push({ path: src.path, mode: 'normal', matte: false,
                         opacity: b.opacity, blur: b.blur });
-  // A matte belongs to the layer directly below it, so a beat's matte goes in right above its
-  // layer. One already there keeps its place -- two mattes on one layer is not a thing the format
-  // can say, and the one you put there by hand is the one you meant.
-  const out = [];
-  stack.forEach((L, i) => {
-    const m = pulseMatte(L);
-    if (m && !(i > 0 && stack[i - 1].matte))
-      out.push({ path: m, mode: 'normal', matte: true, opacity: 1, blur: 0,
-                 black: 0, mid: 0.5, white: 1, invert: false });
-    out.push(L);
-  });
-  const drawn = out.filter(L => !L.matte);
-  return drawn.length ? out : [];        // a stack of nothing but mattes is not a plate
+  const drawn = stack.filter(L => !L.matte);
+  return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
 }
 // The grey handle sits where it does because of what it means: an input at that point comes out
 // half way, which is exactly the gamma the engine's lut is built from. So its position is
@@ -3296,19 +3313,6 @@ $('layers').addEventListener('click', e => {
     renderLayers(); save(); needPulse(i, true);
     return;
   }
-  const on = e.target.closest('[data-beaton]');
-  if (on) {
-    const i = +on.dataset.beaton, L = layers()[i];
-    if (!L) return;
-    L.beatOn = !L.beatOn;
-    if (L.beatOn) {                            // the same beat a pulse layer starts on
-      L.beat = L.beat || (clipAudio() ? 'clip' : 'bpm');
-      L.bpm = L.bpm || 120; L.division = L.division || 1; L.amount = L.amount ?? 1;
-    }
-    renderLayers(); save();
-    if (L.beatOn) needEnv(i, true); else { needPaint(); needPlate(); pushLayers(); }
-    return;
-  }
   const met = e.target.closest('[data-metro]');
   if (met) { const i = +met.dataset.metro; METRO.at === i ? metroStop() : metroStart(i, met); }
 });
@@ -3341,7 +3345,7 @@ function commitSecs() {
   state.clip.secs = v; stillLen();
   const read = $('stillLenV'); if (read) read.textContent = `seconds · ${stillFrames()} frames`;
   renderClip.meta && renderClip.meta();
-  setupTransport(); needPlate(); updateEst(); paintSums(); save();
+  setupTransport(); needPlate(); updateEst(); paintSums(); save(); freshenLayers();
 }
 const LVL_GAP = 0.02;                      // black and white may meet, but not cross
 $('layers').addEventListener('pointerdown', e => {
@@ -3561,7 +3565,6 @@ function renderLayers() {
             title="Drag to reorder \u2014 the order of the stack is the composite">
         <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
         ${!beats(L) ? '' : `<button class="chip ico${L.pinvert ? ' on' : ''}" data-pinv="${i}" title="Upside down: the beat rests at full and is punched out on every hit, instead of resting at nothing and arriving on it. The neutral blend turns over with it \u2014 screen for the light one, multiply for this"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2v15a7.5 7.5 0 0 1 0-15Z"/></svg></button>`}
-        ${L.matte || L.pulse ? '' : `<button class="chip ico${L.beatOn ? ' on' : ''}" data-beaton="${i}" title="Give this layer a beat: its opacity rests at nothing and rises on every hit, so it arrives out of the picture rather than sitting on it \u2014 and any blend mode is safe, because at rest there is nothing there"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`}
         ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
         <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
         <button class="x" title="Remove">\u2715</button>
@@ -3707,6 +3710,44 @@ function coverDraw(ctx, img, w, h) {
   const k = Math.max(w / iw, h / ih), sw = w / k, sh = h / k;
   ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
 }
+// A canvas blur reads transparent black outside the canvas, so a blurred layer fades out at the
+// frame's edge and whatever it was doing stops doing it there -- a dark layer on multiply leaves a
+// bright rim all the way round. Neither compositor that matters does that: PIL and ffmpeg both
+// clamp, carrying the edge pixel outward, so the blur stays at full strength to the last row. This
+// is that clamp: the frame drawn into a bigger canvas with its edges stretched into the margin,
+// blurred there, and the middle taken back out.
+function edgeClamp(src, p) {
+  const w = src.width, h = src.height;
+  const t = document.createElement('canvas');
+  t.width = w + 2 * p; t.height = h + 2 * p;
+  const x = t.getContext('2d');
+  x.drawImage(src, p, p);
+  x.drawImage(src, 0, 0, w, 1, p, 0, w, p);                  // the top row, stretched up
+  x.drawImage(src, 0, h - 1, w, 1, p, h + p, w, p);          // the bottom row, down
+  x.drawImage(src, 0, 0, 1, h, 0, p, p, h);                  // the left column, out
+  x.drawImage(src, w - 1, 0, 1, h, w + p, p, p, h);          // the right column, out
+  x.drawImage(src, 0, 0, 1, 1, 0, 0, p, p);                  // and the four corners
+  x.drawImage(src, w - 1, 0, 1, 1, w + p, 0, p, p);
+  x.drawImage(src, 0, h - 1, 1, 1, 0, h + p, p, p);
+  x.drawImage(src, w - 1, h - 1, 1, 1, w + p, h + p, p, p);
+  return t;
+}
+// Cover-draw a picture into w x h, blurred by `px` with the edges clamped. At no blur it is the
+// plain cover draw, which is most of the time.
+function softDraw(ctx, img, w, h, px) {
+  if (!(px > 0.3)) return coverDraw(ctx, img, w, h);
+  const flat = document.createElement('canvas');
+  flat.width = w; flat.height = h;
+  coverDraw(flat.getContext('2d'), img, w, h);
+  const p = Math.ceil(px * 3);                               // past where the kernel reaches
+  const pad = edgeClamp(flat, p);
+  const out = document.createElement('canvas');
+  out.width = pad.width; out.height = pad.height;
+  const ox = out.getContext('2d');
+  ox.filter = `blur(${px.toFixed(2)}px)`;
+  ox.drawImage(pad, 0, 0);
+  ctx.drawImage(out, p, p, w, h, 0, 0, w, h);
+}
 // The matte's brightness as alpha, through its levels. Same reckoning as the lut the engine builds.
 var BLUR_SPAN = 0.04;                      // matches engine/layers.py
 const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
@@ -3732,11 +3773,15 @@ function matteAlpha(M, img, w, h) {
   }
   x.putImageData(d, 0, 0);
   if (M.blur > 0) {                        // feather after the levels, as the engine does
-    const b = document.createElement('canvas'); b.width = w; b.height = h;
+    const px = blurPx(M.blur, w, h), p = Math.ceil(px * 3);
+    const pad = edgeClamp(t, p);
+    const b = document.createElement('canvas'); b.width = pad.width; b.height = pad.height;
     const bx = b.getContext('2d');
-    bx.filter = `blur(${blurPx(M.blur, w, h).toFixed(2)}px)`;
-    bx.drawImage(t, 0, 0);
-    return keepMatte(ck, b);
+    bx.filter = `blur(${px.toFixed(2)}px)`;
+    bx.drawImage(pad, 0, 0);
+    const cut = document.createElement('canvas'); cut.width = w; cut.height = h;
+    cut.getContext('2d').drawImage(b, p, p, w, h, 0, 0, w, h);
+    return keepMatte(ck, cut);
   }
   return keepMatte(ck, t);
 }
@@ -3778,26 +3823,25 @@ function paintPlate(soft) {
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.fillStyle = '#000'; c.fillRect(0, 0, w, h);      // what the source fades into
   const b0 = pairs[0][0];
-  c.filter = b0.blur > 0 ? `blur(${blurPx(b0.blur, w, h).toFixed(2)}px)` : 'none';
   c.globalAlpha = b0.opacity;
-  coverDraw(c, base, w, h);
-  c.filter = 'none'; c.globalAlpha = 1;
+  softDraw(c, base, w, h, blurPx(b0.blur, w, h));
+  c.globalAlpha = 1;
   for (let n = 1; n < pairs.length; n++) {
     const [L, M] = pairs[n], img = layerFrame(L, clipFrame);
     if (!img) continue;
     c.globalAlpha = L.opacity;
     c.globalCompositeOperation = CANVAS_MODE[L.mode] || L.mode;
     const mImg = M && layerFrame(M, clipFrame);
-    const soft = L.blur > 0 ? `blur(${blurPx(L.blur, w, h).toFixed(2)}px)` : 'none';
+    const soft = blurPx(L.blur, w, h);
     if (M && mImg) {
       const t = document.createElement('canvas'); t.width = w; t.height = h;
       const tx = t.getContext('2d');
-      tx.filter = soft; coverDraw(tx, img, w, h); tx.filter = 'none';
+      softDraw(tx, img, w, h, soft);
       tx.globalCompositeOperation = 'destination-in';
       tx.drawImage(matteAlpha(M, mImg, w, h), 0, 0);
       c.drawImage(t, 0, 0);
     } else {
-      c.filter = soft; coverDraw(c, img, w, h); c.filter = 'none';
+      softDraw(c, img, w, h, soft);
     }
   }
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
@@ -3867,7 +3911,8 @@ async function addNoise() {
     setStatus('making the noise…', 'live');
     const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
-    addLayer(r, { noise: true, mode: 'overlay', opacity: 0.25 });
+    addLayer(r, { noise: true, mode: 'overlay', opacity: 0.25,
+                  made: { width: r.width, height: r.height, frames: r.frames } });
     setStatus(`noise · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
   } catch (e) {
     setStatus('could not make the noise: ' + e.message, 'bad');
@@ -4563,13 +4608,27 @@ function renderClip() {
         <button class="clip-del" id="clipDel" title="Remove the picture">\u2715</button>
       </div>
       <div class="ons" id="clipSizeRow" title="Frame size in pixels (the long side)"><span>Size</span><div class="sizeSlot"></div></div>
-      <div class="ons" id="clipFpsRow" title="Draw every frame, or every 2nd / 3rd and hold it">
+      <div class="ons" id="clipFpsRow" title="Draw every frame, or every 2nd / 3rd and hold it — like hand-drawn animation on twos / threes. Faster to render; the mp4 still plays at 24 fps">
         <span>FPS</span><div class="seg" id="onN"><button data-n="1"></button><button data-n="2"></button><button data-n="3"></button></div>
       </div>
     </div>`, `a still · ${stillSecs().toFixed(1)}s`);
     $('clipSizeRow').hidden = $('clipFpsRow').hidden = isH3();
+    // The same three rates the clip row offers, at the rate a still runs. They were drawn empty:
+    // the clip card fills them in paintRange(), which a still has no range to paint.
+    const paintStillFps = () => {
+      const on = state.onN || 1;
+      [...$('onN').children].forEach(b => {
+        const k = +b.dataset.n, d = Math.floor((stillFrames() - 1) / k) + 1;
+        b.textContent = +(STILL_FPS / k).toFixed(1);
+        b.classList.toggle('on', k === on);
+        b.title = k === 1 ? `every frame \u00b7 ${d} frames`
+          : `on ${k === 2 ? 'twos' : 'threes'}: every ${k === 2 ? '2nd' : '3rd'} frame, held \u00d7${k} \u00b7 ${d} drawings; the mp4 still plays at ${STILL_FPS} fps`;
+      });
+    };
+    paintStillFps();
     renderClip.meta = () => { const m = $('stillMeta'); if (m) m.textContent =
-      `${s.width}\u00d7${s.height} \u00b7 a still \u00b7 ${stillFrames()} frames \u00b7 ${stillSecs().toFixed(1)}s`; };
+      `${s.width}\u00d7${s.height} \u00b7 a still \u00b7 ${stillFrames()} frames \u00b7 ${stillSecs().toFixed(1)}s`;
+      paintStillFps(); };                  // the drawing counts move with the length
     if (typeof renderLayers === 'function') renderLayers();
     $('swap').onclick = () => $('fileInput').click();
     $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; renderClip(); save(); };
@@ -4844,8 +4903,8 @@ function bindKeys() {
     el.style.left = Math.min(100 - 5, Math.max(5, pos(e) * 100)) + '%';     // keep it inside the card
     el.querySelector('span').textContent = `${(f / laneFps()).toFixed(1)}s`;
     if (state.t2v) { el.querySelector('img').removeAttribute('src'); return; }   // no clip frames to show
-    if (clipMode() && clipFrame !== f) {   // clip view: the stage follows the lane scrub
-      clipFrame = f; $('scrubRange').value = f; paintFrame();
+    if (clipMode() && clipFrame !== capClip(f)) {   // clip view: the stage follows the lane scrub
+      clipFrame = capClip(f); $('scrubRange').value = clipFrame; paintFrame();
     }
     if (f === peekFrame) return;
     peekFrame = f; clearTimeout(peekTimer);                                  // fetch at most every ~80 ms
@@ -4918,7 +4977,7 @@ async function setClipPath(path, name) {
   }
   if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; clipFrame = 0; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
-  save(); renderClip();
+  save(); renderClip(); freshenLayers();
 }
 
 // "use frame →": the frame under the transport, on to Image mode to be animated. A one-frame
@@ -5336,7 +5395,7 @@ function renderRamp() {
   $('styleEndV').style.opacity = on ? '' : '.5';
   $('rampNote').textContent = on
     ? `${(+state.style).toFixed(2)} at the first frame \u2192 ${v.toFixed(2)} at the last`
-    : 'flat across the clip — drag to make Denoise climb or fall';
+    : 'flat across the clip — drag to ramp';
   $('rampRow').hidden = isH3() || adOn();
 }
 $('styleEnd').oninput = e => {
@@ -5396,6 +5455,17 @@ function liveTotal() {
   return (live && job.total_frames) || 0;
 }
 const liveEdge = () => frames.length - 1;  // the last frame that exists: as far as the playhead goes
+// The same edge said in clip frames, for the Source and Diff views -- they scrub the clip itself, so
+// the stop is wherever the frame being generated sits in it (the run's own mapping: frame n of the
+// output is source frame (frame_start + n) * nth). null when nothing is being generated, or when the
+// run on the stage is of some other clip, and then the clip scrubs end to end as it always does.
+function clipEdge() {
+  const t = runTiming;
+  if (!liveTotal() || !t || !frames.length || !state.clip) return null;
+  if (t.video && t.video !== state.clip.path) return null;
+  return Math.min(state.clip.source.frames - 1, (t.frame_start + frames[frames.length - 1]) * t.nth);
+}
+const capClip = f => { const e = clipEdge(); return e == null ? f : Math.min(f, e); };
 function toSource() {                      // e.g. scrubbing away from a Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
@@ -5412,6 +5482,8 @@ function setupTransport() {
   }
   if (clipMode() || oneFrameRun()) {
     $('scrub').hidden = false;
+    // The track stays the whole clip -- how far it has got is the fill, and the playhead stops there
+    clipFrame = capClip(clipFrame);
     $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
   } else if (frames.length) {
     $('scrub').hidden = false;
@@ -7003,7 +7075,12 @@ $('scrubRange').oninput = e => {
     shapeFrame = +e.target.value; view = 'shape'; setControlTabs(); return showShape();
   }
   if (oneFrameRun()) toSource();           // scrubbing away from a Frame result: back to Source
-  if (clipMode()) { if (playing) stopPlay(); clipFrame = +e.target.value; paintFrame(); return; }   // clip view: scrub the source
+  if (clipMode()) {                        // clip view: scrub the source, up to the frame being made
+    if (playing) stopPlay();
+    clipFrame = capClip(+e.target.value);
+    if (+e.target.value !== clipFrame) e.target.value = clipFrame;
+    paintFrame(); return;
+  }
   // Past the live edge there is nothing to show, so the playhead stops there and waits for the
   // render to come to it.
   frameIdx = Math.min(+e.target.value, liveEdge());
@@ -7071,7 +7148,12 @@ function playClip() {
   v.currentTime = (clipFrame + 0.5) / fps;
   const follow = () => {                   // transport follows the video
     if (playing !== 'clip') return;
+    const edge = clipEdge();
     clipFrame = Math.min(n - 1, Math.floor(v.currentTime * fps));
+    if (edge != null && clipFrame >= edge) {      // caught up with the render: wait there
+      clipFrame = edge; $('scrubRange').value = edge; scrubReadout(clipSec(edge), edge, n);
+      return stopPlay();
+    }
     $('scrubRange').value = clipFrame; scrubReadout(clipSec(clipFrame), clipFrame, n);
     v.requestVideoFrameCallback ? v.requestVideoFrameCallback(follow) : requestAnimationFrame(follow);
   };
@@ -7691,7 +7773,26 @@ $('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hid
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('enh').hidden) $('enh').hidden = true; });
 // Refine: the run's frames, bigger, through a local model at a low Denoise (see refineConfig)
 var refSrc = null, refPromptRun = null;
-const refPrefs = () => { const r = (state.refine ||= { scale: 2, denoise: 0.4, hold: 0.6 }); r.ckpt ||= {}; return r; };
+const refPrefs = () => {
+  const r = (state.refine ||= { scale: 2, denoise: 0.4, hold: 0.6 });
+  r.ckpt ||= {}; r.detail ||= 0;
+  // Carry was 0.85 and fixed, inherited from a render where it is the whole point: the warp lives on
+  // carrying the painted frame forward. A detail pass is the opposite job -- every frame carried is a
+  // frame resampled again, and a hundred of those is a soft clip. It starts at nothing here.
+  if (r.carry == null) r.carry = 0;
+  return r;
+};
+// Detail: the frame repainted a tile at a time, each tile at a size the model paints well at.
+// It has nothing to do with the output size -- a tile smaller than the frame means more invention
+// at 1x, which is the point of it. What holds the picture together then is the tile ControlNet
+// (Hold), not the denoise: a tile at 0.9 with Hold at 0 is a tile that has been replaced.
+// Off still splits a frame bigger than the family's safe size, because that is about memory.
+function refTile() { const r = refPrefs(), rf = refineCfg().refine || {}; return +r.detail || rf.tile || 0; }
+function refOverlap() { const d = +refPrefs().detail; return d ? Math.max(64, Math.round(d * 0.25 / 8) * 8) : 128; }
+// The engine's own reckoning (tile_spans in warp.py): tiles evenly spread, neighbours sharing overlap.
+function tileCount(len, tile, overlap) {
+  return len <= tile ? 1 : Math.ceil((len - overlap) / (tile - overlap));
+}
 // Refine always runs here, on your card, whatever made the run — so it owns its model instead of
 // borrowing the panel's, which would be empty with the panel on Comfy and would change under you when
 // you picked one. SDXL only for now: it is the family worth a detail pass, and one picker beats two.
@@ -7699,6 +7800,31 @@ const refPrefs = () => { const r = (state.refine ||= { scale: 2, denoise: 0.4, h
 function refineMode() { return 'sdxl'; }
 function refineCfg() { return MODES[refineMode()] || MODES.sd15; }
 function refineCkpt() { return refPrefs().ckpt[refineMode()] || defaultCheckpoint(refineMode()); }
+// Refine runs here whatever made the run, so it keeps its own numbers rather than reading the
+// panel's: the panel may be on H3, or on SD 1.5, where none of them mean anything to an SDXL pass --
+// and a detail pass wants different ones from a render anyway. They follow the model the way the
+// panel's do, a fast one bringing its profile, and they are yours to move after that.
+function refModelDefaults() {
+  const r = refPrefs(), f = fastProfile(refineCkpt());
+  Object.assign(r, f || { steps: 24, cfg: 5, sampler: 'dpmpp_2m', schedule: 'karras' });
+  r.lastCkpt = refineCkpt();
+}
+const refLoraOn = () => LORAS.some(l => l.path === refPrefs().lora && l.family === refineMode()) ? refPrefs().lora : '';
+function renderRefSampler() {
+  const r = refPrefs(), sm = SAMPLERS[r.sampler] ? r.sampler : 'dpmpp_2m', ok = SAMPLERS[sm][2];
+  if (!ok.includes(r.schedule)) r.schedule = ok[0];
+  $('refSampler').innerHTML = Object.entries(SAMPLERS).map(([k, [label, tip]]) => `<option value="${k}" title="${tip}">${label}</option>`).join('');
+  $('refSampler').value = sm; $('refSampler').title = SAMPLERS[sm][1];
+  $('refSchedule').innerHTML = ok.map(k => `<option value="${k}">${SCHEDULES[k]}</option>`).join('');
+  $('refSchedule').value = r.schedule;
+  const list = LORAS.filter(l => l.family === refineMode());
+  $('refLora').innerHTML = `<option value="">none</option>` +
+    list.map(l => `<option value="${l.path}">${l.name}</option>`).join('');
+  $('refLora').value = refLoraOn();
+  $('refLoraLabel').hidden = $('refLora').hidden = !list.length;
+  $('refLoraBox').hidden = !refLoraOn();
+  $('refLoraW').value = r.loraW ?? 0.8; $('refLoraWV').textContent = (+(r.loraW ?? 0.8)).toFixed(2);
+}
 function refDims(src = refSrc) {
   const k = refPrefs().scale;
   return [Math.round(src.width * k / 8) * 8, Math.round(src.height * k / 8) * 8];
@@ -7710,47 +7836,81 @@ function paintRefine() {
   $('refModel').innerHTML = ckptOptions(m);
   $('refModel').value = r.ckpt[m] || '';
   if (CKPT_READY && $('refModel').value !== (r.ckpt[m] || '')) { r.ckpt[m] = ''; $('refModel').value = ''; }   // the file went away
+  if (r.steps == null || r.lastCkpt !== refineCkpt()) refModelDefaults();   // a new model brings its own
+  renderRefSampler();
+  $('refSteps').value = r.steps; $('refStepsV').textContent = r.steps;
+  $('refCfg').value = r.cfg; $('refCfgV').textContent = (+r.cfg).toFixed(1);
   segPick($('refScale'), r.scale);
+  segPick($('refDetail'), +r.detail || 0);
   $('refDenoise').value = r.denoise; $('refDenoiseV').textContent = (+r.denoise).toFixed(2);
   $('refHold').value = r.hold; $('refHoldV').textContent = (+r.hold).toFixed(2);
+  $('refCarry').value = r.carry; $('refCarryV').textContent = (+r.carry).toFixed(2);
   $('refHoldBox').hidden = !rf.controlnet?.have;
+  $('refNote').hidden = true;                 // nothing to warn about until the sizes are worked out
   $('refGo').disabled = true;
   if (!CKPT_READY) { needCkpts(); $('refSizeHint').textContent = 'looking for checkpoints…'; return; }
   if (!CHECKPOINTS.some(c => c.family === m)) {
     $('refSizeHint').textContent = `Refine needs an ${refineCfg().label} checkpoint — there is none on disk`; return;
   }
   if (!refSrc) { $('refSizeHint').textContent = 'this run has no frames on disk to refine'; return; }
-  const [W, H] = refDims(), tiles = rf.tile && Math.max(W, H) > rf.tile
-    ? Math.ceil((W - 128) / (rf.tile - 128)) * Math.ceil((H - 128) / (rf.tile - 128)) : 1;
-  const f = fastProfile(refineCkpt());        // a fast model brings its own steps and CFG (see refineConfig)
+  const [W, H] = refDims(), tile = refTile(), ov = refOverlap();
+  const tiles = tile ? tileCount(W, tile, ov) * tileCount(H, tile, ov) : 1;
+  const side = Math.min(tile || Math.min(W, H), W, H);       // what one pass actually paints
+  const steps = r.steps, real = Math.max(1, Math.round(steps * r.denoise));
   $('refSizeHint').textContent = `${refSrc.width}×${refSrc.height} → ${W}×${H} · ${refSrc.frame_count} frames` +
-    (tiles > 1 ? ` · ${tiles} tiles each` : '') +
-    ` · ${f ? f.steps : state.steps} steps, CFG ${f ? f.cfg : state.cfg}` +
+    (tiles > 1 ? ` · ${tiles} tiles of ${side}` : ` · one pass at ${side}`) +
+    ` · ${real} of ${steps} steps, CFG ${(+r.cfg).toFixed(1)}` +
     (rf.controlnet?.have ? '' : rf.controlnet ? ' · tile ControlNet missing' : ' · no tile ControlNet');
+  // A tile bigger than the frame is a tile that never happens: say so on the button rather than
+  // letting it look like a choice that did nothing.
+  [...$('refDetail').children].forEach(b => {
+    const dead = +b.dataset.v > 0 && +b.dataset.v >= Math.min(W, H);
+    b.classList.toggle('idle', dead);
+    b.dataset.tip ||= b.title;              // its own words, kept for when it can bite again
+    b.title = dead ? `At ${W}×${H} a ${b.dataset.v} bite is the whole frame — raise Scale to use it`
+                   : b.dataset.tip;
+  });
+  // One line, and only when it is the thing most likely to be wrong with what comes back. Softness
+  // first, because that is what an under-sized pass or an under-powered one actually looks like.
+  $('refNote').textContent =
+      side < 768 ? `Each pass paints ${side} across — under the size SDXL draws well, which comes back soft. 1024 tiles at 1.5× or 2× are four native-size paints of the same frame.`
+    : real < 4 ? `Denoise ${(+r.denoise).toFixed(2)} is ${real} real step${real > 1 ? 's' : ''} of ${steps} — not enough to put detail in, whatever else is set.`
+    : r.denoise >= 0.6 && !r.hold && rf.controlnet?.have ? 'Hold is at 0, so nothing is holding the picture — at this Denoise each tile is replaced rather than detailed.'
+    : r.carry >= 0.5 && refSrc.frame_count > 1 ? 'Carry is high: each frame starts from the last one warped, so the clip softens as it goes.'
+    : r.denoise >= 0.7 && refSrc.frame_count > 1 ? 'At this Denoise each frame is painted from noise, so the frames stop agreeing — one frame will look its best, a clip will boil.'
+    : '';
+  $('refNote').hidden = !$('refNote').textContent;
   $('refGo').disabled = !!busy || !!postJob;
 }
-$('refModel').onchange = e => { refPrefs().ckpt[refineMode()] = e.target.value; save(); paintRefine(); };
+$('refModel').onchange = e => { refPrefs().ckpt[refineMode()] = e.target.value; refModelDefaults(); save(); paintRefine(); };
+$('refSampler').onchange = e => { refPrefs().sampler = e.target.value; save(); paintRefine(); };
+$('refSchedule').onchange = e => { refPrefs().schedule = e.target.value; save(); paintRefine(); };
+$('refSteps').oninput = e => { refPrefs().steps = +e.target.value; save(); paintRefine(); };
+$('refCfg').oninput = e => { refPrefs().cfg = +e.target.value; save(); paintRefine(); };
+$('refLora').onchange = e => { refPrefs().lora = e.target.value; save(); paintRefine(); };
+$('refLoraW').oninput = e => { refPrefs().loraW = +e.target.value; save(); paintRefine(); };
 $('refScale').onclick = e => { if (e.target.dataset.v) { refPrefs().scale = +e.target.dataset.v; save(); paintRefine(); } };
+$('refDetail').onclick = e => { if (e.target.dataset.v != null) { refPrefs().detail = +e.target.dataset.v; save(); paintRefine(); } };
 $('refDenoise').oninput = e => { refPrefs().denoise = +e.target.value; save(); paintRefine(); };
 $('refHold').oninput = e => { refPrefs().hold = +e.target.value; save(); paintRefine(); };
+$('refCarry').oninput = e => { refPrefs().carry = +e.target.value; save(); paintRefine(); };
 $('refPromptReset').onclick = () => { if (refSrc) $('refPrompt').value = refSrc.prompt || ''; };
 $('refGo').onclick = () => { $('enh').hidden = true; startJob('refine'); };
 function refineConfig() {
   const r = refPrefs(), fam = refineMode(), rf = refineCfg().refine || {}, src = refSrc, [W, H] = refDims();
   // Refine's own model, not the panel's — and a distilled one wants its own steps / CFG / sampler, the
   // way picking one in the panel sets them. The hint line above the button shows which it will use.
-  const ckpt = refineCkpt(), f = fastProfile(ckpt);
+  const ckpt = refineCkpt();
   const job = {
     video: src.frames_dir, checkpoint: ckpt, family: fam,
     prompt: $('refPrompt').value.trim() || src.prompt, negative: src.negative || '',
     width: W, height: H, frame_start: 0, frame_end: -1, nth: 1, hold: src.hold || 1,
-    style: r.denoise, style_next: r.denoise,   // the same Denoise every frame: the warp carries the detail on
-    steps: f ? f.steps : state.steps, cfg: f ? f.cfg : state.cfg,
-    sampler: f ? f.sampler : (SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m'),
-    schedule: f ? f.schedule : state.schedule,
-    lora: loraOn(fam), lora_weight: state.loraW, ...styleRefJob(fam), seed: src.seed ?? randomSeed(),
+    style: r.denoise, style_next: r.denoise,   // the same Denoise on every frame of the pass
+    steps: r.steps, cfg: r.cfg,
+    sampler: SAMPLERS[r.sampler] ? r.sampler : 'dpmpp_2m', schedule: r.schedule || 'karras',
+    lora: refLoraOn(), lora_weight: r.loraW ?? 0.8, ...styleRefJob(fam), seed: src.seed ?? randomSeed(),
     controlnets: rf.controlnet?.have ? [{ kind: 'tile', path: rf.controlnet.path, start: 0, end: 1, repo: '', weight: r.hold }] : [],
-    flow_blend: 0.85, color_match: 0.5, tile: rf.tile || 0, tile_overlap: 128,
+    flow_blend: r.carry, color_match: 0.5, tile: refTile(), tile_overlap: refOverlap(),
     diff_source: 'off', prompt_keys: [], prompt_blend: 12,
   };
   const fps = runsCache.find(x => x.id === refPromptRun)?.fps || 24;
