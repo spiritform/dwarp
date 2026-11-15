@@ -6740,7 +6740,7 @@ async function startJob(kind) {
   try {
     built = kind === 'refine' ? refineConfig() : await buildConfig(kind);
     const ui = { ...structuredClone(state), kind, size: built.size, started: Date.now(), seed: built.job.seed,
-                 ...(kind === 'refine' ? { source_run: built.source } : {}) };
+                 ...(kind === 'refine' ? { source_run: built.source, refine_prompt: built.job.prompt } : {}) };
     delete ui.spf;
     const label = kind === 'refine' ? `refine of run ${built.source}`
                 : `${isH3() ? (wf().short || 'comfy') : currentPreset().name.toLowerCase()} · ${name}`;
@@ -7275,7 +7275,15 @@ async function runAsInput({ run, frame, count }) {
 $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
-  if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
+  // A run made in the Enhance panel -- an upscale, a smooth, a refine -- was not made by the left
+  // panel, and its settings do not live there. The panel settings it carries are the ones of the run
+  // underneath it, which are still worth having, but the controls that actually made this picture are
+  // the enhance ones, so they go back too and the panel opens on the run it was pointed at.
+  const made = ENH_KINDS.includes(ui.kind) ? ui.kind : '';
+  if (!ui.preset) {
+    if (!made) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
+    return useEnhanceRun(viewRun, ui, made, '');
+  }
   for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'styleEnd', 'fresh', 'frameLock', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
                    'shape', 'shapeFit', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
@@ -7320,8 +7328,31 @@ $('loadRun').onclick = async () => {
   }
   save(); renderClip(); renderControls(); renderShape(); shapeChanged();
   renderLayers(); needPlate(true); paintSums();
+  if (made) return useEnhanceRun(viewRun, ui, made, gone);
   setStatus(`using the settings of run ${viewRun}${gone}`, gone ? 'bad' : 'done');
 };
+var ENH_KINDS = ['upscale', 'smooth', 'refine'];
+// Put the Enhance panel back the way it was for this run, over the run it was run on. Enhancing the
+// upscale itself would be a second upscale of an upscale -- what you asked for is the thing that made
+// this one, so the stage goes back to its source and the panel opens there, set as it was.
+async function useEnhanceRun(id, ui, kind, gone) {
+  const from = ui.source_run && runsCache.some(r => r.id === ui.source_run) ? ui.source_run : null;
+  if (kind === 'refine') { if (ui.refine) state.refine = JSON.parse(JSON.stringify(ui.refine)); }
+  else if (ui.enh) {
+    const p = postPrefs();
+    Object.assign(p, ui.enh, { cparams: { ...p.cparams, ...(ui.enh.cparams || {}) } });
+  }
+  save();
+  if (from) await showRun(from);
+  if (POST_OPTS) await openEnhance();          // no upscalers and no RIFE: the panel never opens
+  if (kind === 'refine' && ui.refine_prompt != null) { $('refPrompt').value = ui.refine_prompt; refPromptRun = viewRun; }
+  const what = kind === 'refine' ? 'refine' : 'enhance';
+  const older = kind !== 'refine' && !ui.enh;    // made before the run started keeping them
+  setStatus(older ? `run ${id} was made before DWARP kept its ${what} settings — the panel is open${from ? ` on run ${from}` : ''}, as you left it`
+    : from ? `using run ${id}'s ${what} settings, on run ${from}${gone}`
+    : `using run ${id}'s ${what} settings — the run it came from is gone${gone}`,
+    older || gone || !from ? 'bad' : 'done');
+}
 
 // ---------------------------------------------------------------- the Shape library
 // Ready-made black / white masks (drawn by shapelib.py on first open) and the user's own (shapes/yours).
@@ -7926,6 +7957,12 @@ $('enhGo').onclick = async () => {
   const p = postPrefs(), runId = viewRun, u = p.where === 'cloud' && cloudUps().length ? cloudUp() : null;
   const body = u ? { cloud: u.id, params: cloudParams(u) }
                  : { upscaler: p.upscaler || null, scale: p.scale, smooth: p.smooth, slowmo: !!p.slowmo, interp: p.interp || 'rife' };
+  // What this panel was set to as the button went down. These prefs are one set shared by every run,
+  // so by the time you look at the upscale again they are whatever you last did -- and the run's own
+  // `post` line is a sentence ("x2 4x-UltraSharp"), not settings. The run it makes keeps them.
+  const used = u ? { where: 'cloud', cloud: u.id, cparams: { [u.id]: JSON.parse(JSON.stringify(cloudParams(u))) } }
+                 : { where: 'local', upscaler: p.upscaler || '', scale: p.scale, smooth: p.smooth,
+                     slowmo: !!p.slowmo, interp: p.interp || 'rife' };
   try {
     // A cloud upscale sends the run's mp4 up, and a run that was stopped part-way has frames but no
     // mp4 yet. Build it first rather than refusing: the frames are rendered either way.
@@ -7933,9 +7970,20 @@ $('enhGo').onclick = async () => {
     postJob = await api(`/api/runs/${runId}/post`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body) });
   } catch (e) { setStatus('enhance failed: ' + e.message, 'bad'); return; }
-  $('enh').hidden = true; followPost(runId);
+  $('enh').hidden = true; followPost(runId, used);
 };
-function followPost(runId) {
+// An upscale carries the settings of the render it came from (post.py copies the whole ui across), so
+// the left panel gets rebuilt from it -- but nothing said how it was enhanced. That goes on the run
+// too, beside the rest of its ui, which is where "copy settings" looks for it.
+async function stampEnhance(runId, used) {
+  if (!used) return;
+  try {
+    const ui = await api(`/api/runs/${runId}/ui`);
+    await api(`/api/runs/${runId}/ui`, { method: 'PUT', headers: { 'content-type': 'application/json' },
+                                         body: JSON.stringify({ ...ui, enh: used }) });
+  } catch {}
+}
+function followPost(runId, used) {
   setButtons(true); paintEnhanceSafe(); setProgress(0);
   $('cancelLink').classList.remove('hide');
   $('cancelLink').onclick = () => postJob && api(`/api/post/${postJob.id}/cancel`, { method: 'POST' }).catch(() => {});
@@ -7953,7 +8001,7 @@ function followPost(runId) {
     const made = done && postJob.run;
     postJob = null; setButtons(false); $('cancelLink').classList.add('hide');
     $('cancelLink').onclick = () => job && api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).catch(() => {});
-    if (made) { await refreshRuns(); showRun(made); }
+    if (made) { await stampEnhance(made, used); await refreshRuns(); showRun(made); }
     else if (viewRun === runId) renderOutputs(runId);
   };
   tick();

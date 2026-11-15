@@ -4,6 +4,13 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **"copy settings" on an upscale opens the Enhance panel.** An upscale, a smooth and a refine are
+  not made by the left panel, so copying their settings into it only ever got you back to the run
+  underneath. Those runs now keep the Enhance settings they were made with — upscaler and scale,
+  smoothing and its timing, or the cloud upscaler and all its controls, or Refine's whole card with
+  the prompt you typed — and "copy settings" puts them back, pointing the panel at the run they
+  were run on rather than at the upscale itself. The left panel still gets the render settings that
+  made the picture underneath. Runs made before this say so instead of pretending.
 - **The playhead stops where the render has got to.** It already did in the run's own view; the
   Source and Diff views scrub the clip itself, so they let you drag off into frames that do not
   exist yet and sit there looking at black. They stop at the frame being generated now — wherever
