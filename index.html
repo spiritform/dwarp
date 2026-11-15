@@ -568,6 +568,7 @@
   #layers .beat .bl > * { min-width: 0; height: 34px; }
   #layers .beat .bl .s2 { grid-column: span 2; }
   #layers .beat .bl .s3 { grid-column: span 3; }
+  #layers .beat .bl .s4 { grid-column: 1 / -1; }
   #layers .beat .bl select { margin-top: 0; }
   /* The metronome: it ticks, so it is square and sits at the end of the line it paces. */
   #layers .beat .bl .metro { display: flex; align-items: center; justify-content: center;
@@ -1724,7 +1725,7 @@ function setPicHow(how, secs, pic = loadedPic()) {
   if (how === 'paint') {
     state.image = null;
     state.clip = { path: pic.path, name: pic.name, image: true,
-                   secs: secs || (state.clip || {}).secs || 4,
+                   secs: secs || (state.clip || {}).secs || STILL_SECS,
                    source: { width: pic.width, height: pic.height, fps: STILL_FPS, frames: 96, duration: 4 } };
     stillLen();
     state.range = [0, 1]; clipFrame = 0;
@@ -3116,7 +3117,9 @@ function stillBase() { return !!(baseSrc() || {}).image; }
 // the trim, the mp4 -- on a length it is given rather than one it came with.
 function stillClip() { return !!(state.clip && state.clip.image); }
 const STILL_FPS = 24;
-function stillSecs() { return Math.min(30, Math.max(0.2, +(state.clip || {}).secs || 4)); }
+var STILL_SECS = 8;                         // what a picture is worth before you say otherwise
+                                            // (var: setPicHow is written above this line and reads it)
+function stillSecs() { return Math.min(30, Math.max(0.2, +(state.clip || {}).secs || STILL_SECS)); }
 function stillFrames() { return Math.max(1, Math.round(stillSecs() * STILL_FPS)); }
 // Kept on the clip itself, so everything that reads source.frames -- the transport, the plate, the
 // length a drawn layer is cut to -- sees the length without knowing a picture is underneath.
@@ -3217,7 +3220,7 @@ function paintNum(el, v) {
 // A length while the picture has none: there is no still to keep it on until it has one.
 var picSecs = 0;
 function secsNow() { return stillClip() ? stillSecs() : picSecs; }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, bpm: 120, secs: 4 };
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, bpm: 120, secs: STILL_SECS };
 // Most of these are 0..1 shown as a percentage. Two are not: a count in beats per minute, and a
 // length in seconds whose floor is "none at all", which is what a picture being animated looks
 // like. One table, so a box only has to say which of them it is.
@@ -3544,8 +3547,15 @@ function renderLayers() {
   $('layers').innerHTML = rows.map((raw, i) => {
     const L = layerDefaults(raw);
     // What is about the whole layer goes under the rule: a matte's levels, a pulse's beat.
+    // A beat over a single frame is one frame of it. With the picture at no length the stack is
+    // flattened into frame 1 and stays there, so the speed, the swing and the metronome are all
+    // controls for something that cannot happen -- and leaving them there to be tuned is the panel
+    // lying. The row says what is true instead, and points at the one thing that changes it.
     const bottom = L.matte ? (L.mask ? '' : `<span class="beat"><div class="bl">${levels(i, L)}</div></span>`)
-                           : (beats(L) ? beatRow(i, L) : '');
+                           : !beats(L) ? ''
+                           : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
+                               title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
+                           : beatRow(i, L);
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
       <span class="hd" draggable="true"
             title="Drag to reorder \u2014 the order of the stack is the composite">
@@ -3584,7 +3594,7 @@ function renderLayers() {
         <span class="dials">${dial('base', 'blur', 'blur', baseLayer().blur, 'Soften the source before anything is laid over it', '', 'wide')}</span>
       </span>
       ${(bs.pic || bs.image) ? `<span class="beat"><div class="bl">
-        ${numBox('base', 'secs', 'length', 0, "A picture has everything a clip has but a length. Give it one and it becomes the source: repainted every frame, with the stack over it. At nothing it is frame 1 instead, and the camera carries it on")}
+        ${numBox('base', 'secs', 'length', 0, "How long this picture runs for. It is the source at this length: repainted every frame with the stack over it, so layers move and a beat can be kept. Drag it to nothing instead and the picture becomes frame 1 of something the camera carries on — the stack is flattened into that one frame and stays there")}
         <span class="snd s3" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
           : 'no length — the picture is animated'}</span></div></span>` : ''}</div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
@@ -4934,11 +4944,10 @@ $('animateLink').onclick = async () => {
 };
 async function useInput(res) {             // an uploaded (or run-fed) file on the server: the picture or the clip
   if (res.image) {
-    // Swapping one picture for another keeps what it was being used for; a new one is animated,
-    // which is what a picture on its own means.
-    const how = stillClip() ? 'paint' : 'animate';
-    setPicHow(how, null, { path: res.path, name: res.name, width: res.width, height: res.height });
-    setStatus(how === 'paint' ? 'picture loaded' : 'picture loaded — give it a length in Layers to paint it instead');
+    // Swapping one picture for another keeps the length it was being used at; a new one gets the
+    // default, so it is a source you can stack over and pulse on from the moment it lands.
+    setPicHow('paint', null, { path: res.path, name: res.name, width: res.width, height: res.height });
+    setStatus(`picture loaded · ${stillSecs()}s — clear the length in Layers to animate it instead`);
     return;
   }
   try { state.image = null; await setClipPath(res.path, res.name); syncMode(); setStatus('clip loaded'); renderControls(); showClip(); }

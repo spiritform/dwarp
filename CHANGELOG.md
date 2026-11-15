@@ -4,6 +4,13 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **A picture arrives with a length.** Eight seconds, so an imported picture is a source you can
+  stack over, pulse on and run a camera across from the moment it lands. Clear the length and it is
+  frame 1 of something the camera carries on, as before — that is now something you ask for rather
+  than what you get by accident. It was the quiet mode: the stack is flattened into that one frame
+  and never again, Source mix does nothing, and a pulse layer sits there keeping a beat that cannot
+  happen. So a beat on a picture with no length now says **"no length — flattened into frame 1"**
+  instead of offering a speed, a swing and a metronome for something that will not move.
 - **A picture with a length can have a camera on it.** A still renders as an image sequence like any
   clip — the stack re-composited over every frame, the transport, the mp4 — but it has no motion in it
   to carry the paint along, which is what Warp means. So on a still the first choice is **Camera**: the
