@@ -952,8 +952,12 @@
   .run span { color: var(--faint); font-size: 10px; }
   /* first load: grey placeholder cells with a slow shimmer until the list arrives */
   .runs.loading { overflow: hidden; pointer-events: none; }
-  .run.ghost .thumb, .run.ghost b, .run.ghost span { background: linear-gradient(90deg, #1b1b20 0%, #26262c 50%, #1b1b20 100%) 0 0 / 300% 100%;
-            animation: ghost 1.4s ease-in-out infinite; }
+  .run.ghost .thumb, .run.ghost b, .run.ghost span { background: #1b1b20; position: relative; overflow: hidden; }
+  .run.ghost .thumb::after, .run.ghost b::after, .run.ghost span::after {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+            background: linear-gradient(90deg, rgba(38,38,44,0) 0%, #2a2a31 50%, rgba(38,38,44,0) 100%);
+            transform: translateX(-100%); animation: ghost 1.5s linear infinite;
+            animation-delay: calc(var(--i, 0) * 70ms); }   /* the sweep crosses the strip, not every cell at once */
   .run.ghost b { height: 9px; width: 78%; border-radius: 3px; margin-top: 7px; }
   .run.ghost span { display: block; height: 7px; width: 52%; border-radius: 3px; margin-top: 5px; }
   /* dropdowns: our own chevron with room to its right; where Chrome allows (customizable select), the open list
@@ -1034,9 +1038,10 @@
   #shapeLib.dropping { box-shadow: inset 0 0 0 2px var(--accent); }
   /* page intro: everything waits hidden until intro() builds it in (anime.js); a timer reveals it regardless */
   body.intro aside, body.intro main, body.intro footer { visibility: hidden; }
-  .run.ghost.idle .thumb { animation: none; background: #17171b; }   /* no runs: still cells, no shimmer */
+  .run.ghost.idle .thumb { background: #17171b; }                    /* no runs: still cells, no shimmer */
+  .run.ghost.idle .thumb::after { display: none; }
   .runs:has(.ghost.idle) { pointer-events: none; }
-  @keyframes ghost { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  @keyframes ghost { to { transform: translateX(100%); } }
 
   .seg.idle { opacity: .45; pointer-events: none; }
   /* Dragging anything droppable -- a file off the desktop or a run off the strip -- lights the
@@ -1527,6 +1532,7 @@
     <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">use frame →</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
+    <a id="gifLink" class="hide" title="Download the run as a looping gif">download gif</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
@@ -1537,7 +1543,7 @@
 
 <footer>
   <div class="label"><span>Runs <em id="runsHint">· loading runs…</em><span class="sel-bar" id="selBar"></span></span></div>
-  <div class="runs loading" id="runs"><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div><div class="run ghost"><div class="thumb"></div><b></b><span></span></div></div>
+  <div class="runs loading" id="runs"><div class="run ghost" style="--i:0"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:1"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:2"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:3"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:4"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:5"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:6"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:7"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:8"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:9"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:10"><div class="thumb"></div><b></b><span></span></div><div class="run ghost" style="--i:11"><div class="thumb"></div><b></b><span></span></div></div>
 </footer>
 
 <script src="/vendor/anime.min.js"></script>
@@ -6379,7 +6385,8 @@ var TOUR = [
      <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
   { at: () => [document.querySelector('footer')], title: 'Runs', text: () =>
     `Every Frame, Preview and Render lands here. Click one to view it; then <b>copy settings</b> puts its settings back in the panel,
-     <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it. The grid icon at the right opens every run on disk.` },
+     <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it and <b>download gif</b> makes a looping gif to paste
+     somewhere. The grid icon at the right opens every run on disk.` },
   { at: () => [document.querySelector('.barbtns')], title: 'Status & help', text: () =>
     `The status opens the renderer log, the GPU meter shows memory in use, <b>?</b> has the full guide (and this tour again),
      <b>⚙</b> sets your model folders. That's it: pick a source and press <b>Frame</b>.` },
@@ -6904,6 +6911,10 @@ async function showRun(runId, { follow = false } = {}) {
   $('mp4Link').title = still ? "Download the run's picture (PNG)" : "Download the run's mp4";
   $('mp4Link').href = still ? img(runId, 'output', frames[0]) : `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
   $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
+  // a gif is the thing you paste into a message, which is what a Preview is for; a one-frame Frame
+  // is a picture and already downloads as one
+  $('gifLink').classList.toggle('hide', still || !!(job && job.run_id === runId && job.state === 'running'));
+  $('gifLink').title = `Download the run as a looping gif — ${frames.length} frames, up to ${GIF_WIDE}px, no sound`;
   $('playBtn').title = runHasSound() ? 'Play the mp4 with its sound (space)' : 'Play frames (space)';
   $('loadRun').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife && !POST_OPTS.cloud?.length));
@@ -7417,6 +7428,29 @@ $('mp4Link').onclick = async e => {
   }
   try { await ensureMp4(id); saveMp4(id); } catch (err) { setStatus('mp4 failed: ' + err.message, 'bad'); }
 };
+var GIF_WIDE = 640;                        // mirrors runs.GIF_WIDE, for what the tooltip promises
+$('gifLink').onclick = async e => {
+  e.preventDefault();
+  if (!viewRun || frames.length < 2) return;
+  const id = viewRun, label = $('gifLink').textContent;
+  try {
+    await ensureMp4(id);                    // the gif is made from the mp4, so there has to be one
+    $('gifLink').textContent = 'making gif…';
+    setStatus('making the gif…', 'live');
+    const blob = await (await api(`/api/runs/${id}/gif?${runQ()}`)).blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = mp4Name(id).replace(/\.mp4$/, '.gif'); a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    // fmtGB rounds to whole MB, and a five-frame gif is smaller than one
+    const size = blob.size >= 1e6 ? `${(blob.size / 1e6).toFixed(1)} MB` : `${Math.round(blob.size / 1e3)} KB`;
+    setStatus(`gif saved · ${size}`, 'done');
+  } catch (err) {
+    setStatus('gif failed: ' + err.message, 'bad');
+  } finally {
+    $('gifLink').textContent = label;
+  }
+};
 // A run dragged off the stage onto the panel becomes the input: one frame (or the Image tab) -> that
 // frame as the picture, otherwise the run's mp4 as the clip.
 var RUN_MIME = 'application/x-dwarp-run';   // var: the stage's dragstart is wired before this line
@@ -7615,6 +7649,9 @@ addEventListener('keydown', e => {
 // ---------------------------------------------------------------- runs strip
 // A run's name as shown. Older runs were labelled "single frame": shown as "frame", like new ones.
 var runLabel = (label, id) => (label || 'run ' + id).replace(/ · single frame$/, ' · frame');
+// How much of the strip is drawn at once, and the generation counter that lets a newer
+// refresh abandon an older background fill. Declared here: refreshRuns reads them.
+var RUNS_FIRST = 12, RUNS_CHUNK = 24, runsFill = 0;
 async function refreshRuns() {
   let res;
   const box = $('runs'), first = box.classList.contains('loading');
@@ -7623,23 +7660,44 @@ async function refreshRuns() {
   runsCache = res.runs;
   if (first) { box.classList.remove('loading'); $('runsHint').textContent = '· ctrl/shift-click to select'; }
   if (!runsCache.length) {                  // nothing yet: the strip keeps its shape, empty cells
-    box.innerHTML = '<div class="run ghost idle"><div class="thumb"></div></div>'.repeat(8);
+    box.innerHTML = '<div class="run ghost idle"><div class="thumb"></div></div>'.repeat(12);
     $('runsHint').textContent = '· none yet — hit Frame or Preview'; return;
   }
   $('runsHint').textContent = '· ctrl/shift-click to select';
-  box.innerHTML = runsCache.map(r => {
-    const when = new Date(r.modified * 1000);
-    const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
-    const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
-    return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''} ${removingIds.includes(r.id) ? 'removing' : ''}" data-id="${r.id}">
-      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="num">#${r.id}</span><span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
-      <b>${runLabel(r.label, r.id)}</b>
-      <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
-  }).join('');
+  // A strip full of cards is a strip full of thumbnail requests, and the ones off the right-hand
+  // edge are not being looked at yet. Draw what fits, then feed in the rest between frames.
+  const gen = ++runsFill;
+  box.innerHTML = runsCache.slice(0, RUNS_FIRST).map(runCard).join('');
   // first load: the real cards rise in one after another where the grey cells were
   if (first && window.anime) anime({ targets: box.querySelectorAll('.run'), opacity: [0, 1], translateX: [-10, 0],
     duration: 520, easing: 'easeOutCubic', delay: anime.stagger(40, { start: 40 }),
     complete: a => a.animatables.forEach(({ target }) => { target.style.transform = ''; target.style.opacity = ''; }) });
+  fillRuns(gen, RUNS_FIRST);
+}
+// One run's card. Read at draw time, so a card appended a moment later still knows what is selected,
+// armed or on screen.
+function runCard(r) {
+  const when = new Date(r.modified * 1000);
+  const live = job && job.run_id === r.id && !['completed', 'cancelled', 'failed'].includes(job.state);
+  const thumb = r.frames ? `<img src="${img(r.id, 'output', r.last_frame, true)}&t=${Math.round(r.modified)}" alt="" loading="lazy">` : '';
+  return `<div class="run ${r.id === armedId ? 'armed' : ''} ${r.id === viewRun ? 'on' : ''} ${selected.has(r.id) ? 'sel' : ''} ${doomedIds.includes(r.id) ? 'doomed' : ''} ${removingIds.includes(r.id) ? 'removing' : ''}" data-id="${r.id}">
+      <div class="thumb">${thumb}${live ? '<span class="badge">● live</span>' : `<span class="num">#${r.id}</span><span class="xq">remove?</span><button class="x" title="${r.id === armedId ? 'confirm: remove from the list (files stay on disk)' : 'remove from the list'}">${r.id === armedId ? '✓' : '✕'}</button>`}</div>
+      <b>${runLabel(r.label, r.id)}</b>
+      <span>${r.frames}f · ${when.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>`;
+}
+// The rest of the strip, a chunk at a time while the page is idle. `gen` is the generation this
+// fill belongs to: a newer refresh has already replaced the strip, so an older one stops here
+// rather than appending its cards to someone else's list.
+function fillRuns(gen, from) {
+  if (gen !== runsFill || from >= runsCache.length) return;
+  const go = () => {
+    if (gen !== runsFill) return;           // the strip has been redrawn since this was queued
+    $('runs').insertAdjacentHTML('beforeend', runsCache.slice(from, from + RUNS_CHUNK).map(runCard).join(''));
+    fillRuns(gen, from + RUNS_CHUNK);
+  };
+  // every chunk waits, the first one included: the point is that the page paints the strip you can
+  // see before it builds the part you cannot
+  window.requestIdleCallback ? requestIdleCallback(go, { timeout: 400 }) : setTimeout(go, 16);
 }
 // ---- selection + delete
 const selected = new Set();

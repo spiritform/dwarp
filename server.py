@@ -694,6 +694,23 @@ def build_app() -> FastAPI:
             raise HTTPException(404, detail="This run has no video yet")
         return FileResponse(path, media_type="video/mp4")
 
+    @app.get("/api/runs/{run_id}/gif")
+    def run_gif(run_id: str, wide: int = 0):
+        """The run as a looping gif, made from its mp4 (which must exist: the page builds it first).
+
+        Built on the way out and kept in the run folder, so asking twice for the same run is a file
+        read. A long render is a big gif and a slow one -- that is the nature of the format, and the
+        page says the size when it lands rather than pretending otherwise.
+        """
+        run_or_404(run_id)
+        if not runs.video_path(run_id):
+            raise HTTPException(404, detail="This run has no mp4 yet to make a gif from")
+        try:
+            path = runs.gif_path(run_id, wide=wide or runs.GIF_WIDE)
+        except (runs.RunNotFound, RuntimeError, OSError) as e:
+            raise HTTPException(500, detail=str(e))
+        return FileResponse(path, media_type="image/gif")
+
     @app.post("/api/runs/{run_id}/video", status_code=202)
     def make_video(run_id: str):
         run_or_404(run_id)

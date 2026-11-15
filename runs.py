@@ -202,6 +202,48 @@ def video_path(run_id: str) -> Path | None:
     return None
 
 
+GIF_WIDE = 640          # the long side a shared gif is drawn at: a gif is a thing people paste
+
+
+def gif_path(run_id: str, *, wide: int = GIF_WIDE) -> Path:
+    """The run as a looping gif, built on demand and kept beside its mp4.
+
+    It is made from video.mp4 rather than from the frames, so every timing decision the assembler
+    already made -- the clip's own rate, a run held on twos or threes, where the trim started, a
+    render stopped half way -- is baked into it and the gif cannot drift from the file you would
+    have downloaded. A gif has no sound, so a run with a soundtrack simply loses it.
+
+    Two passes over the clip: palettegen reads it and chooses 256 colours for the whole thing,
+    paletteuse maps the frames onto them. That is the difference between a gif that looks like the
+    render and one that looks like 1996. The dither is ordered rather than error-diffused because
+    error diffusion re-rolls its noise every frame -- it crawls on screen, and since each frame then
+    differs everywhere it also roughly doubles the file.
+    """
+    src = video_path(run_id)
+    if not src:
+        raise RunNotFound(f"Run {run_id} has no video to make a gif from")
+    wide = max(64, min(1920, int(wide or GIF_WIDE)))
+    target = run_dir(run_id) / f"video_{wide}.gif"
+    if target.is_file() and target.stat().st_mtime >= src.stat().st_mtime:
+        return target                      # still the same mp4 underneath it
+    w = int(probe_field(src, "-select_streams", "v:0", "-show_entries", "stream=width") or 0)
+    h = int(probe_field(src, "-select_streams", "v:0", "-show_entries", "stream=height") or 0)
+    # Fit the long side, and never enlarge: a 384 px run makes a 384 px gif.
+    fit = (f"scale={wide}:-1:flags=lanczos," if w >= h else f"scale=-1:{wide}:flags=lanczos,") \
+        if max(w, h) > wide else ""
+    tmp = target.with_suffix(".tmp.gif")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-filter_complex",
+             f"[0:v]{fit}split[a][b];[a]palettegen[p];[b][p]paletteuse=dither=bayer:bayer_scale=3",
+             "-loop", "0", str(tmp)], check=True)
+        os.replace(tmp, target)
+    except (OSError, subprocess.CalledProcessError) as e:
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(f"ffmpeg could not make a gif: {e}") from e
+    return target
+
+
 # ------------------------------------------------------------------ listing
 def timing(run_id: str) -> dict | None:
     """Where the run's frames sit in its clip: frame n is source frame (frame_start + n) * nth, at the

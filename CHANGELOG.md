@@ -2,6 +2,32 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-15
+
+- **The strip draws what you can see, then the rest.** Every run on disk became a card in one go,
+  each with a thumbnail to fetch — on a folder with a few hundred runs that is a few hundred
+  requests for pictures sitting off the right-hand edge where nobody is looking. Twelve cards are
+  drawn now, which is about a screen of them, and the others are fed in a chunk at a time while the
+  page is idle. Their thumbnails still wait until you scroll to them. Nothing is hidden: the whole
+  strip is there a moment later, and it arrives without the page stopping to build it.
+- **The loading shimmer sweeps the whole cell.** It was a wide gradient slid behind the cell, which
+  meant the light started and finished inside it and every loop snapped back across — the jolt you
+  could see while the runs arrived. The sheen is its own layer now, entering off one edge and
+  leaving by the other, so at both ends of the cycle the cell is simply flat and there is nothing to
+  snap. Each cell starts a little after the one to its left, so the light crosses the strip rather
+  than every cell flashing at once.
+- **download gif, next to download mp4.** A Preview is five frames meant to be looked at and shown to
+  someone, and an mp4 of it is an awkward thing to paste into a message — so any run of more than one
+  frame now also saves as a looping gif. It is made from the run's own mp4 rather than from the
+  frames, so every timing decision the assembler already made is baked into it: the clip's rate, a
+  run held on twos or threes, where the trim started, a render you stopped half way. The long side
+  is fitted to 640 and a smaller run is left at its own size, the palette is chosen from the whole
+  clip rather than frame by frame, and the dither is ordered — error diffusion re-rolls its noise
+  every frame, which crawls on screen and roughly doubles the file. The gif is kept beside the mp4,
+  so asking twice is a file read, and it is made again if the mp4 changes underneath it. A gif
+  carries no sound, and the size is reported when it lands rather than being a surprise. A one-frame
+  Frame still offers download image, which is what it is.
+
 ## 2026-11-14
 
 - **The stack plays live, so the dials stay live while it does.** Playing Source with layers on used
@@ -18,9 +44,9 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   made from underneath, at the right place in it: the run knows which source frame each of its
   frames came from, trim and twos included. The sound is the clock and the picture follows it, so
   they cannot drift apart, and the loop takes the sound round with it. It plays while the render is
-  running, which is most of the point of it — and a render with a stack on it reads a flattened file,
-  which is pictures only, so the sound comes from the clip that was flattened; the run wrote down
-  which one that was. A clip with no soundtrack
+  running, which is most of the point of it — and where a run was made from a flattened plate, as a
+  cloud render is, the plate is pictures only, so the sound comes from the clip that was flattened
+  instead; the run wrote down which one that was. A clip with no soundtrack
   steps the frames as before, and so does a Preview, whose frames are not a continuous stretch of
   anything. Playing the Source tab is no longer muted either.
 - **"copy settings" on an upscale opens the Enhance panel.** An upscale, a smooth and a refine are

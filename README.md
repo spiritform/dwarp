@@ -14,7 +14,7 @@ paint, or paint only the shadows. [More below](#depthdiff-choose-where-it-repain
 One screen: drop a clip, pick a model and a style, write what's in the shot, hit **Frame** or **Preview**.
 
 Everything runs on your own machine, with one opt-in exception: the **Comfy** mode, which runs models far too
-big for a desktop card and renders on Comfy Cloud instead. [More below](#h3-a-clip-with-sound-in-the-cloud).
+big for a desktop card and renders on Comfy Cloud instead. [More below](#h3--pika-flex--a-clip-with-sound).
 
 ![DWARP: the panel on the left, the stage with a run, the runs strip below](docs/screenshot.png)
 
@@ -77,6 +77,86 @@ the same differential diffusion underneath:
 
 **Shape library**: the *library* link on the Shape card opens ready-made black / white masks to try, drawn by DWARP itself (no downloads): spirals for the classic QR Code Monster "spiral illusion", rings, sunburst, checker, stripes, waves, halftone and simple shapes, plus seamless loops (turning spirals, rings moving out, a tunnel, shuffling QR-like blocks). Your own masks go in *Yours* (`shapes/yours`).
 
+## Layers: a stack of sources
+
+The clip is the bottom of a stack. **Layers** — its own card below Style, in every mode that paints from a source —
+puts anything else over it, and what gets rendered is the composite rather than the clip on its own. The stack
+stands in for the source at its own base's size and length, so trim, range, size and fps behave exactly as they did and
+the only difference is what the frames have in them: in the painting modes each frame is composited as it is painted,
+and the cloud path flattens the whole stack to one clip and uploads that.
+
+Each layer is a card with a 16:9 thumbnail and its own controls:
+
+- **What's in it** — another video, a run dragged off the strip, a picture, monochrome **static**, a black-and-white
+  **matte** pattern drawn here at this render's size and length, or a **pulse** (below). Drag a card by its header to
+  reorder; an eye hides it (hidden means hidden everywhere, and a stack with every layer off renders the clip with no
+  flatten at all) and a ✕ removes it.
+- **How it's laid down** — a blend mode, an **opacity** and a **blur**. The blend set is the eleven modes a browser
+  canvas and ffmpeg both have and agree on, because a mode the preview cannot show is a mode that would make the
+  preview lie. Blur is stored as a share of the frame rather than a number of pixels, so what you judge in a 480px
+  preview is what the flatten makes at 1440.
+- **Luma matte** — mark a black-and-white layer as a matte and it is not drawn: its brightness becomes the alpha of the
+  layer below it, with **Black / Mid / White** levels to shape an arbitrary grey clip into a usable matte and a
+  **feather** applied after them. The matte sits in the stack where you can see it, which is the After Effects rule and
+  the right one.
+
+The source is a layer too, with its own opacity and blur. Nothing sits under it, so turning its opacity down scales the
+channels instead of revealing anything — a fade to black, which is the useful thing about it.
+
+**It previews on the stage, live**, the way DepthDiff's mask does. The Source tab shows the stack composited in the
+browser rather than a file from the server, every layer playing on one clock, so dragging an opacity, a blur, a blend
+mode or a matte's levels moves the picture under your hand — while it plays, not only paused.
+
+**And it keeps moving while the render runs.** The painting modes do not flatten up front: every layer is kept as
+frames and the one being painted is composited at the moment it is painted, which costs about 11 ms against a couple of
+seconds of diffusion. So the stack arrives on the same channel as Live prompt and Live camera — drag an opacity at
+frame 40 and frames 41 onward are composited differently, recorded in `job.json` as a live edit like any other. Layers
+cannot be added or removed mid-render, since the frames for them were never extracted; the settings are what moves.
+(The cloud path still pre-flattens, because there the plate is the thing that gets uploaded.)
+
+### Pulse: a layer that moves on a beat
+
+**add pulse** draws a layer at the render's size and length whose content follows a beat. Five kinds: **Burst** (static
+inside a ring opening out of the middle), **Grain** (static thickening on the hit), **Bloom** (a soft disc of light),
+**Flash** (the flat frame) and **Rings** (one launched on each hit, travelling outward).
+
+The beat comes from one of three places, and the tabs name what sets the speed rather than where a sound comes from:
+
+- **Clip** — the soundtrack of the video you are rendering, so the layer is paced by what it is going over. The default
+  when the clip has sound.
+- **Pulse** — a BPM you type, exact and repeatable and the same number you will cut this to later. A **metronome**
+  beside the box clicks at that speed, reading the number as you drag it, so you can judge the cue without rendering
+  anything.
+- **Import** — a track you load.
+
+All three end up as the same signal — one number per frame, 0 between hits and 1 on one — so the patterns cannot tell
+them apart. After that it is an ordinary layer: the blend mode decides how a hit reads (screen to bloom, multiply to
+stomp), **swing** says how far a hit carries it, and under Warp the paint from one hit is carried into the frames after
+it. Every kind rests at black or mid grey and a pulsing layer rests at nothing, so no blend mode can touch the picture
+between hits and a pulse layer costs the render nothing while it waits. **Any layer can take a beat** — the metronome
+in its header — so a video or a picture can arrive on the music, and **◐** turns the beat over: full at rest, punched
+out on the hit, which is multiply's neutral where the light one is screen's.
+
+## Sound
+
+DWARP paints silent PNGs, so sound is something it carries rather than makes — with one exception, [H3](#h3--pika-flex--a-clip-with-sound), which generates its own soundtrack in the same pass as the picture.
+
+- **A render keeps the clip's sound.** Once the mp4 is assembled the clip's own audio goes back on it — the exact span
+  the run covers, since frame *n* is source frame (frame_start + n) × nth, cut to what was actually rendered, so a
+  render you stopped half way gets the half you have pictures for. An upscale and a smooth carry it across, and the
+  downloaded file drops into an edit with its audio already in place. Nothing to take — a still, a prompt-only render,
+  a silent clip, or a Refine, which reads the run's own frames rather than a clip — and it stays silent.
+- **The frames play with that sound under them.** The stage shows PNGs, not the mp4: while a render is still going
+  there is no mp4 yet, and the Depth, Edge, Diff and Split views are frames whatever happens. Press play and it plays
+  the clip the run was made from underneath, at the right place in it — the run knows which source frame each of its
+  frames came from, trim and twos included. The sound is the clock and the picture follows it, so they cannot drift,
+  and it plays **while the render is running**, which is most of the point of it. Where a run was made from a
+  flattened plate — the cloud path uploads one — the plate is pictures only, so the sound comes from the clip that was
+  flattened instead; the run wrote down which one that was. A clip with no soundtrack steps the frames as before, and
+  so does a Preview, whose frames are not a continuous stretch of anything.
+- **The Source tab is heard too**, stack and all: the layer at the bottom is the one you hear while the composite plays.
+- **A pulse layer can be paced by it** — the clip's soundtrack, or a track you import. [Above](#pulse-a-layer-that-moves-on-a-beat).
+
 ## Comfy: the one mode that renders somewhere else
 
 Every other mode paints on your own card. The **Comfy** tab sends the job to
@@ -138,11 +218,15 @@ empty field. A render needs an active Comfy subscription.
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
+- **[Layers](#layers-a-stack-of-sources)**: a stack of sources composited into the frame the model paints — another video, a picture, static, a drawn matte — with blend modes, opacity, blur and luma mattes with their own levels. It previews live in the browser and keeps following the dials while the render runs
+- **[Pulse](#pulse-a-layer-that-moves-on-a-beat)**: a layer that moves on a beat — static, light or rings, paced by the clip's own soundtrack, by a BPM you type (with a metronome) or by a track you load. Any layer can take the beat
+- **[Sound](#sound)**: a render comes out with the clip's audio on it, and the frames on the stage play with that audio under them — in sync, and while the render is still going
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
 - **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd); **Render** does the trimmed clip. All three render at the chosen Size, so a locked seed starts each on the same picture. Every run fills the stage at the same size
-- Source playback, live split view (source / output), a scrubber with clip timecode, live log
-- **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **copy settings** puts a run's settings back in the panel
+- Source playback with sound, live split view (source / output), a scrubber with clip timecode, live log. While a render runs the playhead stops at the frame being generated — wherever that frame sits in the clip — and moves on as it does
+- **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **copy settings** puts a run's settings back in the panel — and on an upscale, a smooth or a refine, which are not made by the left panel, it opens the Enhance panel with the settings that run was made with, pointed at the run underneath it
+- **download mp4** saves the run, **download gif** saves it as a looping gif to paste somewhere — any run of more than one frame, fitted to 640px, built from the mp4 so the timing is the same
 - **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first)
 - A built-in guide: the **?** button explains every control
 - **[Comfy](#comfy-the-one-mode-that-renders-somewhere-else)** (optional, cloud): runs a ComfyUI graph on Comfy Cloud, picked from a Workflow list you can add to. It ships with MiniMax-H3 / Pika H3 Flex: a 5–15 s clip **with sound** from your footage and reference pictures. Needs an API key; everything else in DWARP stays on your own GPU
