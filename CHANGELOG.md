@@ -4,6 +4,25 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **The stack plays live, so the dials stay live while it does.** Playing Source with layers on used
+  to show the flattened file, which has every opacity, blend and blur baked into it — move a pulse's
+  opacity while it played and nothing happened until ffmpeg had been round the whole clip again, and
+  the repaint when it landed stopped the playback. Now each layer plays in the browser on a shared
+  clock and the stack is composited every frame, by the same code that draws the still. Drag an
+  opacity, a blur, a blend mode or a matte's levels and the picture changes under your hand, while it
+  runs. The clip underneath is heard as it plays, a layer redrawn mid-play joins in on the next
+  frame, and pausing hands back to the exact frame it stopped on.
+- **The frames play with the clip's sound under them.** The stage shows PNGs, not the mp4 — while a
+  render is still going there is no mp4 yet, and the Depth, Edge, Diff and Split views are frames
+  whatever happens — so pressing play gave you a silent sequence. It now plays the clip the run was
+  made from underneath, at the right place in it: the run knows which source frame each of its
+  frames came from, trim and twos included. The sound is the clock and the picture follows it, so
+  they cannot drift apart, and the loop takes the sound round with it. It plays while the render is
+  running, which is most of the point of it — and a render with a stack on it reads a flattened file,
+  which is pictures only, so the sound comes from the clip that was flattened; the run wrote down
+  which one that was. A clip with no soundtrack
+  steps the frames as before, and so does a Preview, whose frames are not a continuous stretch of
+  anything. Playing the Source tab is no longer muted either.
 - **"copy settings" on an upscale opens the Enhance panel.** An upscale, a smooth and a refine are
   not made by the left panel, so copying their settings into it only ever got you back to the run
   underneath. Those runs now keep the Enhance settings they were made with — upscaler and scale,

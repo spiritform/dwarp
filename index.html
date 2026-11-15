@@ -723,6 +723,7 @@
            background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   .frame img { display: block; -webkit-user-drag: none; }
   .frame video { position: absolute; top: 0; left: 0; object-fit: fill; background: #000; }
+  .frame canvas.live { position: absolute; top: 0; left: 0; background: #000; }  /* the stack, playing */
   .frame { user-select: none; -webkit-user-select: none; }   /* dragging the split must not select / drag the images */
   .frame .out { max-width: 100%; max-height: calc(100vh - 260px); }
   /* Overlays take the output's width and their own aspect, pinned top-left — so they line up with
@@ -3669,6 +3670,9 @@ function stageSource() {                   // not the older toSource(): that one
 function sourcePath() { return PLATE ? PLATE.path : (state.clip ? state.clip.path : ''); }
 function repaintSource() {
   if (rendering()) return;        // showClip() drops viewRun, which would take the Output tab with it
+  // The stack is playing in the browser: the flatten that just landed is for the render, and
+  // showClip would stop the playback to show a file we are not watching.
+  if (playing === 'live') return paintPlate();
   if (picMode()) paintFrame();    // Image mode: the stage is the picture, and now it is the plate
   if (typeof showClip === 'function' && clipMode()) showClip();
   if (typeof paintPlate === 'function') paintPlate();
@@ -3681,7 +3685,13 @@ function plateLive() {
   return !!$('cvPlate') && clipMode() && view === 'src' && layerJob().length > 0
          && playing !== 'clip';
 }
+// An <img> while the stack is still, a <video> while it is playing: both draw, and both measure,
+// so everything below takes either.
+const srcW = x => x.naturalWidth || x.videoWidth || x.width || 0;
+const srcH = x => x.naturalHeight || x.videoHeight || x.height || 0;
 function layerFrame(L, n) {
+  // Playing: the layer's own file is decoding in a <video> of its own, and that is this frame.
+  if (liveDraw) { const v = liveVids[L.path]; if (v && v.readyState >= 2) return v; }
   const len = plateLens[L.path] || 0;
   const at = len ? ((n % len) + len) % len : 0;      // short layers loop, as the flatten loops them
   const url = `/api/video/thumbnail?${qs({ path: L.path, frame: at })}`;
@@ -3705,7 +3715,7 @@ function layerFrame(L, n) {
 // another picture -- stretching it to the frame distorts it, and letterboxing it would hand the
 // model black bars as content. Overflow goes off the edges instead.
 function coverDraw(ctx, img, w, h) {
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const iw = srcW(img), ih = srcH(img);
   if (!iw || !ih) return;
   const k = Math.max(w / iw, h / ih), sw = w / k, sh = h / k;
   ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
@@ -3755,8 +3765,9 @@ const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
 // touches none of those, so the per-pixel pass below runs once rather than once per pointer event.
 var matteCache = new Map();
 function matteAlpha(M, img, w, h) {
-  const ck = [img.src, M.black, M.mid, M.white, M.invert, M.blur, w, h].join('|');
+  const ck = [img.src, img.currentTime || 0, M.black, M.mid, M.white, M.invert, M.blur, w, h].join('|');
   if (matteCache.has(ck)) return matteCache.get(ck);
+  if (matteCache.size > 48) matteCache.clear();      // a playing matte is a new key every frame
   const t = document.createElement('canvas'); t.width = w; t.height = h;
   const x = t.getContext('2d', { willReadFrequently: true });
   coverDraw(x, img, w, h);
@@ -3817,7 +3828,8 @@ function paintPlate(soft) {
   if (pairs.length) pairs[0][1] = null;              // nothing under the base for a matte to reveal
   const base = layerFrame(pairs[0][0], clipFrame);
   if (!base) return;
-  const cv = $('cvPlate'), w = base.naturalWidth, h = base.naturalHeight;
+  const cv = $('cvPlate'), w = srcW(base), h = srcH(base);
+  if (!w || !h) return;
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const c = cv.getContext('2d');
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
@@ -3847,6 +3859,9 @@ function paintPlate(soft) {
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
   // Into the stage's own image, so everything that knows how to show a frame -- the fit, the save
   // button, dragging it back to the panel -- keeps working without knowing a canvas was involved.
+  // Except while it is playing: encoding a JPEG and decoding it again, every frame, is not a frame
+  // rate. Then the canvas itself is on the stage, and this hands back to the image on the way out.
+  if (playing === 'live') return;
   $('imgOut').src = cv.toDataURL('image/jpeg', 0.92);
 }
 function addLayer(res, opts) {
@@ -6862,7 +6877,7 @@ async function showRun(runId, { follow = false } = {}) {
   const initL = desc.layers.find(l => l.id === 'init');
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
-  if (playing === 'clip' || (playing === 'out' && switched)) stopPlay();   // a run replaces what was on the stage
+  if (playing === 'clip' || playing === 'live' || ((playing === 'out' || playing === 'seq') && switched)) stopPlay();   // a run replaces what was on the stage
   viewRun = runId; frames = newFrames; runTiming = desc.timing;
   if (singleShape() != null) shapeFrame = runTiming.shape_start;
   // A picked run opens on its result -- and so does one being followed, however long ago the stage
@@ -6916,6 +6931,7 @@ function fitOut() {
   const k = Math.min(w / im.naturalWidth, h / im.naturalHeight);
   if (!(k > 0)) return;
   im.style.width = Math.floor(im.naturalWidth * k) + 'px'; im.style.height = Math.floor(im.naturalHeight * k) + 'px';
+  if (playing === 'live') showPlateCv(true);     // the canvas sits exactly over it, so it resizes with it
 }
 new ResizeObserver(() => fitOut()).observe($('stage'));   // window, scrubber, error panel: anything that resizes it
 function ensureFrameEl(hasInit) {
@@ -7092,6 +7108,8 @@ function stopPlay() {
   playing = null; $('playBtn').textContent = '▶';    // cleared first: what gets painted on the way
   if (was === 'clip') stopClip();                        // out depends on nothing still playing
   else if (was === 'out') stopOut();
+  else if (was === 'seq') stopSeq();
+  else if (was === 'live') stopLive();
   else clearInterval(was);
 }
 function makeStageVideo() {                // one <video> over the still, shared by the clip and the run
@@ -7133,12 +7151,163 @@ function stopOut() {
   $('scrubRange').value = frameIdx;
   paintFrame();
 }
+// ---------------------------------------------------------------- sound under the frames
+// The stage is PNGs, not the mp4: while a render is still going there is no mp4 at all, and the
+// Depth / Edge / Diff / Split views are frames whatever happens. So the sound comes from the clip the
+// run was made from, played underneath at the right offset -- the run knows where it sits in its clip
+// (output frame n is source frame (frame_start + n) * nth) and that is a time, not just a number.
+// Once it is playing the audio is the clock and the picture follows it, the way playOut follows the
+// mp4: a setInterval and a soundtrack drift apart inside a few seconds, and a sequence that drifts
+// off its own music is worse than a silent one.
+var SND = { key: '', ask: null };              // one probe per run, remembered
+const hasSnd = path => api(`/api/video/probe?${qs({ path: path })}`).then(pr => pr.audio ? path : null).catch(() => null);
+function clipSound(run) {
+  const t = runTiming, path = t && t.video;
+  if (!path || !t.fps || !run) return Promise.resolve(null);
+  const key = run + '|' + path;
+  if (SND.key !== key) {
+    SND.key = key;
+    // What the frames were made from first -- which is the clip itself when nothing was over it.
+    // With a stack on it is the flatten, and a flatten is pictures only: ffmpeg maps the composed
+    // video out and nothing else, so the music is not in the file the render read. The clip it was
+    // flattened from is the one carrying it, and the run wrote down which that was.
+    SND.ask = hasSnd(path).then(found => found || api(`/api/runs/${run}/ui`).then(ui => {
+      const from = ui.clip && !ui.clip.image && ui.clip.path;
+      return from && from !== path ? hasSnd(from) : null;
+    })).catch(() => null);
+  }
+  return SND.ask;
+}
+const outSecs = n => (runTiming.frame_start + n) * runTiming.nth / runTiming.fps;   // clip time of output frame n
+// ... and back: the last frame whose moment has come. Not an index -- a Preview's frames are its
+// own numbering, and what the clock knows about is the run's frames.
+function frameAt(secs) {
+  const n = Math.round(secs * runTiming.fps / runTiming.nth) - runTiming.frame_start;
+  let i = 0;
+  while (i + 1 < frames.length && frames[i + 1] <= n) i++;
+  return i;
+}
+// Frames with no gaps in them. A Preview is every other frame of the clip: played against the clock
+// each of its frames would hold for its real span, which is honest but is not what Preview is for.
+const seqContig = () => frames.length > 1 && frames[frames.length - 1] - frames[0] + 1 === frames.length;
+function stepFrames() {                        // the plain sequence: one frame per tick, no sound
+  const fps = runsCache.find(r => r.id === viewRun)?.fps || 24;   // the run's own rate, same as its mp4
+  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / fps);
+}
+function playSeq() {
+  stepFrames();                                // start stepping at once: the probe is a round trip
+  const step = playing, run = viewRun;
+  clipSound(run).then(path => {
+    if (!path || playing !== step || viewRun !== run || !seqContig()) return;
+    const a = $('sndOut') || document.body.appendChild(Object.assign(new Audio(), { id: 'sndOut' }));
+    const url = `/api/video/file?${qs({ path: path })}`;
+    if (a.dataset.src !== url) { a.src = url; a.dataset.src = url; }
+    a.currentTime = outSecs(frames[frameIdx]);
+    const follow = () => {
+      if (playing !== 'seq') return;
+      // the frames loop, so the sound loops with them -- and the end moves as a render adds to it
+      if (a.currentTime >= outSecs(frames[frames.length - 1] + 1)) a.currentTime = outSecs(frames[0]);
+      const i = frameAt(a.currentTime);
+      if (i !== frameIdx) { frameIdx = i; $('scrubRange').value = i; paintFrame(); }
+      requestAnimationFrame(follow);
+    };
+    clearInterval(step); playing = 'seq';
+    a.play().then(follow).catch(() => { playing = null; stepFrames(); });   // no sound: step them instead
+  });
+}
+function stopSeq() { $('sndOut')?.pause(); }
+// ---------------------------------------------------------------- the stack, played live
+// Playing the Source with layers on shows the flattened file, and every dial is baked into that: move
+// one while it plays and nothing happens until ffmpeg has been round the whole clip again -- and the
+// repaint when it lands stops the playback. So the stack is played here instead: one <video> per
+// layer, on a shared clock, composited by the same paintPlate that draws the still. A pulse's opacity
+// then lands on the next frame drawn, which is the next frame you see.
+var liveVids = {}, liveDraw = false;
+const LIVE_VIDEO = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;    // a gif has no <video> in it; it stays a picture
+const liveAll = () => Object.values(liveVids).filter(Boolean);
+function liveVid(path) {
+  if (!LIVE_VIDEO.test(path || '')) return null;
+  let v = liveVids[path];
+  if (!v) {
+    v = liveVids[path] = document.createElement('video');
+    v.src = `/api/video/file?${qs({ path: path })}`;
+    v.loop = true; v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.style.cssText = 'position:absolute;left:-9999px;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.appendChild(v);          // a detached video decodes unreliably; parked off-screen
+  }
+  return v;
+}
+function showPlateCv(on) {
+  const cv = $('cvPlate'), im = $('imgOut');
+  if (!cv) return;
+  cv.classList.toggle('live', !!on);
+  cv.style.display = on ? 'block' : 'none';
+  if (on) { cv.style.width = (im?.offsetWidth || cv.width) + 'px'; cv.style.height = (im?.offsetHeight || cv.height) + 'px'; }
+}
+function playLive() {
+  const stack = layerJob();
+  if (!stack.length) return playClip();
+  const fps = state.clip?.source.fps || 24, n = state.clip?.source.frames || 1;
+  // layerJob puts the clip last -- it is the bottom of the stack. If it is a video it is also the
+  // clock, and the one thing that gets to be heard; a picture underneath leaves the clock to the page.
+  const master = liveVid(stack[stack.length - 1].path);
+  const want = new Set(stack.map(L => L.path));    // a layer dropped (or a pulse redrawn) leaves a
+  for (const [path, v] of Object.entries(liveVids)) {    // decoder behind: let it go
+    if (want.has(path)) continue;
+    v.pause(); v.remove(); delete liveVids[path];
+  }
+  const vids = stack.map(L => liveVid(L.path)).filter(Boolean);
+  const from = clipFrame / fps, t0 = performance.now();
+  const secs = () => master && !master.paused && master.readyState >= 2
+    ? master.currentTime : (from + (performance.now() - t0) / 1000) % (n / fps);
+  // The stack as it stands, every frame: a pulse redrawn while it plays is a new file, and it joins
+  // in on the next one. The others are nudged back only when they have drifted -- a seek every frame
+  // is a stutter every frame.
+  const sync = at => {
+    for (const L of layerJob()) {
+      const v = liveVid(L.path);
+      if (!v || v === master || v.readyState < 2) continue;
+      if (v.paused) { v.muted = true; v.play().catch(() => {}); }
+      const d = v.duration || 0, to = d ? at % d : 0;
+      if (d && Math.abs(v.currentTime - to) > 0.2) v.currentTime = to;
+    }
+  };
+  const tick = () => {
+    if (playing !== 'live') return;
+    const at = secs();
+    sync(at);
+    const f = Math.max(0, Math.min(n - 1, Math.floor(at * fps))), edge = clipEdge();
+    if (edge != null && f >= edge) {       // caught up with the render, as the clip playback does
+      clipFrame = edge; $('scrubRange').value = edge; scrubReadout(clipSec(edge), edge, n);
+      return stopPlay();
+    }
+    if (f !== clipFrame) { clipFrame = f; $('scrubRange').value = f; scrubReadout(clipSec(f), f, n); }
+    paintPlate(true);
+    requestAnimationFrame(tick);
+  };
+  liveDraw = true; playing = 'live'; $('playBtn').textContent = '❚❚';
+  showPlateCv(true);
+  for (const v of vids) {
+    v.muted = v !== master; if (v === master) v.volume = 1;
+    const d = v.duration || 0;
+    try { v.currentTime = d ? from % d : 0; } catch {}
+  }
+  if (vids.length) Promise.all(vids.map(v => v.play().catch(() => {}))).then(tick);
+  else tick();                             // nothing but pictures: the page's own clock, still live
+}
+function stopLive() {
+  for (const v of liveAll()) v.pause();
+  // playing was cleared before this ran, so the draw goes back into the stage's image -- the exact
+  // frame it stopped on, out of the paused videos, rather than a thumbnail fetched for it after.
+  paintPlate();
+  liveDraw = false; showPlateCv(false);
+}
 // Clip view plays the source file itself in a <video> over the frame (stills come from ffmpeg one
 // at a time, too slow for playback); pausing hands back to the frame-exact still at that spot.
 function playClip() {
   let v = $('vidSrc');
   if (!v) v = makeStageVideo();
-  v.muted = true;
+  v.muted = false; v.volume = 1;           // it is the clip's own file: play what is on it
   const fps = state.clip.source.fps || 24, n = state.clip.source.frames;
   const url = `/api/video/file?${qs({ path: sourcePath() })}`;
   if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
@@ -7180,20 +7349,21 @@ function togglePlay() {
                           1000 / Math.min(state.shape.fps || 24, 12));
     return;
   }
-  if (clipMode()) { if (view === 'src') playClip(); return; }   // Diff is drawn per frame: scrub it
+  // Diff is drawn per frame: scrub it. With a stack on, Source plays the stack itself (playLive),
+  // so the dials stay live while it runs; without one it is the clip's own file.
+  if (clipMode()) { if (view === 'src') plateLive() ? playLive() : playClip(); return; }
   // A one-frame run has nothing to run through, and the transport under it is the clip's anyway
   // — scrubbing it drops back to Source. So does pressing play: what moves here is the source,
   // the still with the stack over it, and the button used to latch on a loop of one frame.
   if (oneFrameRun()) {
     if (stillClip() && !PLATE) return;     // a picture with nothing over it does not move
-    toSource(); return playClip();
+    toSource(); return plateLive() ? playLive() : playClip();
   }
   if (frames.length < 2) return;           // nothing to play, so nothing to stop either
   if (view === 'out' && runHasSound()) return playOut();        // H3: play the file, sound and all
   frames.forEach(n => { new Image().src = img(viewRun, 'output', n); });   // warm the cache
   $('playBtn').textContent = '❚❚';
-  const fps = runsCache.find(r => r.id === viewRun)?.fps || 24;    // the run's own rate, same as its mp4
-  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / fps);
+  playSeq();                               // the frames, with the clip's sound under them if it has any
 }
 $('playBtn').onclick = togglePlay;
 // Someone typing owns the keyboard: space is a space, and the arrows move the caret. Every field
