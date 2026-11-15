@@ -1012,7 +1012,8 @@ def build_app() -> FastAPI:
         body = await request.json()
         try:
             return await asyncio.to_thread(
-                pulse.clip, INPUTS / "pulse", kind=str(body.get("kind") or "burst"),
+                pulse.clip, INPUTS / "pulse", invert=bool(body.get("invert")),
+                kind=str(body.get("kind") or "burst"),
                 width=max(16, min(4096, int(body.get("width", 768)))),
                 height=max(16, min(4096, int(body.get("height", 768)))),
                 frames=max(2, min(4096, int(body.get("frames", 124)))),

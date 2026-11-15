@@ -189,7 +189,7 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
 
 def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int = 768,
          frames: int = 124, fps: float = 24.0, env: list | None = None, amount: float = 1.0,
-         seed: int = 0, **sound) -> dict:
+         seed: int = 0, invert: bool = False, **sound) -> dict:
     """One pulse layer, written under a name that says what is in it.
 
     The envelope can be handed in -- the panel has already drawn it for you to look at -- or asked
@@ -206,7 +206,7 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
     signal = [float(v) for v in signal[:frames]] + [0.0] * max(0, frames - len(signal))
 
     sig = hashlib.sha1(json.dumps([round(v, 3) for v in signal]).encode()).hexdigest()[:8]
-    key = f"{p['id']}|{width}x{height}|{frames}|{fps:.4f}|{amount:.3f}|{int(seed)}|{sig}|{DRAW_VERSION}"
+    key = f"{p['id']}|{width}x{height}|{frames}|{fps:.4f}|{amount:.3f}|{int(seed)}|{sig}|{int(invert)}|{DRAW_VERSION}"
     out = dest_dir / f"pulse-{p['id']}-{hashlib.sha1(key.encode()).hexdigest()[:6]}.mp4"
     if not (out.is_file() and out.stat().st_size):
         dw, dh = _draw_size(width, height)
@@ -221,6 +221,12 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
         try:
             for i in range(frames):
                 g = _frame(p["id"], signal[i], dw, dh, amount, rng, carry)
+                # Upside down: what was light at the hit is dark, and what was nothing at rest is
+                # everything. Since a pattern drawn on black is its own alpha, inverting it inverts
+                # that too -- the layer is fully there between hits and is punched out on them. The
+                # neutral blend turns over with it: screen for the light one, multiply for this.
+                if invert:
+                    g = 1.0 - g
                 pipe.stdin.write((np.clip(g, 0.0, 1.0) * 255.0).astype(np.uint8).tobytes())
         finally:
             pipe.stdin.close()
@@ -230,7 +236,8 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
             out.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg could not write the pulse: {err.strip()[:200] or 'no output'}")
     return {"path": str(out), "name": out.name, "pattern": p["id"], "label": p["label"],
-            "base": p["base"], "width": width, "height": height, "frames": frames,
+            "base": ("white" if invert else p["base"]), "invert": bool(invert),
+            "width": width, "height": height, "frames": frames,
             "fps": round(fps, 3), "amount": round(amount, 3), "env": [round(v, 3) for v in signal]}
 
 

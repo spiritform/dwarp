@@ -82,6 +82,10 @@ class RenderJob:
     t2v_frames: int = 0
     init_image: str = ""                 # Image -> Video: frame 1 is this picture repainted at `style`, not
                                          # the prompt alone; ControlNet / DepthDiff read each frame's start
+    camera: bool = False                 # video -> video with the camera in place of the flow: a still source
+                                         # has no motion to follow, so what carries the paint forward is the
+                                         # move below. The source frames still arrive one per frame, so the
+                                         # stack is re-composited over every one of them.
     cam_zoom: float = 1.01               # scale per frame (>1 pushes in)
     cam_rotate: float = 0.0              # degrees per frame
     cam_x: float = 0.0                   # pan per frame, share of the width (+ = the image drifts right)
@@ -92,6 +96,10 @@ class RenderJob:
     cam_pitch: float = 0.0               # 3D: degrees per frame it tilts (+ = up)
     hold: int = 1                        # mp4: show each rendered frame this many times (on twos: nth 2, hold 2 —
                                          # 12 drawings a second, played at the clip's 24 fps)
+    frame_lock: float = -1.0             # Frame Lock as the share it is in the panel (0 = later frames repaint at
+                                         # the full Denoise, 1 = they only follow). style_next below is the same
+                                         # thing as an absolute, and cannot be read back when Denoise starts at 0
+                                         # -- a ramp from nothing into the style, which is how a transition begins.
     style: float = 0.75                  # img2img strength on the first frame
     style_next: float = -1               # strength on later frames; -1 = 0.65 * style. Lower keeps
                                          # more of the warped previous frame (less boiling)
@@ -1063,7 +1071,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         (out / "control" / c.kind).mkdir(parents=True, exist_ok=True)
     if job.diff_source != "off":
         (out / "control" / "diff").mkdir(parents=True, exist_ok=True)
-    if job.t2v_frames and job.cam_3d:           # the depth each 3D camera move used
+    if (job.t2v_frames or job.camera) and job.cam_3d:   # the depth each 3D camera move used
         (out / "control" / "depth").mkdir(parents=True, exist_ok=True)
     (out / "job.json").write_text(json.dumps(asdict(job), indent=2), encoding="utf-8")
 
@@ -1153,7 +1161,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
     # Denoise can climb across the clip (job.style_end): the model keeps more of the source at
     # the start and invents more by the end. Frame Lock is a share of Denoise, so it rides the
     # same ratio rather than staying pinned to where it was at frame 0.
-    lock_ratio = (job.style_next / job.style) if job.style_next >= 0 and job.style > 0 else None
+    lock_ratio = ((1 - job.frame_lock) if 0 <= job.frame_lock <= 1
+                  else (job.style_next / job.style) if job.style_next >= 0 and job.style > 0 else None)
 
     def denoise_at(n: int, count: int) -> float:
         if job.style_end < 0 or count < 2:
@@ -1286,6 +1295,23 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         trust = False                           # job.diff: untrusted pixels get full style
         if prev_out is None or job.fresh or t2v:   # fresh / t2v: every frame starts from its own start
             init = src
+        elif job.camera:
+            # A still has no motion to follow, so what carries the paint forward is the camera: the
+            # previous painted frame moved through space, with this frame's source -- the stack,
+            # re-composited -- mixed back into it at Source mix. The overlays therefore land on the
+            # screen each frame rather than being dragged along by the move, which is what you want
+            # from a pulse over a picture; the paint is the thing that travels.
+            if job.cam_3d:
+                prev_np = (prev_out[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                dmap = ann("depth", prev_np).convert("L")
+                dmap.save(out / "control" / "depth" / f"{i:06d}.jpg", quality=90)
+                disp = torch.from_numpy(np.asarray(dmap, dtype=np.float32) / 255).to(device)[None, None]
+                moved = camera_move_3d(prev_out, gaussian_blur(disp, 2), job)   # soft steps, fewer tears
+            else:
+                moved = camera_move(prev_out, job)
+            init = torch.lerp(src, moved, job.flow_blend)
+            if i % 10 == 1:                     # what the camera actually handed the model, now and then
+                to_image(init).save(out / "debug" / f"init_{i:06d}.png")
         else:
             fb = flow(src, prev_src)            # current -> previous
             ff = flow(prev_src, src)            # previous -> current
@@ -1359,10 +1385,16 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if len(keys) > 1 and cond != last_cond and not cond.endswith("%"):
                 log(f"frame {i + 1}: {cond}")
             last_cond = cond
+        # The first frame, and only it, may be left alone. A ramp that starts at 0 is a transition
+        # that opens on the picture you loaded, and one step of denoise is enough to make it not
+        # quite that picture. Later frames always get their step: under a camera a frame nothing
+        # repaints is a frame resampled once more, and a run of those is a radial blur, not a still.
+        floor = 1.001 / job.steps
+        skip = i == 0 and not blank and grow is None and style_now < floor
         strength = (1.0 if blank else   # Nudge: the shape shows through
-                    max(grow, 1.001 / job.steps) if grow is not None else
+                    max(grow, floor) if grow is not None else
                     # at least one step: diffusers refuses strength * steps < 1 (Denoise near 0 = the source back)
-                    max(style_now if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, 1.001 / job.steps))
+                    max(style_now if i == 0 or trust or job.fresh else t2v_next if t2v else style_next, floor))
         strength = min(strength, 1.0)       # float32 maths (a mask's peak) can land at 1.0000001: diffusers refuses > 1
         # ControlNet start/end are fractions of the run's steps. A differential run is longer (full
         # style), so rescale them to switch at the same noise levels the trusted pixels saw before.
@@ -1397,7 +1429,10 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 return to_tensor(np.asarray(pipe(**kw).images[0]), device)
 
         H, W = init.shape[2:]
-        if job.tile and max(H, W) > job.tile:
+        if skip:
+            res = init                          # frame 1 at a Denoise of nothing: the source, as it is
+            log("frame 1 left as it is: denoise under one step")
+        elif job.tile and max(H, W) > job.tile:
             # Tiled: each tile denoised on its own at a size SD knows, blended back with feathered seams.
             # Every tile starts from the same init, so the warp's coherence carries through each one.
             acc, wsum = torch.zeros_like(init), torch.zeros_like(init[:, :1])

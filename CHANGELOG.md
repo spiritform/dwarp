@@ -4,6 +4,32 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-14
 
+- **A picture with a length can have a camera on it.** A still renders as an image sequence like any
+  clip — the stack re-composited over every frame, the transport, the mp4 — but it has no motion in it
+  to carry the paint along, which is what Warp means. So on a still the first choice is **Camera**: the
+  previous painted frame moved through space (2D, or 3D where the frame's own depth lifts it and near
+  things slide faster), with this frame's plate mixed back in at Source mix. Overlays land on every
+  frame while it generates rather than being dragged along by the move, and the camera can be steered
+  live mid-render. The Camera card sits under Sampler now, where the rest of how a frame is made lives.
+- **A beat is an opacity, and at rest it is nothing.** A pulsing layer rests at 0% and rises on the hit,
+  so no blend mode can touch the picture between hits — a bloom on overlay used to darken every frame
+  and crush the render. Patterns drawn on black matte themselves, keeping all their motion; grain and
+  anything else get the beat drawn as a flat clip. **Any layer can take a beat** now (the metronome in
+  its header), so a video or a picture can arrive on the music, and **invert** turns it over: full at
+  rest, punched out on the hit — multiply's neutral where the light one is screen's.
+- **A ramp says which end it is.** The sliders read **Denoise start** and **Denoise end** when a ramp is
+  on. The note under them went stale in Video mode whenever anything but its own slider moved Denoise,
+  and stayed on screen in Motion where there is no ramp; it repaints with everything else now. Frame
+  Lock is sent as the share it is on the slider, so a ramp that starts at 0 keeps the lock you set
+  instead of silently falling back. A first frame asked for less than one step is left exactly as it
+  arrived — the picture you loaded, so a transition opens on it.
+- **copy settings brings a run back whole.** The ramp was the one setting that survived every copy, so
+  nothing you loaded looked like what you loaded; a run that held Denoise still now turns yours off.
+  The **stack** comes back with it (each layer's file checked, a dead one dropped), and a picture-with-a-
+  length comes back as that rather than being pushed through the video prober.
+- **use frame keeps the mode you are in.** It used to switch you to Motion — right when it was the only
+  way to make a still move, wrong now that a source can be painted frame by frame with a camera on it.
+  A picture with no length still turns Motion on.
 - **A pulse tile beats at its own speed.** The thumbnail is a loop drawn at a steady 120, so it
   now plays at bpm/120 — the number has a picture of itself beside it, and it keeps up while you
   drag. Nothing is redrawn for it: the same loop, faster.

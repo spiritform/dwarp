@@ -1054,26 +1054,6 @@
     <input type="file" id="fileInput" accept="video/*,image/*" hidden>
   </section>
 
-  <section id="camBox" hidden>
-    <div class="card" data-card="camera">
-    <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame. While a render runs, the sliders steer it live"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
-    <div class="card-body">
-    <div class="seg" id="cam3d" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><button data-v="2d" title="Moves the flat picture">2D</button><button data-v="3d" title="Reads each frame's depth and moves through it: near things pass faster than far ones (parallax)">3D</button></div>
-    <div class="pair">
-      <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
-      <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
-    </div>
-    <div class="pair">
-      <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
-      <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
-    </div>
-    <div class="pair" id="cam3dRow">
-      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera turns (+ = right)">Turn</b><span id="camYawV"></span></div><input type="range" id="camYaw" min="-2" max="2" step="0.05"></div>
-      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera tilts (+ = up)">Tilt</b><span id="camPitchV"></span></div><input type="range" id="camPitch" min="-2" max="2" step="0.05"></div>
-    </div>
-    </div></div>
-  </section>
-
   <section id="promptSec">
     <div class="card" data-card="prompt">
     <div class="card-head"><span class="title">Prompt</span><span class="sum" id="sum_prompt"></span><a id="promptRandom" class="randlink" title="A random prompt (subject, action, place, detail, light) — the look and embedding still add their style">random</a><span class="chev">▾</span></div>
@@ -1205,13 +1185,13 @@
     <div class="card-head" title="How much each frame is repainted, and how frames carry on from each other"><span class="title">Sampler</span><span class="sum" id="sum_render"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div class="slider">
-      <div class="slider-head"><b title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With Warp, this is frame 1 — Frame Lock sets the rest">Denoise</b><span id="styleV"></span></div>
+      <div class="slider-head"><b id="styleLabel" title="How much of each frame is repainted: low keeps the source, 1 repaints it completely. With a ramp this is where it starts — the first frame — and the slider under it is where it ends">Denoise</b><span id="styleV"></span></div>
       <input type="range" id="style" min="0" max="1" step="0.01">
       <div class="ends"><span>keep source</span><span>repaint</span></div>
     </div>
     <div class="slider" id="rampRow" style="margin-top:-4px">
       <div class="slider-head">
-        <b title="Denoise climbs (or falls) across the clip instead of holding still: the model keeps more of the source at the start and invents more by the end. Frame Lock keeps its share, so it rides along.">ramp to</b>
+        <b id="rampLabel" title="Denoise climbs (or falls) across the clip instead of holding still: the slider above is the first frame, this one is the last. To open on your picture and build the style into it, put Denoise at 0 and this where you want to end up. Frame Lock keeps its share, so it rides along.">ramp to</b>
         <span id="styleEndV"></span>
       </div>
       <input type="range" id="styleEnd" min="0" max="1" step="0.01">
@@ -1245,6 +1225,26 @@
     <div class="slider" id="edgeBox">
       <div class="slider-head"><b title="padded: every frame is repainted with a mirrored margin that's cropped off after, so the edges don't darken or smear over a long render (about 30% slower). plain: the frame as it is">Edges</b></div>
       <div class="seg" id="edgePad" style="grid-template-columns:1fr 1fr"><button data-v="0">plain</button><button data-v="1">padded</button></div>
+    </div>
+    </div></div>
+  </section>
+
+  <section id="camBox" hidden>
+    <div class="card" data-card="camera">
+    <div class="card-head" title="Moves each frame from the last: zoom, rotate, pan — per frame. While a render runs, the sliders steer it live"><span class="title">Camera</span><span class="sum" id="camSum"></span><span class="chev">▾</span></div>
+    <div class="card-body">
+    <div class="seg" id="cam3d" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><button data-v="2d" title="Moves the flat picture">2D</button><button data-v="3d" title="Reads each frame's depth and moves through it: near things pass faster than far ones (parallax)">3D</button></div>
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="Push in (+) or pull out (−), % per frame">Zoom</b><span id="camZoomV"></span></div><input type="range" id="camZoom" min="-3" max="3" step="0.1"></div>
+      <div class="slider"><div class="slider-head"><b title="Degrees per frame">Rotate</b><span id="camRotV"></span></div><input type="range" id="camRot" min="-2" max="2" step="0.05"></div>
+    </div>
+    <div class="pair">
+      <div class="slider"><div class="slider-head"><b title="% of the width per frame (+ = the image drifts right)">Pan X</b><span id="camXV"></span></div><input type="range" id="camX" min="-2" max="2" step="0.05"></div>
+      <div class="slider"><div class="slider-head"><b title="% of the height per frame (+ = the image drifts down)">Pan Y</b><span id="camYV"></span></div><input type="range" id="camY" min="-2" max="2" step="0.05"></div>
+    </div>
+    <div class="pair" id="cam3dRow">
+      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera turns (+ = right)">Turn</b><span id="camYawV"></span></div><input type="range" id="camYaw" min="-2" max="2" step="0.05"></div>
+      <div class="slider"><div class="slider-head"><b title="3D: degrees per frame the camera tilts (+ = up)">Tilt</b><span id="camPitchV"></span></div><input type="range" id="camPitch" min="-2" max="2" step="0.05"></div>
     </div>
     </div></div>
   </section>
@@ -1835,6 +1835,12 @@ function h3Config(kind) {
     total: h3Frames(seconds), size: state.size, fps: wf().fps,
   };
 }
+// The camera in place of the warp. A picture given a length renders as an image sequence like any
+// clip -- the stack re-composited over every frame, the transport, the mp4 -- but there is no motion
+// in it to carry the paint along, which is what Warp means. So for a still the first choice on that
+// row is the Camera: the paint travels because the camera moves, and the sequence is still a
+// sequence, so the overlays land on every frame of it while it generates.
+function camOn() { return !state.t2v && stillClip() && !state.fresh && !adOn(); }
 // The Camera card as engine values (per frame): a job's start, or a Live edit to a running one
 function camJob() {
   const c = state.cam;
@@ -1868,7 +1874,9 @@ function pushDials() {
 // Live camera: while a Text / Image -> Video render runs, the sliders steer it (the engine eases in)
 var camTimer = null;
 function pushCamera() {
-  if (!live || !state.t2v || curVideo() !== live.video) return;
+  // Live camera: the running job takes new targets and eases into them, in either path -- a still
+  // carried by the camera is as live as Text / Image -> Video is.
+  if (!live || !(state.t2v || camOn()) || curVideo() !== live.video) return;
   clearTimeout(camTimer);
   camTimer = setTimeout(() => live && api(`/api/jobs/${live.id}/prompts`, { method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2980,11 +2988,14 @@ function paintPulseLib() {
   $('mlClose').onclick = () => toggleMaskLib(false);
 }
 // Everything a pulse layer needs to be drawn: the frame it is going over, and the beat it is on.
+function beatAudio(L) {
+  return L.beat === 'clip' ? (state.clip?.path || '') : (L.beat === 'file' ? (L.audio || '') : '');
+}
 function pulseBody(L) {
   const b = maskBody(L.pulse);
   return { kind: L.pulse, width: b.width, height: b.height, frames: b.frames, fps: b.fps,
-           amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1,
-           audio: L.beat === 'clip' ? (state.clip?.path || '') : (L.beat === 'file' ? (L.audio || '') : '') };
+           amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
+           invert: !!L.pinvert };
 }
 async function makePulse(kind, at = -1) {
   try {
@@ -2994,7 +3005,7 @@ async function makePulse(kind, at = -1) {
                               audio: '', audioName: '' }, was || {}, { pulse: kind });
     const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
                                                body: JSON.stringify(pulseBody(L)) });
-    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse` });
+    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse`, base: r.base });
     if (was) Object.assign(was, L);
     else layers().unshift(layerDefaults(Object.assign(L, { mode: 'screen', opacity: 0.7 })));
     renderLayers(); paintSums(); save(); stageSource();
@@ -3008,6 +3019,7 @@ async function makePulse(kind, at = -1) {
 var pulseTimers = {};
 function needPulse(i, now) {
   const L = layers()[i];
+  needEnv(i, now);                             // the beat's own alpha, for whatever needs it
   if (!L || !L.pulse) return;
   clearTimeout(pulseTimers[i]);
   pulseTimers[i] = setTimeout(async () => {
@@ -3016,6 +3028,7 @@ function needPulse(i, now) {
                                                  body: JSON.stringify(pulseBody(L)) });
       if (layers()[i] !== L) return;             // the stack moved while it was drawing
       L.path = r.path; L.name = `${r.label.toLowerCase()} pulse`;
+      pulseTile(i);                              // on a track, the tile is this clip: show the new one
       needPaint(); needPlate(); pushLayers(); save();
     } catch (e) {
       setStatus('could not draw that pulse: ' + e.message, 'bad');
@@ -3113,6 +3126,48 @@ function stillLen() {
   Object.assign(state.clip.source, { fps: STILL_FPS, frames: stillFrames(), duration: stillSecs() });
 }
 // What the engine gets: the stack as it reads top to bottom, with the clip as the base under it.
+// A beat is an opacity, and at rest that opacity is nothing. That is the whole of it: a layer
+// that rests at 0% cannot do anything to the picture between hits, whatever blend mode it is on --
+// which is what went wrong with a bloom on overlay, where black means darken and the picture was
+// quietly crushed frame after frame. It also makes a pulse usable as a transition: it arrives out
+// of nothing and goes back to nothing.
+//
+// Nothing new had to be built for it. A matte already means "this layer's brightness is that
+// layer's alpha", and every compositor reads it -- the ffmpeg flatten, the per-frame one the render
+// uses, and the live preview in the panel. So a pulsing layer is handed a matte, and which matte
+// depends on what the layer rests as:
+//   a drawn pattern on black (bloom, burst, flash, rings) mattes itself -- its own light is its
+//     alpha, so black is transparent and the pattern keeps every bit of its motion, travelling
+//     rings and all;
+//   grain rests at mid grey on purpose, and anything else (a video, a picture) has no rest value
+//     at all, so those get the beat drawn on its own: a flat clip whose brightness is the envelope.
+const PULSE_BASE = { grain: 'grey' };           // everything else is drawn on black
+function pulseBase(L) { return L.base || PULSE_BASE[L.pulse] || 'black'; }
+function beats(L) { return !!(L && !L.matte && (L.pulse || L.beatOn)); }
+function pulseMatte(L) {
+  if (!beats(L)) return '';
+  return L.pulse && pulseBase(L) === 'black' ? L.path : (L.envPath || '');
+}
+// The flat envelope clip, for the layers that cannot be their own alpha. Small: it is one value a
+// frame, and whatever it is drawn at is scaled to the frame it mattes.
+var envTimers = {};
+function needEnv(i, now) {
+  const L = layers()[i];
+  if (!beats(L) || (L.pulse && pulseBase(L) === 'black')) return;
+  clearTimeout(envTimers[i]);
+  envTimers[i] = setTimeout(async () => {
+    const b = maskBody('flash');
+    try {
+      const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: 'flash', width: 128, height: 72, frames: b.frames, fps: b.fps,
+                               amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1,
+                               audio: beatAudio(L), invert: !!L.pinvert }) });
+      if (layers()[i] !== L) return;
+      L.envPath = r.path;
+      needPaint(); needPlate(); pushLayers(); save();
+    } catch (e) { setStatus('could not draw that beat: ' + e.message, 'bad'); }
+  }, now ? 0 : 350);
+}
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
   if (!layersOn()) return [];
@@ -3123,8 +3178,19 @@ function layerJob() {
   const src = baseSrc();
   if (src) stack.push({ path: src.path, mode: 'normal', matte: false,
                         opacity: b.opacity, blur: b.blur });
-  const drawn = stack.filter(L => !L.matte);
-  return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
+  // A matte belongs to the layer directly below it, so a beat's matte goes in right above its
+  // layer. One already there keeps its place -- two mattes on one layer is not a thing the format
+  // can say, and the one you put there by hand is the one you meant.
+  const out = [];
+  stack.forEach((L, i) => {
+    const m = pulseMatte(L);
+    if (m && !(i > 0 && stack[i - 1].matte))
+      out.push({ path: m, mode: 'normal', matte: true, opacity: 1, blur: 0,
+                 black: 0, mid: 0.5, white: 1, invert: false });
+    out.push(L);
+  });
+  const drawn = out.filter(L => !L.matte);
+  return drawn.length ? out : [];        // a stack of nothing but mattes is not a plate
 }
 // The grey handle sits where it does because of what it means: an input at that point comes out
 // half way, which is exactly the gamma the engine's lut is built from. So its position is
@@ -3219,6 +3285,27 @@ $('layers').addEventListener('click', e => {
   }
   const snd = e.target.closest('[data-snd]');
   if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
+  const pin = e.target.closest('[data-pinv]');
+  if (pin) {
+    const i = +pin.dataset.pinv, L = layers()[i];
+    if (!L) return;
+    L.pinvert = !L.pinvert;
+    renderLayers(); save(); needPulse(i, true);
+    return;
+  }
+  const on = e.target.closest('[data-beaton]');
+  if (on) {
+    const i = +on.dataset.beaton, L = layers()[i];
+    if (!L) return;
+    L.beatOn = !L.beatOn;
+    if (L.beatOn) {                            // the same beat a pulse layer starts on
+      L.beat = L.beat || (clipAudio() ? 'clip' : 'bpm');
+      L.bpm = L.bpm || 120; L.division = L.division || 1; L.amount = L.amount ?? 1;
+    }
+    renderLayers(); save();
+    if (L.beatOn) needEnv(i, true); else { needPaint(); needPlate(); pushLayers(); }
+    return;
+  }
   const met = e.target.closest('[data-metro]');
   if (met) { const i = +met.dataset.metro; METRO.at === i ? metroStop() : metroStart(i, met); }
 });
@@ -3301,23 +3388,44 @@ $('layers').addEventListener('pointerdown', e => {
 // read. Nothing is redrawn for this: it is the same loop, faster. On a beat taken from a track
 // there is no number to go by, so it runs at the speed it was drawn.
 const PREVIEW_BPM = 120;
+// Two different true answers. On a count, the tile is the pattern's own loop played at bpm/120:
+// instant, and the number is the whole of the timing. On a track -- the clip's or one you loaded
+// -- the timing is the track's, and no speed stands for it, so the tile plays the pulse that was
+// actually drawn from that sound: the real hits, in the real places, at the real length.
+function pulseTileSrc(L) {
+  const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
+  const [pw, ph] = maskPreviewSize();
+  return (at !== 'bpm' || L.pinvert) && L.path ? `/api/video/file?${qs({ path: L.path })}`
+                                : `/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph })}`;
+}
+// One row's tile brought up to date without rebuilding the panel -- half the time this is called
+// there is a pointer down on a value box, and a rebuild would pull it out from under it.
+function pulseTile(i) {
+  const L = layers()[i];
+  if (!L || !L.pulse) return;
+  const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
+  if (!v) return;
+  const want = pulseTileSrc(L);
+  if (v.getAttribute('src') !== want) {
+    v.setAttribute('src', want); v.load();
+    const p = v.play(); if (p) p.catch(() => {});
+  }
+  pulseRate(i);
+}
 function pulseRate(i) {
   const L = layers()[i];
   if (!L || !L.pulse) return;
   const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
   if (!v) return;
   const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
-  const want = at === 'bpm' ? (L.bpm || 120) * (L.division || 1) / PREVIEW_BPM : 1;
+  const want = at === 'bpm' && !L.pinvert ? (L.bpm || 120) * (L.division || 1) / PREVIEW_BPM : 1;
   // defaultPlaybackRate too: a tile that lost its source and reloads comes back at this speed
   // rather than at 1, and the loop you are watching does not quietly change tempo.
   v.playbackRate = v.defaultPlaybackRate = Math.min(4, Math.max(0.25, want));
 }
 function pulseRates() { layers().forEach((L, i) => { if (L.pulse) pulseRate(i); }); }
 function layerTile(L) {
-  if (L.pulse) {
-    const [pw, ph] = maskPreviewSize();
-    return `<video src="/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
-  }
+  if (L.pulse) return `<video src="${pulseTileSrc(L)}" autoplay muted loop playsinline></video>`;
   if (L.mask) {
     const [pw, ph] = maskPreviewSize();
     return `<video src="/api/masks/preview?${qs({ pattern: L.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
@@ -3377,7 +3485,7 @@ function metroStart(i, btn) {
   // rate is read fresh every time, so dragging the bpm box speeds the clicking up as you drag.
   METRO.timer = setInterval(() => {
     const L = layers()[METRO.at];
-    if (!L || !L.pulse || (L.beat || (clipAudio() ? 'clip' : 'bpm')) !== 'bpm') return metroStop();
+    if (!beats(L) || (L.beat || (clipAudio() ? 'clip' : 'bpm')) !== 'bpm') return metroStop();
     if (document.hidden || C.currentTime > METRO.until) return metroStop();
     const step = 60 / Math.max(1, (L.bpm || 120) * (L.division || 1));
     if (METRO.next < C.currentTime) { METRO.next = C.currentTime + 0.02; METRO.hit = 0; }
@@ -3437,11 +3545,13 @@ function renderLayers() {
     const L = layerDefaults(raw);
     // What is about the whole layer goes under the rule: a matte's levels, a pulse's beat.
     const bottom = L.matte ? (L.mask ? '' : `<span class="beat"><div class="bl">${levels(i, L)}</div></span>`)
-                           : (L.pulse ? beatRow(i, L) : '');
+                           : (beats(L) ? beatRow(i, L) : '');
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
       <span class="hd" draggable="true"
             title="Drag to reorder \u2014 the order of the stack is the composite">
         <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
+        ${!beats(L) ? '' : `<button class="chip ico${L.pinvert ? ' on' : ''}" data-pinv="${i}" title="Upside down: the beat rests at full and is punched out on every hit, instead of resting at nothing and arriving on it. The neutral blend turns over with it \u2014 screen for the light one, multiply for this"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2v15a7.5 7.5 0 0 1 0-15Z"/></svg></button>`}
+        ${L.matte || L.pulse ? '' : `<button class="chip ico${L.beatOn ? ' on' : ''}" data-beaton="${i}" title="Give this layer a beat: its opacity rests at nothing and rises on every hit, so it arrives out of the picture rather than sitting on it \u2014 and any blend mode is safe, because at rest there is nothing there"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`}
         ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
         <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
         <button class="x" title="Remove">\u2715</button>
@@ -4392,7 +4502,7 @@ function paintSums() {
       .filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
-    (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
+    (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · ${stillClip() ? 'Camera' : 'Warp'} · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -4809,10 +4919,17 @@ $('animateLink').onclick = async () => {
   const at = frames[Math.min(Math.max(frameIdx, 0), frames.length - 1)];
   try {
     const res = await api(`/api/runs/${viewRun}/as_input?${qs({ frame: at })}`, { method: 'POST' });
-    await useInput(res);                                   // Image mode, this frame as the picture
-    if (adAllowed() && !state.ad.on) { state.ad.on = true; applyAdProfile(true); }
+    await useInput(res);                                   // this frame as the picture
+    // A picture that already has a length keeps it, and keeps the mode you put it in -- Camera,
+    // Boil or Motion. Turning Motion on here was right when this button was the only way to make a
+    // still move; now the source can be painted frame by frame with a camera on it, and choosing
+    // that and then having it undone by loading a frame is the panel arguing with you.
+    const painted = stillClip();
+    if (!painted && adAllowed() && !state.ad.on) { state.ad.on = true; applyAdProfile(true); }
     renderControls(); setControlTabs(); save();
-    setStatus(adOn() ? 'ready to animate — Motion is on, press Preview' : 'ready to animate — press Preview (Motion needs SD 1.5)', 'done');
+    setStatus(painted ? `frame loaded as the source — ${adOn() ? 'Motion' : state.fresh ? 'Boil' : 'Camera'}, press Render`
+            : adOn() ? 'ready to animate — Motion is on, press Preview'
+            : 'ready to animate — press Preview (Motion needs SD 1.5)', 'done');
   } catch (e) { setStatus('could not send that frame: ' + e.message, 'bad'); }
 };
 async function useInput(res) {             // an uploaded (or run-fed) file on the server: the picture or the clip
@@ -5049,6 +5166,10 @@ $('mlora').onchange = e => { state.ad.lora = e.target.value; renderControls(); s
 $('mloraW').oninput = e => { state.ad.loraW = +e.target.value; $('mloraWV').textContent = state.ad.loraW.toFixed(2); save(); };
 function renderControls() {
   renderMode(); renderEmbed(); renderSampler(); renderLora(); renderH3();
+  // The ramp row was only repainted from paintT2V(), which returns at once in Video mode -- so with
+  // a clip or a still its note went stale the moment anything but its own slider moved Denoise
+  // (a Motion profile, for one), and it stayed on screen in Motion, where there is no ramp.
+  renderRamp();
   // H3 has none of DWARP's own controls: no denoise, no ControlNet, no mask, no camera.
   // ...and with no clip loaded, the Text -> Video Size / Duration card is not Comfy's either: the
   // workflow decides its own size, and Length lives under the picker.
@@ -5093,7 +5214,8 @@ function renderControls() {
   });
   $('cnPane').hidden = state.gtab !== 'cn'; $('ddPane').hidden = state.gtab !== 'dd';
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
-  $('camBox').hidden = !state.t2v || isH3(); if (state.t2v && !isH3()) paintCam();
+  const camMode = state.t2v || camOn();    // the camera is what moves the paint, here or in Text / Image
+  $('camBox').hidden = !camMode || isH3(); if (camMode && !isH3()) paintCam();
   $('guideBox').hidden = (state.t2v && !state.i2v) || isH3();   // Text -> Video: nothing to guide by.
   // H3: nothing is painted here, so there is no ControlNet or DepthDiff to steer it
   applyCards(); paintSums();
@@ -5108,8 +5230,9 @@ function renderControls() {
   }
   // the row: Warp · Boil · Motion for a video, Camera · Motion for a picture; Motion only on SD 1.5
   const fmB = f => $('frameMode').querySelector(`[data-f="${f}"]`);
-  fmB('warp').textContent = state.t2v ? 'Camera' : 'Warp';
-  fmB('warp').title = state.t2v ? 'Camera: each frame moves on from the last (zoom, rotate, pan), repainted as it goes' : "Carry the paint along the footage's motion: strokes stick to things";
+  const cams = state.t2v || stillClip();   // a still has no motion to follow, so the camera does the carrying
+  fmB('warp').textContent = cams ? 'Camera' : 'Warp';
+  fmB('warp').title = cams ? 'Camera: each frame moves on from the last (zoom, rotate, pan), repainted as it goes' : "Carry the paint along the footage's motion: strokes stick to things";
   fmB('fresh').hidden = !!state.t2v; fmB('motion').hidden = !adAllowed();
   $('frameMode').style.gridTemplateColumns = `repeat(${[...$('frameMode').children].filter(b => !b.hidden).length}, 1fr)`;
   if (ad) {                                // the motion model ties frames together: no warp settings, no Shape (Video: no camera)
@@ -5195,6 +5318,10 @@ $('style').oninput = e => { state.style = +e.target.value; $('styleV').textConte
 function rampOn() { return typeof state.styleEnd === 'number'; }
 function renderRamp() {
   const on = rampOn(), v = on ? state.styleEnd : +(+state.style).toFixed(2);
+  // With a ramp there are two ends, so each slider says which one it is. Without one there is only
+  // a value, and "Denoise · first frame" over a row that does nothing would be a worse lie.
+  $('styleLabel').textContent = on ? 'Denoise start' : 'Denoise';
+  $('rampLabel').textContent = on ? 'Denoise end' : 'ramp to';
   $('styleEnd').value = v;
   $('styleEndV').textContent = v.toFixed(2);
   $('styleEndV').style.opacity = on ? '' : '.5';
@@ -5480,6 +5607,9 @@ async function buildConfig(kind) {
     source_frames: stillClip() ? end - start + 1 : 0,
     style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
     style_next: !t2v && state.fresh ? -1 : nextStyle(),      // Frame Lock (Text / Image too: later frames)
+    // ...and the same thing as the share it is on the slider, which survives a Denoise of 0: a ramp
+    // that starts at nothing cannot have a share read back out of it.
+    frame_lock: !t2v && state.fresh ? -1 : (state.frameLock ?? 0.35),
     diff: !t2v && !state.fresh && (state.frameLock ?? 0) > 0,      // Warp: uncovered pixels repaint at Denoise
     flow_blend: t2v ? 1 : +(1 - state.srcMix).toFixed(3),   // Source mix: fresh source in the carried-forward start
     fresh: !t2v && !!state.fresh,            // Boil: no warp, full Denoise on every frame
@@ -5497,7 +5627,8 @@ async function buildConfig(kind) {
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
-    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? picSource() : '', ...camJob() } : {}),
+    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? picSource() : '', ...camJob() }
+            : camOn() ? { camera: true, ...camJob() } : {}),
     ...shapeJob(kind),
   };
   // Frame with a keyframe selected: that keyframe's prompt, whatever the frame
@@ -5892,6 +6023,12 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
        <b>0.1–0.2</b> is usually enough; <b>0</b> gives the most locked-in brushwork (fine for short clips); higher
        follows the footage more and the paint less.</p>
     <h4>Warp or Boil</h4>
+    <p>On a <b>picture with a length</b>, Warp is <b>Camera</b> instead: a still has no motion to follow, so what
+       carries the paint forward is the move you set on the Camera card — zoom, rotate, pan, or 3D, where the
+       frame's own depth lifts it into space and near things slide faster than far ones. It is still an image
+       sequence, so the stack is re-composited over every frame while it generates: overlays land on the screen
+       rather than being dragged along by the move, and <b>Source mix</b> decides how much of that fresh plate goes
+       back into each frame's start.</p>
     <p><b>Warp</b> (the default) carries the paint along the footage's motion, so strokes stick to things and the
        result moves smoothly. <b>Boil</b> repaints every frame anew from its source, with its own noise and the full
        Denoise — named after <i>line boil</i> in hand-drawn animation, where every frame is a new drawing and the strokes
@@ -5907,7 +6044,8 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
        motion (no drift from window to window) — it needs more VRAM.</p>
     <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>use frame →</b> (under the stage) sends it
        to Image mode as the picture, with Motion on. It works on any run — scrub a render to the frame you want and
-       take that one.</p>
+       take that one. If the picture in the panel already has a <b>length</b>, the frame replaces it and keeps that
+       length and whatever mode you are in — Camera, Boil or Motion — rather than switching you to Motion.</p>
     <table>
       <tr><td><b>Quality</b></td><td>Video: <b>TemporalDiff</b> (follows the clip, strongest style). Image: <b>AnimateDiff v2</b>
           (moves a still, takes motion LoRAs). 20 steps, CFG 7.</td></tr>
@@ -7047,23 +7185,50 @@ $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
   if (!ui.preset) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'fresh', 'frameLock', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'styleEnd', 'fresh', 'frameLock', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
                    'shape', 'shapeFit', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
+  // A run that held Denoise still has no ramp, and taking its settings has to turn yours off --
+  // otherwise the ramp is the one thing that survives every copy and nothing you load looks like
+  // what you loaded. Older runs that never knew about ramps are flat ones too.
+  if (!('styleEnd' in ui)) state.styleEnd = null;
   // a run from before Frame Lock became a share of Denoise: its absolute strength back to a share
   if (!('frameLock' in ui)) state.frameLock = ui.styleNext != null ? lockShare(ui.styleNext, ui.style) : 0.35;
   let gone = '';
   if (state.shape?.path && !(await api(`/api/fs/exists?${qs({ path: state.shape.path })}`).catch(() => ({})))?.exists) { state.shape = null; gone = ' (its shape file is gone)'; }
+  // The stack is as much a part of a run as its Denoise is: what was laid over the clip is half of
+  // what you are looking at. Each layer's file is checked, because a run can outlive what it was
+  // made from, and a dead path takes the whole flatten down rather than one layer.
+  if ('layers' in ui) {
+    const want = Array.isArray(ui.layers) ? ui.layers : [];
+    const live = [];
+    for (const L of want) {
+      if (!L || !L.path) continue;
+      const e = await api(`/api/fs/exists?${qs({ path: L.path })}`).catch(() => ({}));
+      if (e && e.exists) live.push(JSON.parse(JSON.stringify(L)));
+      else gone = ' (a layer\'s file is gone)';
+    }
+    state.layers = live;
+  }
   state.keySel = -1;
   // Reproduce the run: its actual seed, locked (even if it was a random roll).
   if (Number.isFinite(ui.seed)) { state.seed = ui.seed; state.seedLock = true; }
   if (ui.ckpt) state.ckpt = { ...state.ckpt, ...ui.ckpt };
   if (ui.kind === 'render' && ui.size) state.size = ui.size;
-  if (ui.clip && (!state.clip || ui.clip.path !== state.clip.path)) {
+  if (ui.clip && ui.clip.image) {
+    // A picture given a length is not a clip the prober can read: its length is the one it was
+    // given, and it is written down in the run. So it comes back whole rather than through a probe.
+    const e = await api(`/api/fs/exists?${qs({ path: ui.clip.path })}`).catch(() => ({}));
+    if (e && e.exists) {
+      state.image = null; state.clip = JSON.parse(JSON.stringify(ui.clip));
+      stillLen(); syncMode(); clipFrame = 0; state.range = ui.range || [0, 1];
+    } else { state.clip = null; gone = ' (its picture is gone)'; }
+  } else if (ui.clip && (!state.clip || ui.clip.path !== state.clip.path)) {
     try { await setClipPath(ui.clip.path, ui.clip.name); state.range = ui.range || [0, 1]; }
     catch { setStatus('that run\'s clip is gone — using its settings without it', 'bad'); }
   }
   save(); renderClip(); renderControls(); renderShape(); shapeChanged();
+  renderLayers(); needPlate(true); paintSums();
   setStatus(`using the settings of run ${viewRun}${gone}`, gone ? 'bad' : 'done');
 };
 
