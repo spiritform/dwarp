@@ -32,6 +32,17 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   forward. All that changes on a still is what does the carrying — the camera move rather than the
   footage's own motion — and the button's tooltip says so, along with the part that matters, which
   is that **Source mix** is what lets the layer stack land on each frame rather than only on frame 1.
+- **Colour: a picture to hold the render's colour to.** Every render has always pulled each painted
+  frame's colour back toward the render's own first frame, at a strength of 0.5 that nothing in the
+  panel could reach. Two things change. The strength is a dial now, under Style ref. And the
+  reference can be a picture you give it, instead of frame 1 — drop one on the slot, or drag a frame
+  off the stage that looks the way you want the whole render to look. A picture is a target that
+  cannot itself drift, where frame 1 is only ever whatever the model happened to make that time;
+  with one set, every frame is matched to it, the first one included. It moves colour and nothing
+  else — per-channel mean and spread — so unlike **Source mix** it puts nothing spatial back into
+  the frame, which is why it costs nothing while the camera is moving: Source mix at a camera move
+  is the stationary plate being laid back over paint that has just travelled. Motion renders take
+  the same reference.
 - **The runs strip keeps its place.** Removing a run you had scrolled a long way back to find put
   you at the beginning of the list again, and so did every render finishing while you were reading
   the far end of it: the strip is rewritten from nothing on each refresh, and a rewritten element

@@ -233,7 +233,18 @@
   .gtabs button.live::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
                               background: var(--accent); margin-left: 6px; vertical-align: 1px; }
   /* Style ref: an empty drop box, or the picture's thumbnail + name + remove */
-  #styleRef { margin-top: 8px; }
+  #styleRef, #colourRef { margin-top: 8px; }
+  #colourRef .clip-empty { padding: 10px; font-size: 11px; background: #25242b; display: flex; flex-direction: row;
+                           align-items: center; justify-content: center; gap: 7px;
+                           border-radius: var(--radius); color: var(--dim); cursor: pointer; text-align: center; }
+  #colourRef .clip-empty:hover { background: #2d2c33; color: var(--text); }
+  #colourRef .clip-empty svg { width: 13px; height: 13px; }
+  #colourRef .ref { display: flex; gap: 10px; align-items: center; background: #25242b; border-radius: var(--radius); padding: 6px; }
+  #colourRef .ref img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); cursor: pointer; flex: none; }
+  #colourRef .ref span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #c9c7cf; }
+  #colourRef .ref button { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 8px; }
+  #colourRef .ref button:hover { color: #ff9a8a; }
+  body.runDrag #colourRef, body.dragging #colourRef { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   #styleRef .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
                           align-items: center; gap: 5px; color: var(--dim); }   /* the dropdowns' grey */
   #styleRef .clip-empty:hover { background: #2d2c33; color: var(--text); }
@@ -1295,6 +1306,13 @@
         <button data-v="style" title="Only its look — colours, strokes, mood — not what's in it (InstantStyle)">style only</button>
         <button data-v="full" title="Its look and its content: things in the picture can show up too">style + content</button></div>
     </div>
+    <div class="sublabel" id="colourRefLabel" title="Colour: where every frame's colour is pulled back to. A picture, or the render's own first frame">Colour</div>
+    <div id="colourRef"></div>
+    <input type="file" id="colourFile" accept="image/*" hidden>
+    <div class="slider">
+      <div class="slider-head"><b title="How hard each painted frame is pulled back to the colour reference. It moves the colour only \u2014 never the picture \u2014 so unlike Source mix it costs nothing when the camera is moving">match</b><span id="colourMatchV"></span></div>
+      <input type="range" id="colourMatch" min="0" max="1" step="0.05">
+    </div>
     <div class="sublabel">Look</div>
     <select class="model" id="presets" title="Style preset"></select>
     <div class="preset-model" id="presetModel" hidden></div>
@@ -1671,6 +1689,8 @@ let state = {
   mode: 'sd15',
   ckpt: { sd15: '', sdxl: '' },        // '' = the look's own checkpoint (sd15) / mode default (sdxl)
   cn: { sd15: 'both', sdxl: 'both' },  // ControlNets per mode: off | depth | both (depth + edge)
+  colourRef: null,                         // a picture to take the colour from; null = the render's own frame 1
+  colourMatch: 0.5,                        // what the engine has always used, now where you can see it
   dd: { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1 },   // DepthDiff mask
   gtab: 'cn',                          // which of ControlNet / DepthDiff the panel shows
   shape: null, shapeFit: 'stretch', shapeRange: [0, 1], shapeLv: [0, 0.5, 255], shapeRepaint: 1, shapeBg: 0, shapeBlur: 0, shapeOpacity: 1, shapeIllu: 0, shapeInvert: false, shapeLoop: false,   // Shape: { path, name, video } latent mask, Repaint, Blur, black = subject
@@ -1940,6 +1960,41 @@ function renderStyleRef() {
   $('styleRefW').value = state.styleRefW; $('styleRefWV').textContent = (+state.styleRefW).toFixed(2);
   segPick($('styleOnly'), state.styleOnly ? 'style' : 'full');
 }
+// Colour: where each painted frame's colour is pulled back to. The engine has always done this
+// against the render's own first frame, which is a target that is itself only whatever the model
+// happened to make on frame 1. A picture is a target that cannot drift -- and because it moves the
+// colour and nothing else, it holds a long render together without putting anything spatial back
+// into the init, which is the thing Source mix cannot do while the camera is moving.
+function renderColourRef() {
+  const r = state.colourRef, box = $('colourRef');
+  box.innerHTML = r
+    ? `<div class="ref"><img src="/api/image/file?${qs({ path: r.path })}" alt="" title="Replace the picture"><span title="${r.path}">${r.name}</span><button title="Back to the render's own first frame">\u2715</button></div>`
+    : `<div class="clip-empty" title="A picture to take the colour from \u2014 click, or drop one here. With none, every frame is pulled back to this render's first frame, which is what it has always done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>frame 1 \u2014 or drop a picture</div>`;
+  $('colourMatch').value = state.colourMatch;
+  $('colourMatchV').textContent = (+state.colourMatch).toFixed(2);
+}
+$('colourRef').onclick = e => {
+  if (e.target.closest('button')) { state.colourRef = null; renderColourRef(); save(); return; }
+  if (e.target.closest('img, .clip-empty')) $('colourFile').click();
+};
+function uploadColourRef(file) {
+  if (!file || !/^image\//.test(file.type)) return setStatus('the colour reference needs an image', 'bad');
+  api(`/api/upload?${qs({ filename: file.name })}`, { method: 'POST', body: file })
+    .then(res => { state.colourRef = { path: res.path, name: res.name }; renderColourRef(); save(); setStatus('colour reference set'); })
+    .catch(e => setStatus('colour reference upload failed: ' + e.message, 'bad'));
+}
+$('colourFile').onchange = e => { uploadColourRef(e.target.files[0]); e.target.value = ''; };
+$('colourMatch').oninput = e => { state.colourMatch = +e.target.value; $('colourMatchV').textContent = state.colourMatch.toFixed(2); save(); paintSums(); };
+$('colourRef').addEventListener('dragover', e => e.preventDefault());
+$('colourRef').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation(); dragDepth = 0; document.body.classList.remove('dragging');
+  const run = runDragData(e);               // a frame dragged off the stage: the look you want kept
+  if (run && !run.clip) return api(`/api/runs/${run.run}/as_input?${qs({ frame: run.frame })}`, { method: 'POST' })
+    .then(res => { state.colourRef = { path: res.path, name: res.name }; renderColourRef(); save(); setStatus('colour reference set'); })
+    .catch(err => setStatus('colour reference failed: ' + err.message, 'bad'));
+  uploadColourRef(e.dataTransfer?.files?.[0]);
+});
+
 // ---- H3 references: the same gestures as a style ref (click, drop a picture, drop a run off the stage)
 function h3Refs() { return (state.h3refs ||= []); }
 // The output box, fitted to the model's own working area. Path coordinates are pixels in THIS box, so
@@ -5370,7 +5425,7 @@ function renderControls() {
   $('frameBtn').hidden = $('testBtn').hidden = isH3();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
-  renderStyleRef(); renderShape(); paintNeg();
+  renderStyleRef(); renderColourRef(); renderShape(); paintNeg();
   $('styleNext').value = state.frameLock; $('styleNextV').textContent = (+state.frameLock).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   const ad = adOn();
@@ -5815,6 +5870,8 @@ async function buildConfig(kind) {
     frame_start: start, frame_end: end, nth,
     // A still source lasts as long as it was asked to: the engine repeats the one frame it has.
     source_frames: stillClip() ? end - start + 1 : 0,
+    color_match: state.colourMatch,
+    color_ref: (state.colourRef || {}).path || '',
     style: state.style,                      // Warp: frame 1; later frames at style_next (Frame Lock)
     style_next: !t2v && state.fresh ? -1 : nextStyle(),      // Frame Lock (Text / Image too: later frames)
     // ...and the same thing as the share it is on the slider, which survives a Denoise of 0: a ramp
@@ -8373,6 +8430,9 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.ckpt ||= { sd15: '', sdxl: '' }; state.spf ||= {};
   state.cn = { sd15: 'both', sdxl: 'both', ...(state.cn || {}) };
   state.dd = { src: 'off', invert: true, black: 0, white: 255, gamma: 1, contrast: 1.5, blur: 4, amount: 1, ...(state.dd || {}) };
+  // An older save has no colour match in it, and the engine's own default was 0.5 all along: a
+  // panel that opened showing 0 would be telling you the opposite of what every render had done.
+  if (state.colourMatch == null) state.colourMatch = 0.5;
   state.gtab ||= 'cn';
   state.shapeFit ||= 'stretch';          // older saves: the mask was always stretched to the frame
   state.keys ||= []; state.keySel ??= -1; state.blend ??= 12;

@@ -23,8 +23,8 @@ import torch.nn.functional as F
 from modelscan import animatelcm_lora  # noqa: F401  (no torch: see modelscan)
 from PIL import Image
 
-from engine.warp import (_CACHE, Annotators, RenderJob, camera_move, diff_mask, encode_prompts, extract_frames, load_lora, load_rgb,
-                         match_color, style_embeds, to_image, to_tensor, travel)
+from engine.warp import (_CACHE, Annotators, RenderJob, camera_move, colour_ref, diff_mask, encode_prompts, extract_frames,
+                         load_lora, load_rgb, match_color, style_embeds, to_image, to_tensor, travel)
 
 # AnimateDiff's trained context, and the frames neighbouring windows share. Each window paints its own take on the
 # motion, slightly ahead of or behind the last: a 4-frame overlap made a steady zoom stall, then jump, every 12
@@ -305,7 +305,7 @@ def render_context(job, pipe, src_np, hints, amounts, keys, total, steps, cfg, i
     if cancelled():
         log("cancelled")
         return []
-    written, first = [], None
+    written, first = [], colour_ref(job, device, log)   # a picture to aim at, or frame 1 as before
     for i, f in enumerate(frames[:total]):     # padding frames (a short clip) aren't written
         res_t = to_tensor((np.clip(f, 0, 1) * 255).astype(np.uint8), device)
         if first is None:
@@ -431,7 +431,7 @@ def render_ad(job: RenderJob, progress, cancelled: Callable[[], bool], log, live
     on_keys(keys, blend)
     nets = len(dict.fromkeys(c.path for c in job.controlnets))
     kinds = [c.kind for c in job.controlnets]
-    first = None
+    first = colour_ref(job, device, log)        # a picture to aim at, or frame 1 as before
     frame_noise: dict[int, torch.Tensor] = {}  # each frame's start noise, shared by the windows that cover it
     done: dict[int, np.ndarray] = {}           # rendered frames waiting for the next window's crossfade
     written = []

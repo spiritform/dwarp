@@ -122,7 +122,12 @@ class RenderJob:
                                          # so edges don't darken or smear over a long feedback run (~30% slower at 0.08)
     mask_dilate: int = 5                 # grow the "don't trust" regions a little (px)
     mask_blur: int = 3
-    color_match: float = 0.5             # 0..1 pull colour stats toward frame 0 (fights drift)
+    color_match: float = 0.5             # 0..1 pull colour stats toward the reference (fights drift)
+    # A picture to take the colour from. Empty: the reference is the render's own first frame, which
+    # is what this always did. A picture instead is a target that cannot itself drift -- frame 1 is
+    # only ever whatever the model happened to make -- and it holds a long render's colour without
+    # putting anything spatial back into the init, which is what Source mix cannot help doing.
+    color_ref: str = ""
     diff: bool = False                   # differential diffusion: per-pixel strength from the trust
                                          # mask — trusted pixels get style_next, uncovered ones full style
     # DepthDiff: per-pixel strength from the source frame's luma or depth (0 = keep, 1 = full style)
@@ -380,12 +385,36 @@ def match_color(img: torch.Tensor, ref: torch.Tensor, amount: float,
         n = k.sum((2, 3), keepdim=True).clamp(min=1e-3)
         mu = (x * k).sum((2, 3), keepdim=True) / n
         return mu, ((k * (x - mu) ** 2).sum((2, 3), keepdim=True) / n).sqrt() + 1e-5
-    if w is not None and (w.sum() < 16 or wref is None or wref.sum() < 16):
+    if w is not None and w.sum() < 16:
         return img                              # a (nearly) empty mask: nothing to measure
+    if w is not None and wref is not None and wref.sum() < 16:
+        return img
+    # A reference picture has no mask of its own: it is measured whole, and the correction still
+    # lands only inside this frame's mask.
     m, s = stats(img, w)
     rm, rs = stats(ref, wref)
     matched = ((img - m) / s * rs + rm).clamp(0, 1)
     return torch.lerp(img, matched, amount if w is None else amount * w)
+
+
+def colour_ref(job, device, log=lambda s: None):
+    """The picture the colour is taken from, or None for "the render's own first frame".
+
+    Only its per-channel statistics are used, so it is measured small: a 256px copy has the same
+    mean and very nearly the same spread as the original, and costs nothing to keep on the card for
+    the whole render. Unreadable is not fatal -- the render falls back to what it did before.
+    """
+    if not getattr(job, "color_ref", "") or job.color_match <= 0:
+        return None
+    try:
+        cr = Image.open(job.color_ref).convert("RGB")
+        cr.thumbnail((256, 256), Image.LANCZOS)
+        out = to_tensor(np.asarray(cr), device)
+        log(f"colour from {Path(job.color_ref).name} at {job.color_match}")
+        return out
+    except (OSError, ValueError) as e:
+        log(f"colour reference unreadable ({e}): falling back to frame 1")
+        return None
 
 
 # ------------------------------------------------------------------ DepthDiff mask
@@ -1124,6 +1153,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         total = len(src_paths)
         log(f"extracted {total} frames at {job.width}x{job.height} (every {job.nth}) in {time.time() - t0:.1f}s")
 
+    color_ref_t = colour_ref(job, device, log)
+
     progress("loading", 0, total, "loading models")
     fetch_missing(job, log)
     pipe = cached_pipeline(job, device, log)
@@ -1468,7 +1499,12 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
                 res = denoise(init, hints, amount, g)
         cm_mask = smask if job.shape_nudge > 0 else None   # outside black: judge colour by the shape only;
         # a background (on / Video mode) is part of the picture and drifts too: the whole frame, as without a mask
-        if first_out is None and (cm_mask is None or cm_mask.mean() >= 0.05):
+        if color_ref_t is not None:
+            # A picture to aim at: every frame goes to it, the first one included. There is nothing
+            # to establish and nothing that can drift -- the target is the same on frame 300 as on
+            # frame 1, which is the whole point of handing it a picture rather than a frame.
+            res = match_color(res, color_ref_t, job.color_match, cm_mask, None)
+        elif first_out is None and (cm_mask is None or cm_mask.mean() >= 0.05):
             # the colour reference; with a Shape, the first frame where it's big enough to measure (a tiny
             # dot's stats would pull every later frame toward it: a growing shape went dimmer and dimmer)
             first_out, first_smask = res, cm_mask
