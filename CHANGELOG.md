@@ -4,6 +4,54 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-15
 
+- **Frame on a picture renders the frame you are on.** It always rendered frame 1 instead. A
+  picture is a single frame as far as ffprobe is concerned, so the frame range was pinned to 0 to
+  keep ffmpeg from being asked for a frame the file does not have — but once there is a stack over
+  that picture the plate is a proper clip: the picture holds still while the layers over it move,
+  and a pulse at frame 30 is a different plate from the one at frame 1. The number is now read as
+  where the overlays start rather than as a trim into the picture, which has nothing to trim, and
+  the engine leaves a picture base untrimmed so the render cannot fail on it. Without a stack
+  nothing changes — every frame of a picture is the same picture.
+  This also explains the playhead jumping back to frame 1 after a Frame on a still: it was not the
+  playhead moving, it was the run honestly reporting that frame 1 is what it had rendered. The run
+  now records the frame it came from, so the playhead stays where you left it and **use frame →**
+  and the clip-time readout line up with it.
+- **Blur at 100 is three times the blur it was.** The dial was linear and topped out at a sigma of
+  4% of the short side — 31px on a 768 render, which softens an edge but leaves a square a square.
+  The bottom of the dial is unchanged, because that is where a matte's feather lives and it wants
+  the fine travel it has always had; a cubic term now rides on top of it and only really arrives
+  near the end, so 100 is about an eighth of the short side (92px at 768) and a pulse turns into
+  light rather than a soft-edged shape. Anything already set below half moves by a pixel or two;
+  above that it gets noticeably softer. The page's canvas, PIL and ffmpeg all take a standard
+  deviation and all three read the same curve, so the preview still predicts the render — and
+  ffmpeg's gblur gets three passes above a sigma of 20, where its one-pass approximation starts to
+  show seams.
+- **The mode is called Warp on a picture too.** The Warp | Boil switch renamed itself to
+  *Camera* whenever the source was a still, which put a second Camera on the page right under the
+  Camera card and made the mode look like a different one. It is the same mode: carry the paint
+  forward. All that changes on a still is what does the carrying — the camera move rather than the
+  footage's own motion — and the button's tooltip says so, along with the part that matters, which
+  is that **Source mix** is what lets the layer stack land on each frame rather than only on frame 1.
+- **Seven more pulse patterns: five kinds became twelve.** The five that were there were round and
+  soft — a ring, a disc, static — and nothing in the list made a shape you could point at.
+  Four hard ones: **Blocks**, a square launched at nothing on every hit and expanding until it is
+  off the frame on all four sides, fading as it spreads, so a square inside a square is the one that
+  just landed; **Grid**, the frame cut into big squares with half of them lit at random on each hit,
+  each fading on its own clock; **Prism**, Rings with corners — a wide hexagon opening out of the
+  middle, turned differently every time; and **Slabs**, big flat rectangles thrown across the frame
+  and held a moment, never twice in the same place. Three are fractal noise, written here rather
+  than pulled in: a coarse lattice per octave, smoothed on the way up to the frame and crossfaded
+  between two draws of itself, so the field boils instead of flickering. **Clouds** opens whole
+  billows out of nothing on the hit, **Smoke** drifts the same field upward with every layer at its
+  own speed, and **Veins** ridges it into thick marbled filaments. The beat moves a threshold set
+  from the field's measured range, which is what keeps them properly black at rest. About 40 ms a
+  frame at 768. The picker's cards are bigger too — a pattern is easier to recognise than to read
+  about.
+- **The Pulse and Mattes panels say what they are properly.** The line of text under the title was
+  laid out as a row of controls, which is what a header usually holds, so every bold word in the
+  sentence was pushed into a column of its own and the sentence read in pieces across the page. The
+  title sits on its own line now with the text under it, at a width you can read across, and the
+  sentence about blend modes is gone: the stack itself says that.
 - **The strip draws what you can see, then the rest.** Every run on disk became a card in one go,
   each with a thumbnail to fetch — on a folder with a few hundred runs that is a few hundred
   requests for pictures sitting off the right-hand edge where nobody is looking. Twelve cards are

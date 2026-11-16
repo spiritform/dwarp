@@ -360,7 +360,9 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #h3Vids .ref button.pick:hover { background: #34333b; color: var(--text); }
   /* the colour-mask library: the Shape library's grid, in the frame shape you are rendering */
+  #maskLib .sl-grid { grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); gap: 20px 16px; }
   #maskLib .sl-card .thumb { aspect-ratio: 16 / 9; }
+  #maskLib .sl-card b { font-size: 12px; margin-top: 7px; }
   #maskLib .sl-card .note { display: block; font-size: 10px; color: var(--faint); line-height: 1.35;
                             white-space: normal; margin-top: 2px; }
   #h3Vids .clip-empty { padding: 12px; font-size: 11px; background: #25242b; display: flex; flex-direction: column;
@@ -987,6 +989,12 @@
   .rs-head { position: sticky; top: -22px; z-index: 2; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
              margin: -22px -26px 16px; padding: 18px 26px 14px; background: rgba(14,14,16,.97); }
   .rs-head h3 { margin: 0; }
+  /* a panel that opens with a sentence rather than a row of controls: title, then the text under it */
+  .rs-head.stack { display: block; }
+  .rs-head.stack h3 { font-size: 15px; letter-spacing: .3px; }
+  .rs-head.stack .rs-info { display: block; margin-top: 6px; max-width: 76ch; min-height: 0;
+                            line-height: 1.5; }
+  .rs-head.stack .close { position: absolute; top: 16px; right: 26px; }
   .rs-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; font-size: 12px; color: var(--dim); min-height: 30px; }
   .rs-info b { color: var(--text); font-weight: 600; }
   .rs-btns { display: flex; gap: 8px; margin-left: auto; }   /* the buttons sit at the right, by the dropdown */
@@ -2977,7 +2985,7 @@ function paintMaskLib() {
       <div class="thumb"><video src="/api/masks/preview?${qs({ pattern: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
         <span class="tag">${p.colours} tones</span></div>
       <b>${p.label}</b><span class="note">${p.note}</span></div>`;
-  $('maskLib').innerHTML = `<div class="rs-head">
+  $('maskLib').innerHTML = `<div class="rs-head stack">
       <h3>Mattes</h3>
       <div class="rs-info">Black and white, drawn at this render's size and length. A matte sits in the
         stack above the layer it works on: white is where that layer shows, black is where what is
@@ -3010,12 +3018,11 @@ function paintPulseLib() {
       <div class="thumb"><video src="/api/pulse/preview?${qs({ kind: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
         <span class="tag">${p.base === 'grey' ? 'mid grey at rest' : 'black at rest'}</span></div>
       <b>${p.label}</b><span class="note">${p.note}</span></div>`;
-  $('maskLib').innerHTML = `<div class="rs-head">
+  $('maskLib').innerHTML = `<div class="rs-head stack">
       <h3>Pulse</h3>
       <div class="rs-info">A layer drawn at this render's size and length that moves on a beat \u2014
         from a BPM you type, from the clip's own sound, or from a track you load. It is an ordinary
-        layer after that: the <b>blend mode</b> is what decides how a hit reads, and under Warp the
-        paint from one hit is carried into the frames after it.</div>
+        layer after that, and under Warp the paint from one hit carries on into the frames after it.</div>
       <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
     </div><div class="sl-grid">${PULSE_PATTERNS.map(card).join('')}</div>`;
   playTiles($('maskLib'));
@@ -3765,8 +3772,13 @@ function softDraw(ctx, img, w, h, px) {
   ctx.drawImage(out, p, p, w, h, 0, 0, w, h);
 }
 // The matte's brightness as alpha, through its levels. Same reckoning as the lut the engine builds.
-var BLUR_SPAN = 0.04;                      // matches engine/layers.py
-const blurPx = (blur, w, h) => (blur || 0) * Math.min(w, h) * BLUR_SPAN;
+var BLUR_FINE = 0.04, BLUR_WIDE = 0.08;    // matches engine/layers.py blur_sigma()
+// Not linear: the old linear dial is kept as the fine part, and a cubic rides on top that only
+// arrives near 100 -- a feather keeps its travel, and the top of the dial can take a shape apart.
+// Canvas filter: blur() takes a standard deviation, which is what gblur and PIL take, so the
+// preview and the render mean the same thing by a number.
+const blurPx = (blur, w, h) => { const b = Math.min(1, Math.max(0, blur || 0));
+  return (BLUR_FINE * b + BLUR_WIDE * b ** 3) * Math.min(w, h); };
 // Kept by everything it depends on: the frame, the levels, the feather, the size. An opacity drag
 // touches none of those, so the per-pixel pass below runs once rather than once per pointer event.
 var matteCache = new Map();
@@ -4578,7 +4590,7 @@ function paintSums() {
       .filter(Boolean).join(' · '));
   set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
-    (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · ${stillClip() ? 'Camera' : 'Warp'} · mix ${(+state.srcMix).toFixed(2)}`));
+    (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
@@ -5309,7 +5321,7 @@ function renderControls() {
   // H3: nothing is painted here, so there is no ControlNet or DepthDiff to steer it
   applyCards(); paintSums();
   if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
-    $('frameMode').hidden = !(state.i2v && adAllowed());   // Image mode: Camera · Motion
+    $('frameMode').hidden = !(state.i2v && adAllowed());   // Image mode: Warp · Motion
     $('srcMixBox').hidden = true;
     $('nextBox').hidden = false;           // Frame Lock: later frames hold what's there (a high Denoise every frame cooks)
     if (state.i2v) $('gTabs').hidden = false;
@@ -5317,11 +5329,13 @@ function renderControls() {
   } else {
     $('gTabs').hidden = $('frameMode').hidden = false;
   }
-  // the row: Warp · Boil · Motion for a video, Camera · Motion for a picture; Motion only on SD 1.5
+  // the row: Warp · Boil · Motion for a video, Warp · Motion for a picture; Motion only on SD 1.5
   const fmB = f => $('frameMode').querySelector(`[data-f="${f}"]`);
   const cams = state.t2v || stillClip();   // a still has no motion to follow, so the camera does the carrying
-  fmB('warp').textContent = cams ? 'Camera' : 'Warp';
-  fmB('warp').title = cams ? 'Camera: each frame moves on from the last (zoom, rotate, pan), repainted as it goes' : "Carry the paint along the footage's motion: strokes stick to things";
+  // One name for the mode either way: what changes on a still is what carries the paint forward,
+  // not what the mode is. (It used to say Camera here, which read as a second Camera card.)
+  fmB('warp').title = cams ? "Warp on a picture: there is no footage motion to follow, so the Camera card's move carries the paint on — and Source mix is how much of the stack lands on each frame"
+                           : "Carry the paint along the footage's motion: strokes stick to things";
   fmB('fresh').hidden = !!state.t2v; fmB('motion').hidden = !adAllowed();
   $('frameMode').style.gridTemplateColumns = `repeat(${[...$('frameMode').children].filter(b => !b.hidden).length}, 1fr)`;
   if (ad) {                                // the motion model ties frames together: no warp settings, no Shape (Video: no camera)
@@ -5675,9 +5689,14 @@ async function buildConfig(kind) {
     end = Math.min(end, probe.max_frame);
     W = probe.render.width; H = probe.render.height;
     // A picture is one frame as far as ffprobe is concerned, and the length is the one it was given.
+    // Frame still renders the frame you are on. With a stack over the picture the plate is a proper
+    // clip -- the overlays move even though the picture does not -- and frame_start is read as where
+    // those overlays begin rather than as a trim into the picture, which has nothing to trim. With
+    // no stack every frame is the same picture, so frame 1 is the frame you are on whatever the
+    // playhead says, and asking ffmpeg for frame 6 of a one-frame file would simply fail.
     if (stillClip()) {
-      start = 0;
-      end = kind === 'frame' ? 0 : Math.floor((stillFrames() - 1) / nth);
+      start = kind === 'frame' && drawnLayers().length ? (playheadFrame() ?? 0) : 0;
+      end = kind === 'frame' ? start : Math.floor((stillFrames() - 1) / nth);
       if (kind === 'test') end = Math.min(end, TEST.frames - 1);
     }
   }
@@ -6125,8 +6144,8 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
        <b>0.1–0.2</b> is usually enough; <b>0</b> gives the most locked-in brushwork (fine for short clips); higher
        follows the footage more and the paint less.</p>
     <h4>Warp or Boil</h4>
-    <p>On a <b>picture with a length</b>, Warp is <b>Camera</b> instead: a still has no motion to follow, so what
-       carries the paint forward is the move you set on the Camera card — zoom, rotate, pan, or 3D, where the
+    <p>On a <b>picture with a length</b>, Warp still means carry the paint — a still just has no motion of its
+       own to follow, so what carries it forward is the move you set on the Camera card — zoom, rotate, pan, or 3D, where the
        frame's own depth lifts it into space and near things slide faster than far ones. It is still an image
        sequence, so the stack is re-composited over every frame while it generates: overlays land on the screen
        rather than being dragged along by the move, and <b>Source mix</b> decides how much of that fresh plate goes

@@ -94,7 +94,9 @@ Each layer is a card with a 16:9 thumbnail and its own controls:
 - **How it's laid down** — a blend mode, an **opacity** and a **blur**. The blend set is the eleven modes a browser
   canvas and ffmpeg both have and agree on, because a mode the preview cannot show is a mode that would make the
   preview lie. Blur is stored as a share of the frame rather than a number of pixels, so what you judge in a 480px
-  preview is what the flatten makes at 1440.
+  preview is what the flatten makes at 1440. The dial is not linear: the bottom of it is the fine travel a matte's
+  feather needs, and a cubic term arrives near the top, where 100 takes a shape apart into light (a sigma of about an
+  eighth of the short side — 92px on a 768 render).
 - **Luma matte** — mark a black-and-white layer as a matte and it is not drawn: its brightness becomes the alpha of the
   layer below it, with **Black / Mid / White** levels to shape an arbitrary grey clip into a usable matte and a
   **feather** applied after them. The matte sits in the stack where you can see it, which is the After Effects rule and
@@ -116,9 +118,14 @@ cannot be added or removed mid-render, since the frames for them were never extr
 
 ### Pulse: a layer that moves on a beat
 
-**add pulse** draws a layer at the render's size and length whose content follows a beat. Five kinds: **Burst** (static
-inside a ring opening out of the middle), **Grain** (static thickening on the hit), **Bloom** (a soft disc of light),
-**Flash** (the flat frame) and **Rings** (one launched on each hit, travelling outward).
+**add pulse** draws a layer at the render's size and length whose content follows a beat. Twelve kinds. Light and
+texture: **Burst** (static inside a ring opening out of the middle), **Grain** (static thickening on the hit), **Bloom**
+(a soft disc of light), **Flash** (the flat frame) and **Rings** (one launched on each hit, travelling outward). Hard
+shapes: **Blocks** (a square launched at nothing on every hit and expanding past the edges of the frame), **Grid** (the
+frame cut into big squares, half of them lit on every hit), **Prism** (a wide polygon opening out of the middle, turned
+a little each time) and **Slabs** (big rectangles thrown across the frame, never twice in the same place). Fractal
+noise, coarse and boiling: **Clouds** (billows opening out of nothing), **Smoke** (the same field drifting upward, each
+layer at its own speed) and **Veins** (ridged noise — thick marbled filaments swelling on the hit).
 
 The beat comes from one of three places, and the tabs name what sets the speed rather than where a sound comes from:
 
@@ -219,7 +226,7 @@ empty field. A render needs an active Comfy subscription.
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
 - **[Layers](#layers-a-stack-of-sources)**: a stack of sources composited into the frame the model paints — another video, a picture, static, a drawn matte — with blend modes, opacity, blur and luma mattes with their own levels. It previews live in the browser and keeps following the dials while the render runs
-- **[Pulse](#pulse-a-layer-that-moves-on-a-beat)**: a layer that moves on a beat — static, light or rings, paced by the clip's own soundtrack, by a BPM you type (with a metronome) or by a track you load. Any layer can take the beat
+- **[Pulse](#pulse-a-layer-that-moves-on-a-beat)**: a layer that moves on a beat — static, light, rings, big hard-edged squares and polygons, or thick fractal noise, paced by the clip's own soundtrack, by a BPM you type (with a metronome) or by a track you load. Any layer can take the beat
 - **[Sound](#sound)**: a render comes out with the clip's audio on it, and the frames on the stage play with that audio under them — in sync, and while the render is still going
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones

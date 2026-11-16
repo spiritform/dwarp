@@ -34,8 +34,25 @@ DEFAULTS = {"mode": "normal", "opacity": 1.0, "blur": 0.0, "matte": False,
             "black": 0.0, "mid": 0.5, "white": 1.0, "invert": False}
 
 # Blur is kept as a share of the frame rather than a number of pixels, so a stack judged at preview
-# size comes out the same when it is flattened four times larger.
-BLUR_SPAN = 0.04
+# size comes out the same when it is flattened four times larger. BLUR_SPAN is the sigma at the top
+# of the dial as a share of the short side: at 100 on a 768 render, about 92 px.
+#
+# The dial is not linear. A feather on a matte lives in the bottom of it and wants the fine travel
+# it has always had; the top is asked for when a layer should stop being a shape at all -- a pulse
+# turned into light rather than a square. So the old linear term is kept exactly as it was and a
+# cubic rides on top of it: below half the dial nothing anyone already set moves much, and 100 is
+# three times the blur it used to be.
+BLUR_FINE = 0.04        # the linear part: what the whole dial used to be
+BLUR_WIDE = 0.08        # the cubic part, which only arrives near the top
+BLUR_SPAN = BLUR_FINE + BLUR_WIDE       # sigma at 100, as a share of the short side
+
+
+def blur_sigma(blur: float, width: int, height: int) -> float:
+    """The Gaussian sigma this dial means at this size. One definition: ffmpeg's gblur, PIL's
+    GaussianBlur and the page's canvas filter all take a standard deviation, and all three have to
+    agree or the preview stops predicting the render."""
+    b = min(1.0, max(0.0, float(blur)))
+    return (BLUR_FINE * b + BLUR_WIDE * b ** 3) * min(width, height)
 
 # Rec. 709 luma, spelled out rather than left to format=gray. ffmpeg picks its matrix from the
 # input's colour tags -- BT.601 for an untagged SD clip -- while the panel's live preview computes
@@ -49,8 +66,10 @@ LUMA709 = ("colorchannelmixer="
 
 
 def _blur(blur: float, width: int, height: int) -> str:
-    sigma = max(0.0, float(blur)) * min(width, height) * BLUR_SPAN
-    return f",gblur=sigma={sigma:.3f}" if sigma >= 0.3 else ""
+    sigma = blur_sigma(blur, width, height)
+    # steps: gblur's IIR approximation shows its seams at a large sigma, and the top of this dial
+    # is now large. Three passes cost little and keep a wide blur round.
+    return f",gblur=sigma={sigma:.3f}:steps={3 if sigma > 20 else 1}" if sigma >= 0.3 else ""
 
 
 def _num(v, lo, hi, fallback):
@@ -383,6 +402,11 @@ class FrameStack:
         self.frames: dict[int, list] = {}
         base_k = self.pairs[0][0]
         self.off: dict[int, int] = {}
+        # A picture given a length is the one base that cannot be trimmed: it has a single frame, so
+        # any frame_start selects nothing out of it and ffmpeg fails the render. On that base the
+        # number means where the overlays start -- which is how Frame renders the frame you are
+        # looking at, the picture being the same in every one of them.
+        still_base = int(getattr(job, "source_frames", 0) or 0) > 0
         for k, L in enumerate(self.stack):
             one = copy(job)
             one.video = L["path"]
@@ -391,6 +415,8 @@ class FrameStack:
             if k != base_k:
                 one.fit = "fill"
                 one.frame_start, one.frame_end = 0, -1   # read whole; the trim is the clip's, not its
+            elif still_base:
+                one.frame_start, one.frame_end = 0, -1   # the one frame there is
             self.off[k] = 0 if k == base_k else max(0, job.frame_start)
             self.frames[k] = extract(one, Path(out) / "layers" / f"{k}")
             log(f"  {Path(L['path']).name} \u00b7 {len(self.frames[k])} frames"
@@ -422,7 +448,7 @@ class FrameStack:
         want = repr([{k: v for k, v in L.items() if k != "path"} for L in live])
         if self.done.get(i) == want and self.paths[i].is_file():
             return self.paths[i]
-        soft = lambda im, b, w, h: im.filter(ImageFilter.GaussianBlur(b * min(w, h) * BLUR_SPAN)) if b > 0 else im
+        soft = lambda im, b, w, h: im.filter(ImageFilter.GaussianBlur(blur_sigma(b, w, h))) if b > 0 else im
         pairs = self.pairs                     # positions never change, only the settings do
         base_L = live[pairs[0][0]]
         img = self._frame(pairs[0][0], i)
@@ -447,7 +473,7 @@ class FrameStack:
                     lum = 1.0 - lum
                 if M["blur"] > 0:                    # feather after the levels, as the flatten does
                     lum = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(
-                        ImageFilter.GaussianBlur(M["blur"] * min(w, h) * BLUR_SPAN)), np.float32) / 255.0
+                        ImageFilter.GaussianBlur(blur_sigma(M["blur"], w, h))), np.float32) / 255.0
                 mixed = acc + (mixed - acc) * lum[..., None]
             acc = mixed
         Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)

@@ -34,6 +34,27 @@ PATTERNS = [
      "note": "The whole frame, flat. The blend mode does the work: screen to bloom, multiply to stomp."},
     {"id": "rings", "label": "Rings", "base": "black",
      "note": "Rings travelling outward, one launched on each hit, brightest as it leaves."},
+    {"id": "blocks", "label": "Blocks", "base": "black",
+     "note": "A square launched at nothing on every hit, expanding past the edges of the frame "
+             "and fading as it goes \u2014 hard edges, no glow."},
+    {"id": "grid", "label": "Grid", "base": "black",
+     "note": "The frame cut into big squares; a handful light on every hit and fade in their own "
+             "time, so no two hits land the same."},
+    {"id": "prism", "label": "Prism", "base": "black",
+     "note": "Rings with corners: a wide polygon opening out of the middle, turned a little on "
+             "each hit."},
+    {"id": "slabs", "label": "Slabs", "base": "black",
+     "note": "Big hard rectangles thrown across the frame on every hit, holding a moment and "
+             "going out \u2014 no two hits in the same place."},
+    {"id": "clouds", "label": "Clouds", "base": "black",
+     "note": "Fractal noise, coarse and slowly boiling: whole billows open out of nothing on the "
+             "hit and close again."},
+    {"id": "smoke", "label": "Smoke", "base": "black",
+     "note": "The same noise drifting upward, each layer at its own speed \u2014 thick at the floor, "
+             "thinning as it climbs."},
+    {"id": "veins", "label": "Veins", "base": "black",
+     "note": "Ridged fractal noise: thick marbled filaments that swell wide on the hit and close "
+             "to nothing between."},
 ]
 BY_ID = {p["id"]: p for p in PATTERNS}
 
@@ -150,6 +171,76 @@ def _draw_size(width: int, height: int) -> tuple:
     return max(16, (width // k) & ~1), max(16, (height // k) & ~1)
 
 
+# ---------------------------------------------------------------- fractal noise
+# Value noise written out here rather than pulled in: one random lattice per octave, smoothed on
+# the way up to the frame, and crossfaded between two draws of itself so it boils rather than
+# flickers. Deliberately coarse -- what these patterns want is thick cloud, not sand.
+def _up(lat: np.ndarray, w: int, h: int, ox: float = 0.0, oy: float = 0.0) -> np.ndarray:
+    """One lattice stretched over the frame, smoothstepped between its cells and wrapping round."""
+    gh, gw = lat.shape
+    fx = (np.arange(w, dtype=np.float32) + 0.5) * gw / w - 0.5 + ox
+    fy = (np.arange(h, dtype=np.float32) + 0.5) * gh / h - 0.5 + oy
+    x0, y0 = np.floor(fx), np.floor(fy)
+    tx, ty = (fx - x0).astype(np.float32), (fy - y0).astype(np.float32)
+    tx, ty = tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty)   # cells, not facets
+    xi, yi = x0.astype(np.int64) % gw, y0.astype(np.int64) % gh
+    xj, yj = (xi + 1) % gw, (yi + 1) % gh
+    top = lat[yi][:, xi] * (1.0 - tx) + lat[yi][:, xj] * tx
+    bot = lat[yj][:, xi] * (1.0 - tx) + lat[yj][:, xj] * tx
+    return (top * (1.0 - ty)[:, None] + bot * ty[:, None]).astype(np.float32)
+
+
+def _lattice(st: dict, key: str, gh: int, gw: int, z: float, rng) -> np.ndarray:
+    """An octave's lattice at time z: two draws of it, lerped. Noise that boils, not noise that
+    flickers -- a fresh field every frame is static however smooth it is in space."""
+    i, f = int(np.floor(z)), float(z - np.floor(z))
+    cur = st.get(key)
+    if cur is None or cur[0] != i:
+        # one step on: what was ahead is now behind, and only the new face has to be drawn
+        a = cur[2] if cur is not None and cur[0] == i - 1 else rng.random((gh, gw), dtype=np.float32)
+        st[key] = (i, a, rng.random((gh, gw), dtype=np.float32))
+    _, a, b = st[key]
+    f = f * f * (3.0 - 2.0 * f)
+    return a * (1.0 - f) + b * f
+
+
+def _fbm(st: dict, w: int, h: int, z: float, rng, *, octaves: int = 3, cells: float = 3.0,
+         drift: float = 0.0, ridged: bool = False) -> np.ndarray:
+    """Octaves of value noise, each at half the amplitude and twice the frequency, as 0..1.
+
+    `cells` is how many lattice cells fit across the frame at the first octave: three is a picture
+    made of a handful of masses, which is the whole point of these. `drift` slides each octave
+    upward at its own speed, so the layers part as they climb instead of sliding as one sheet.
+    """
+    out = np.zeros((h, w), dtype=np.float32)
+    amp, tot, g = 1.0, 0.0, float(cells)
+    for o in range(octaves):
+        gw = max(2, int(round(g)))
+        gh = max(2, int(round(g * h / max(1, w))))
+        lat = _lattice(st, f"o{o}", gh, gw, z * (1.0 + 0.35 * o), rng)
+        v = _up(lat, w, h, oy=-drift * z * (o + 1))
+        out += amp * ((1.0 - np.abs(v * 2.0 - 1.0)) if ridged else v)
+        tot += amp
+        amp *= 0.5
+        g *= 2.0
+    return out / max(1e-6, tot)
+
+
+def _cut(v: np.ndarray, cover: float, soft: float) -> np.ndarray:
+    """The brightest `cover` of a field, with a soft edge: 0 is black whatever the field is doing.
+
+    A cut at a fixed level would do, if the field held still. A lattice three cells across does
+    not -- its own mean wanders from frame to frame, and a fixed level turns that wander into a
+    flicker between hits that are meant to match. Asking for a share of the frame instead pins the
+    picture to the beat. The quantile is read off every second pixel, which is far more of the
+    frame than it needs to land in the right place.
+    """
+    if cover <= 0.002:
+        return np.zeros_like(v)
+    thr = float(np.quantile(v[::2, ::2], 1.0 - min(1.0, cover)))
+    return np.clip((v - thr) / max(1e-3, soft) + 0.5, 0.0, 1.0).astype(np.float32)
+
+
 def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list) -> np.ndarray:
     """One frame as 0..1 greys, at the drawing size."""
     y, x = np.ogrid[0:h, 0:w]
@@ -177,6 +268,95 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         for pos, lvl in carry:
             ring = np.maximum(ring, np.clip(1.0 - np.abs(r - pos) / 0.28, 0.0, 1.0) * lvl)
         return (ring * rng.random((h, w), dtype=np.float32)).astype(np.float32)
+    if kind == "blocks":
+        # A square out of nothing on every hit, growing until it is off the frame on all four
+        # sides. Rings' trick with corners and no hole: each hit launches its own, they travel at
+        # one rate and dim as they spread, and the newest is the brightest, so a square inside a
+        # square reads as the one that just landed. Hard edges: this is a shape, not a light.
+        short = max(1.0, min(cx, cy))
+        sq = np.maximum(np.abs(x - cx), np.abs(y - cy)) / short
+        soft = 2.0 / short                          # a pixel of edge, so it is not a staircase
+        carry[:] = [c for c in ((size + 0.09, lvl * 0.975) for size, lvl in carry)
+                    if c[0] < 2.3 and c[1] > 0.02]
+        if k > 0.25 and (not carry or carry[-1][0] > 0.14):
+            carry.append((0.045, k))    # one step wide already: a hit you see on the frame it lands
+        out = np.zeros((h, w), dtype=np.float32)
+        for size, lvl in carry:
+            out = np.maximum(out, np.clip((size - sq) / soft, 0.0, 1.0) * lvl)
+        return out.astype(np.float32)
+    if kind == "grid":
+        # The frame cut into a few big cells. A hit lights half of them at random and they fade
+        # on their own clock, so the pattern never repeats while the count does.
+        cols = 4 if w >= h else 3
+        rows = max(2, int(round(cols * h / max(1, w))))
+        n = cols * rows
+        if len(carry) != n + 1:                     # the last slot is what the envelope was doing
+            carry[:] = [0.0] * (n + 1)
+        was, carry[n] = carry[n], k
+        for i in range(n):
+            carry[i] *= 0.84
+        if k > 0.3 and was <= 0.3:                  # the edge of a hit, not every frame of one
+            for i in rng.choice(n, size=max(2, n // 2), replace=False):
+                carry[int(i)] = k
+        lev = np.asarray(carry[:n], dtype=np.float32).reshape(rows, cols)
+        out = lev[np.arange(h) * rows // h][:, np.arange(w) * cols // w]
+        # a gutter between the cells, so what you see is squares and not one lit field
+        fx, fy = (np.arange(w) * cols / w) % 1.0, (np.arange(h) * rows / h) % 1.0
+        gap = ((fx > 0.03) & (fx < 0.97))[None, :] & ((fy > 0.03) & (fy < 0.97))[:, None]
+        return (out * gap).astype(np.float32)
+    if kind == "prism":
+        # Rings with corners. A regular polygon is the farthest of a few half-planes, so a front is
+        # a distance like r and travels the same way; each one is turned at random, and a wide band
+        # keeps it a shape crossing the frame rather than a wire.
+        sides, dx, dy = 6, (x - cx) / half, (y - cy) / half
+        carry[:] = [c for c in ((pos + 0.05, lvl * 0.95, ang) for pos, lvl, ang in carry)
+                    if c[0] < 1.8 and c[1] > 0.02]
+        if k > 0.25 and (not carry or carry[-1][0] > 0.12):
+            carry.append((0.0, k, float(rng.random()) * np.pi))
+        out = np.zeros((h, w), dtype=np.float32)
+        for pos, lvl, ang in carry:
+            d = None
+            for t in ang + np.arange(sides) * (2.0 * np.pi / sides):
+                v = dx * float(np.cos(t)) + dy * float(np.sin(t))
+                d = v if d is None else np.maximum(d, v)
+            out = np.maximum(out, np.clip(1.0 - np.abs(d - pos) / 0.14, 0.0, 1.0) * lvl)
+        return out.astype(np.float32)
+    if kind == "slabs":
+        # Rectangles thrown at the frame: a few on every hit, somewhere else each time, held for a
+        # moment and then gone. Hard edges and flat white, so what moves is the arrangement.
+        carry[:] = [c for c in ((x0, x1, y0, y1, lvl * 0.87) for x0, x1, y0, y1, lvl in carry)
+                    if c[4] > 0.03]
+        if k > 0.3 and (not carry or carry[-1][4] < k * 0.75):
+            for _ in range(2 + int(rng.integers(0, 2))):
+                a, b = float(rng.random()), float(rng.random())
+                long_, thin = 0.3 + 0.55 * float(rng.random()), 0.12 + 0.3 * float(rng.random())
+                dx, dy = (long_, thin) if rng.random() < 0.5 else (thin, long_)
+                carry.append((a * (1.0 - dx), a * (1.0 - dx) + dx,
+                              b * (1.0 - dy), b * (1.0 - dy) + dy, k))
+        fx = (x / max(1.0, w - 1.0)).astype(np.float32)
+        fy = (y / max(1.0, h - 1.0)).astype(np.float32)
+        out = np.zeros((h, w), dtype=np.float32)
+        for x0, x1, y0, y1, lvl in carry:
+            band = ((fx >= x0) & (fx <= x1)) & ((fy >= y0) & (fy <= y1))
+            out = np.maximum(out, band.astype(np.float32) * lvl)
+        return out
+    if kind in ("clouds", "smoke", "veins"):
+        # The three noise layers. One clock ticking a frame at a time, so the field boils at its
+        # own pace and the beat only decides how much of it you are allowed to see: at rest the
+        # threshold sits above the brightest part of the noise, which is how these stay black.
+        if not carry:
+            carry.append({"t": 0.0})
+        st = carry[0]
+        st["t"] = t = st["t"] + 1.0
+        if kind == "clouds":
+            v = _fbm(st, w, h, t * 0.055, rng, octaves=3, cells=3.0)
+            return _cut(v, 0.6 * k, 0.1)
+        if kind == "smoke":
+            v = _fbm(st, w, h, t * 0.05, rng, octaves=4, cells=3.0, drift=1.1)
+            up = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]   # 1 at the floor
+            return _cut(v * (0.45 + 0.8 * up), 0.5 * k, 0.1)
+        v = _fbm(st, w, h, t * 0.06, rng, octaves=3, cells=3.0, ridged=True)
+        return _cut(v, 0.35 * k, 0.07)
     # rings: the same fronts, drawn as light rather than used as a window
     carry[:] = [c for c in ((pos + 0.03, lvl * 0.93) for pos, lvl in carry) if c[0] < 1.6 and c[1] > 0.02]
     if k > 0.25 and (not carry or carry[-1][0] > 0.1):
