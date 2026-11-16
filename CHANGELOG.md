@@ -2,6 +2,20 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-16
+
+- **copy prompt**, beside *copy settings* under a run. *copy settings* brings a run's whole panel
+  back — model, sliders, seed, clip, stack — which is more than you want when the only thing you
+  liked about an old run is what it was asked to paint. This takes the words and nothing else: the
+  prompt, the keyframes and the negative. Keyframes come because a keyframe *is* a prompt, and
+  leaving them would quietly drop most of what a travelling run was made from.
+
+- **Dropping a render on the Input slot shows it there.** With nothing loaded the panel is in its
+  text-to-video state, and that state has an Input card of its own: the empty one. Loading a clip
+  drew the card before it cleared the flag, so the drop landed, the clip became the source and the
+  stack showed it as SOURCE — while the card at the top still read *nothing yet · the prompt paints
+  it* and offered to import media. The flag falls first now, so the card you get is the clip's.
+
 ## 2026-11-15
 
 - **Frame on a picture renders the frame you are on.** It always rendered frame 1 instead. A

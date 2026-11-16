@@ -1558,6 +1558,7 @@
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
     <a id="loadRun" class="hide" title="Copy this run's settings into the panel: its look, prompt, keyframes, sliders, model, seed and clip">copy settings</a>
+    <a id="copyPrompt" class="hide" title="Copy only this run's words into the panel — its prompt, its keyframes and its negative. Nothing else moves: your model, sliders, seed, clip and stack stay as they are">copy prompt</a>
     <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">use frame →</a>
     <a id="enhanceLink" class="hide">enhance</a>
     <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
@@ -5154,6 +5155,10 @@ async function setClipPath(path, name) {
   }
   if (state.clip?.path !== path) { state.range = [0, 1]; state.keys = []; state.keySel = -1; clipFrame = 0; }
   state.clip = { path, name: name || path.split(/[\\/]/).pop(), source: probe.source };
+  // t2v means "nothing is loaded", and it has an Input card of its own. Something was just
+  // loaded, so the flag has to fall before the card is drawn -- otherwise the clip is the
+  // source and the stack shows it, while the Input card at the top is still the empty one.
+  syncMode();
   save(); renderClip(); freshenLayers();
 }
 
@@ -5684,7 +5689,7 @@ function showClip() {
   ensureFrameEl(); setControlTabs(); setupTransport();
   paintFrame();
   setFoot(`${state.clip.name} · source`);
-  ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'copyPrompt', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
   document.querySelectorAll('.run').forEach(el => el.classList.remove('on'));
   updateEst();                             // Frame's tooltip names the frame it will render
@@ -6417,7 +6422,8 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
     <h3>Runs, seeds and Enhance</h3>
     <h4>The strip</h4>
     <p>Every Frame, Preview and Render is a run in the strip at the bottom, newest on the left. Click one to view it;
-       <b>copy settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.</p>
+       <b>copy settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.
+       <b>copy prompt</b> takes the words only: its prompt, keyframes and negative, with everything else left as you have it.</p>
     <table>
       <tr><td><b>← →</b></td><td>After clicking a run: the previous / next run (the strip keeps it in view). Click the
           stage or the timeline and they step frames again.</td></tr>
@@ -7082,6 +7088,7 @@ async function showRun(runId, { follow = false } = {}) {
   $('gifLink').title = `Download the run as a looping gif — ${frames.length} frames, up to ${GIF_WIDE}px, no sound`;
   $('playBtn').title = runHasSound() ? 'Play the mp4 with its sound (space)' : 'Play frames (space)';
   $('loadRun').classList.remove('hide');
+  $('copyPrompt').classList.remove('hide');
   $('enhanceLink').classList.toggle('hide', !POST_OPTS || (!POST_OPTS.upscalers.length && !POST_OPTS.rife && !POST_OPTS.cloud?.length));
   $('animateLink').classList.remove('hide');          // whatever frame you are on, on to be animated
   if (switched || !follow) renderOutputs(runId);
@@ -7641,6 +7648,24 @@ async function runAsInput({ run, frame, count }) {
     await useInput(await api(`/api/runs/${run}/as_input?${still ? qs({ frame }) : ''}`, { method: 'POST' }));
   } catch (err) { setStatus('could not use that run: ' + err.message, 'bad'); }
 }
+// The words and nothing else. "copy settings" brings a run's whole panel back -- model, sliders,
+// seed, clip, stack -- which is more than you want when the only thing you liked about an old run
+// is what it was asked to paint. Keyframes come along because a keyframe *is* a prompt: leaving
+// them would quietly drop most of the words a travelling run was made from.
+$('copyPrompt').onclick = async () => {
+  if (!viewRun) return;
+  const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
+  const keys = Array.isArray(ui.keys) ? ui.keys : [];
+  if (!ui.prompt && !keys.length) return setStatus('this run has no saved prompt', 'bad');
+  state.prompt = ui.prompt || '';
+  state.negative = ui.negative || '';
+  state.keys = JSON.parse(JSON.stringify(keys));
+  if (ui.blend != null) state.blend = ui.blend;
+  state.keySel = -1;
+  save(); renderControls(); paintKeys(); updateEst();
+  setStatus(`prompt copied from run ${viewRun}`
+            + (keys.length ? ` — with ${keys.length} more keyframe${keys.length > 1 ? 's' : ''}` : ''), 'done');
+};
 $('loadRun').onclick = async () => {
   if (!viewRun) return;
   const ui = await api(`/api/runs/${viewRun}/ui`).catch(() => ({}));
@@ -7995,14 +8020,14 @@ function clearStage() {
     if (view !== 'mask' && view !== 'shape') view = 'src';
     setControlTabs(); $('scrub').hidden = true;
     if (shapeMode()) return showShape(); setFoot(`${state.image.name} · source`); paintFrame();
-    ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
+    ['mp4Link', 'loadRun', 'copyPrompt', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
     $('outputs').innerHTML = ''; $('enh').hidden = true;
     return;
   }
   if (state.shape && view === 'shape') { setControlTabs(); if (shapeMode()) return showShape(); }
   $('stage').innerHTML = WORDMARK;          // nothing on show: the name
   $('scrub').hidden = true; setFoot('');
-  ['mp4Link', 'loadRun', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
+  ['mp4Link', 'loadRun', 'copyPrompt', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
   $('outputs').innerHTML = ''; $('enh').hidden = true;
 }
 // The strip is a long scroller with a thin bar at the bottom of the window, which is a small thing to
