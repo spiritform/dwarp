@@ -54,7 +54,10 @@
 
   .label, .sublabel, .slider-head b { color: #a9a7b1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
   .label { margin-bottom: 8px;
-           display: flex; justify-content: space-between; }
+           display: flex; justify-content: space-between;
+           /* a heading is never something you meant to select -- and shift-clicking runs used to
+              drag a blue highlight across this one instead of picking the cards under it */
+           user-select: none; -webkit-user-select: none; }
   .label em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
   /* a collapsible card: header = title · live summary · chevron; click it to fold the card to that line */
   .card { background: var(--panel-2); border-radius: var(--radius); transition: background .12s; }
