@@ -100,7 +100,10 @@ Each layer is a card with a 16:9 thumbnail and its own controls:
 - **Luma matte** — mark a black-and-white layer as a matte and it is not drawn: its brightness becomes the alpha of the
   layer below it, with **Black / Mid / White** levels to shape an arbitrary grey clip into a usable matte and a
   **feather** applied after them. The matte sits in the stack where you can see it, which is the After Effects rule and
-  the right one.
+  the right one. The drawn patterns are transitions — **Circle**, **Wipe**, **Split**, **Polygon**, **Orbit**,
+  **Blobs**, **Thirds** (white, then mid grey, then black), **Clouds** and **Ink** — each running from white to
+  black across the clip, which invert turns round. A matte at the very bottom works on the source itself: what is under the source is black — the same
+  black its opacity fades into — so the matte punches the source out against that.
 
 The source is a layer too, with its own opacity and blur. Nothing sits under it, so turning its opacity down scales the
 channels instead of revealing anything — a fade to black, which is the useful thing about it.

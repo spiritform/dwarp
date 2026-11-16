@@ -140,10 +140,11 @@ def pair_index(stack) -> list[tuple]:
             continue
         pairs.append((i, i - 1 if i > 0 and stack[i - 1]["matte"] else None))
     pairs.reverse()                            # the last entry in the panel is the base
-    # A matte on the base has nothing underneath to reveal, so it is not a matte, it is a hole. It
-    # also used to leave an unconsumed filter output and take the whole flatten down with it.
-    if pairs:
-        pairs[0] = (pairs[0][0], None)
+    # A matte on the base used to be thrown away here, on the grounds that there is nothing under
+    # the base to reveal. There is: black. It is the same black the base's own opacity fades into
+    # -- every compositor here fills with it before the base goes down -- so a matte on the base
+    # punches the source out against it, which is the only way to matte the source itself. Every
+    # one of the three compositors has to consume it, or the flatten loses an output and falls over.
     return pairs
 
 
@@ -199,6 +200,13 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
                          f"lutyuv=y='{lut}'{_blur(matte['blur'], width, height)},format=gbrp[m{n}]")
 
     chain = "[s0]"
+    if pairs[0][1]:
+        # The base against black, as a shape. The black is made from the base itself rather than
+        # from a new input, so it arrives at the same size, rate and format with nothing to line up.
+        steps.append("[s0]split[k0a][k0b]")
+        steps.append("[k0a]colorchannelmixer=rr=0:gg=0:bb=0[blk0]")
+        steps.append("[blk0][k0b][m0]maskedmerge[s0m]")
+        chain = "[s0m]"
     for n, (drawn, matte) in enumerate(pairs[1:], start=1):
         op = drawn["opacity"]
         # The matte decides *where*, the blend decides *how*, and opacity rides on the blend so a
@@ -453,8 +461,26 @@ class FrameStack:
         base_L = live[pairs[0][0]]
         img = self._frame(pairs[0][0], i)
         w, h = img.size
+        # The matte's alpha: luma, levels, invert, then the feather -- in that order, so a hard
+        # pattern can be given a soft edge without the levels clipping the softness back off.
+        def alpha(mk, M):
+            m = np.asarray(soft(self._frame(mk, i), 0.0, w, h).convert("RGB"), np.float32) / 255.0
+            lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
+            b, wt = M["black"], M["white"]
+            lum = np.where(abs(wt - b) < 1e-6, (lum > b).astype(np.float32),
+                           np.clip((lum - b) / (wt - b if abs(wt - b) > 1e-6 else 1), 0, 1))
+            lum = lum ** (math.log(0.5) / math.log(min(0.99, max(0.01, M["mid"]))))
+            if M["invert"]:
+                lum = 1.0 - lum
+            if M["blur"] > 0:
+                lum = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(
+                    ImageFilter.GaussianBlur(blur_sigma(M["blur"], w, h))), np.float32) / 255.0
+            return lum[..., None]
+
         acc = np.asarray(soft(img, base_L["blur"], w, h), dtype=np.float32) / 255.0
         acc *= base_L["opacity"]                     # nothing under the base: it fades to black
+        if pairs[0][1] is not None:                  # a matte on the base: the same black, as a shape
+            acc *= alpha(pairs[0][1], live[pairs[0][1]])
         for n in range(1, len(pairs)):
             a, mk = pairs[n]
             L, M = live[a], (live[mk] if mk is not None else None)
@@ -462,19 +488,7 @@ class FrameStack:
             mixed = np.clip(_blend(acc, top, L["mode"]), 0.0, 1.0)
             mixed = acc + (mixed - acc) * L["opacity"]
             if M:
-                mi = self._frame(mk, i)
-                m = np.asarray(soft(mi, 0.0, w, h).convert("RGB"), np.float32) / 255.0
-                lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
-                b, wt = M["black"], M["white"]
-                lum = np.where(abs(wt - b) < 1e-6, (lum > b).astype(np.float32),
-                               np.clip((lum - b) / (wt - b if abs(wt - b) > 1e-6 else 1), 0, 1))
-                lum = lum ** (math.log(0.5) / math.log(min(0.99, max(0.01, M["mid"]))))
-                if M["invert"]:
-                    lum = 1.0 - lum
-                if M["blur"] > 0:                    # feather after the levels, as the flatten does
-                    lum = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(
-                        ImageFilter.GaussianBlur(blur_sigma(M["blur"], w, h))), np.float32) / 255.0
-                mixed = acc + (mixed - acc) * lum[..., None]
+                mixed = acc + (mixed - acc) * alpha(mk, M)
             acc = mixed
         Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)
         self.done[i] = want
@@ -482,34 +496,8 @@ class FrameStack:
 
 
 # ------------------------------------------------------------------ a generated layer
-def noise_clip(dest_dir: Path, *, width: int, height: int, frames: int, fps: float = 24.0,
-               grain: float = 1.0, seed: int = 0) -> dict:
-    """Monochrome static, as a layer you can stack like any other clip.
-
-    Injecting noise is a different lever from raising Denoise. Denoise asks the model to invent
-    more; noise changes the pixels it is looking at -- and with the warp carrying paint forward, the
-    grain becomes structure the next frame elaborates. Its softness is the layer's own blur dial, so
-    there is one kind here rather than six: fine static, blurred into clouds if you want clouds.
-
-    Named after what is in it, like everything else in this file, so the same ask is made once.
-    """
-    width, height = max(16, int(width)) & ~1, max(16, int(height)) & ~1
-    frames, fps = max(1, int(frames)), max(1.0, float(fps))
-    grain = min(1.0, max(0.05, float(grain)))
-    dest_dir = Path(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    key = f"noise|{width}x{height}|{frames}|{fps:.4f}|{grain:.3f}|{int(seed)}"
-    out = dest_dir / f"noise-{hashlib.sha1(key.encode()).hexdigest()[:6]}.mp4"
-    if not (out.is_file() and out.stat().st_size):
-        # the noise filter rather than geq: a per-pixel expression is minutes at 1440 square
-        cmd = ["ffmpeg", "-v", "error", "-y",
-               "-f", "lavfi", "-i", f"color=c=gray:s={width}x{height}:r={fps:.4f}",
-               "-vf", f"noise=alls={int(round(grain * 100))}:allf=t+u,format=yuv420p",
-               "-frames:v", str(frames),
-               "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", str(out)]
-        done = subprocess.run(cmd, capture_output=True)
-        if done.returncode or not out.is_file():
-            lines = [l.strip() for l in done.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
-            raise RuntimeError(lines[-1] if lines else "ffmpeg wrote no noise")
-    return {"path": str(out), "name": out.name, "width": width, "height": height,
-            "frames": frames, "fps": round(fps, 3), "grain": round(grain, 3)}
+def noise_clip(dest_dir: Path, **kw) -> dict:
+    """Kept so anything that still asks this module for noise gets it. The generator moved to
+    engine/noise.py when there was more than one kind of it to draw."""
+    from engine import noise
+    return noise.clip(dest_dir, **kw)

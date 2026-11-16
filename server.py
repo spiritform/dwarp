@@ -972,13 +972,14 @@ def build_app() -> FastAPI:
 
     @app.post("/api/layers/noise")
     async def layers_noise(request: Request):
-        """Monochrome static as a layer. Cut to the size and length of whatever it is going over,
-        and named after that, so asking twice costs one stat()."""
-        from engine import layers as layerlib
+        """Noise as a layer, of whichever kind. Cut to the size and length of whatever it is
+        going over, and named after that, so asking twice costs one stat()."""
+        from engine import noise as noiselib
         body = await request.json()
         try:
             return await asyncio.to_thread(
-                layerlib.noise_clip, INPUTS / "noise",
+                noiselib.clip, INPUTS / "noise",
+                kind=str(body.get("kind") or "static"),
                 width=max(16, min(4096, int(body.get("width", 768)))),
                 height=max(16, min(4096, int(body.get("height", 768)))),
                 frames=max(1, min(4096, int(body.get("frames", 124)))),
@@ -987,6 +988,23 @@ def build_app() -> FastAPI:
                 seed=int(body.get("seed", 0)))
         except (RuntimeError, ValueError, TypeError) as exc:
             raise HTTPException(422, detail=f"could not make the noise: {exc}") from None
+
+    @app.get("/api/noise/patterns")
+    def noise_patterns():
+        """The kinds of noise there are. Data, so the picker follows the engine."""
+        from engine import noise
+        return noise.catalogue()
+
+    @app.get("/api/noise/preview")
+    def noise_preview(kind: str = "static", width: int = 256, height: int = 144):
+        """One kind as a small loop, for the picker: grain you cannot see before you pick it is a
+        guess, and four kinds of grey rectangle all look alike until they move."""
+        from engine import noise
+        try:
+            out = noise.preview(INPUTS / "noise" / "_preview", kind, width, height)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not draw that preview: {exc}") from None
+        return FileResponse(out, media_type="video/mp4", headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/pulse/patterns")
     def pulse_patterns():

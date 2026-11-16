@@ -95,8 +95,14 @@ def _pcm(audio: Path, rate: int = 22050) -> np.ndarray:
                            "-ac", "1", "-ar", str(rate), "-f", "s16le", "-"],
                           capture_output=True)
     if done.returncode or not done.stdout:
-        err = done.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise RuntimeError(err[-1] if err else "no audio in that file")
+        err = done.stderr.decode("utf-8", "replace").strip()
+        # A video is a fine thing to hand this -- its soundtrack is what gets read -- but a video
+        # with no soundtrack is the common way to get here, and ffmpeg says so as "Stream map
+        # '0:a:0' matches no streams", which tells you nothing about what to do next.
+        if "matches no streams" in err or "does not contain any stream" in err:
+            raise RuntimeError(f"there is no sound in {audio.name} — a beat needs a track with audio in it")
+        lines = err.splitlines()
+        raise RuntimeError(lines[-1] if lines else "no audio in that file")
     return np.frombuffer(done.stdout, dtype="<i2").astype(np.float32) / 32768.0
 
 
@@ -349,13 +355,13 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         st = carry[0]
         st["t"] = t = st["t"] + 1.0
         if kind == "clouds":
-            v = _fbm(st, w, h, t * 0.055, rng, octaves=3, cells=3.0)
-            return _cut(v, 0.6 * k, 0.1)
+            v = _fbm(st, w, h, t * 0.055, rng, octaves=5, cells=3.0)
+            return _cut(v, 0.6 * k, 0.07)
         if kind == "smoke":
-            v = _fbm(st, w, h, t * 0.05, rng, octaves=4, cells=3.0, drift=1.1)
+            v = _fbm(st, w, h, t * 0.05, rng, octaves=5, cells=3.0, drift=1.1)
             up = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]   # 1 at the floor
-            return _cut(v * (0.45 + 0.8 * up), 0.5 * k, 0.1)
-        v = _fbm(st, w, h, t * 0.06, rng, octaves=3, cells=3.0, ridged=True)
+            return _cut(v * (0.45 + 0.8 * up), 0.5 * k, 0.07)
+        v = _fbm(st, w, h, t * 0.06, rng, octaves=4, cells=3.0, ridged=True)
         return _cut(v, 0.35 * k, 0.07)
     # rings: the same fronts, drawn as light rather than used as a window
     carry[:] = [c for c in ((pos + 0.03, lvl * 0.93) for pos, lvl in carry) if c[0] < 1.6 and c[1] > 0.02]

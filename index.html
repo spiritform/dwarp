@@ -528,6 +528,9 @@
   #layers .eye svg { width: 13px; height: 13px; }
   #layers .eye:hover { color: var(--text); }
   #layers .eye.off { color: var(--accent); }
+  /* A matte tile shows the matte: inverted when it is inverted, so the card and the stage agree.
+     The media only -- the MATTE caption over it stays legible. */
+  #layers .lay .tile.inv video, #layers .lay .tile.inv img { filter: invert(1); }
   /* A hidden layer stays where it is, with everything it was set to, and simply stops counting. */
   #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
   #layers .lay.off .ctl, #layers .lay.off .beat, #layers .lay.off .nm { opacity: .38; }
@@ -1303,7 +1306,7 @@
     <div class="card-head" title="Stack the sources into one picture before any of it is uploaded: a blend mode, an opacity, and a black and white layer that can act as a luma matte for the layer below it"><span class="title">Layers</span><span class="sum" id="sum_layers"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div id="layerAdds">
-      <div class="clip-empty slim" data-add="video" title="Another source on the stack — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add video</div>
+      <div class="clip-empty slim" data-add="video" title="Another source on the stack: a video or a picture — click, drop a file, or drag a run in off the strip. A picture holds still under everything that moves over it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add media</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
       <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, paced by the clip, by a speed you set, or by a track you load. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
@@ -2915,6 +2918,7 @@ $('h3Aspect').onclick = e => {
 // no idea what red means until the brief says so, which is why the legend travels with the mask.
 var MASK_PATTERNS = [], MASK_READY = false;                                  // var: read from above
 var PULSE_PATTERNS = [];                   // the kinds of pulse layer, from the engine
+var NOISE_PATTERNS = [];                   // and the kinds of noise
 var MASK_GREY = '#9a98a3';      // the mask's own frame: it hands colours out, it does not wear one
 var MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];
 var MASK_COLOUR_NAMES = ['red', 'green', 'blue'];        // engine/masks.py draws them in this order
@@ -2971,6 +2975,7 @@ function toggleMaskLib(open = $('maskLib').hidden, at = -1, kind = 'matte') {
 }
 function paintMaskLib() {
   if (ML.kind === 'pulse') return paintPulseLib();
+  if (ML.kind === 'noise') return paintNoiseLib();
   if (!MASK_PATTERNS.length) {
     // Before boot's /api/masks lands the list is empty for a moment, and that is not the same thing
     // as a server too old to draw them. Telling you to restart over a race is worse than saying wait.
@@ -3000,6 +3005,7 @@ $('maskLib').addEventListener('click', e => {
   const pick = card.dataset.pattern;
   toggleMaskLib(false);
   if (ML.kind === 'pulse') return makePulse(pick, ML.at);
+  if (ML.kind === 'noise') return makeNoise(pick, ML.at);
   makeMatte(pick, ML.at);
 });
 // The same grid, pointed at the pulse patterns. Each one is a loop at a steady count, so what the
@@ -3025,6 +3031,35 @@ function paintPulseLib() {
         layer after that, and under Warp the paint from one hit carries on into the frames after it.</div>
       <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
     </div><div class="sl-grid">${PULSE_PATTERNS.map(card).join('')}</div>`;
+  playTiles($('maskLib'));
+  $('mlClose').onclick = () => toggleMaskLib(false);
+}
+// The same grid again, pointed at the kinds of noise. Four grey rectangles all look alike until
+// they move, so the card is the loop rather than a name and a sentence.
+function paintNoiseLib() {
+  if (!NOISE_PATTERNS.length) {
+    $('maskLib').innerHTML = `<div class="rs-head stack"><h3>Noise</h3><div class="rs-info">${
+      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the kinds\u2026'
+    }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
+    $('mlClose').onclick = () => toggleMaskLib(false);
+    return;
+  }
+  const at = ML.at >= 0 ? layers()[ML.at] : null, cur = at && at.noise && at.nkind;
+  const [pw, ph] = maskPreviewSize();
+  const card = p => `<div class="sl-card${p.id === cur ? ' on' : ''}" data-pattern="${p.id}" title="${p.note}">
+      <div class="thumb"><video src="/api/noise/preview?${qs({ kind: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
+        <span class="tag">mid grey at rest</span></div>
+      <b>${p.label}</b><span class="note">${p.note}</span></div>`;
+  $('maskLib').innerHTML = `<div class="rs-head stack">
+      <h3>Noise</h3>
+      <div class="rs-info">Monochrome grain drawn at this render's size and length, laid on the
+        stack like any other clip. It is a different lever from Denoise: that asks the model to
+        invent more, this changes the pixels it is looking at \u2014 and under Warp the grain is
+        carried into the next frame, where it becomes structure. Every kind rests at mid grey, so
+        <b>overlay</b> and <b>soft light</b> leave the picture alone until the layer's
+        <b>grain</b> opens it either side of that.</div>
+      <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
+    </div><div class="sl-grid">${NOISE_PATTERNS.map(card).join('')}</div>`;
   playTiles($('maskLib'));
   $('mlClose').onclick = () => toggleMaskLib(false);
 }
@@ -3251,7 +3286,7 @@ function paintNum(el, v) {
 // A length while the picture has none: there is no still to keep it on until it has one.
 var picSecs = 0;
 function secsNow() { return stillClip() ? stillSecs() : picSecs; }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, bpm: 120, secs: STILL_SECS };
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, grain: 1, bpm: 120, secs: STILL_SECS };
 // Most of these are 0..1 shown as a percentage. Two are not: a count in beats per minute, and a
 // length in seconds whose floor is "none at all", which is what a picture being animated looks
 // like. One table, so a box only has to say which of them it is.
@@ -3290,6 +3325,7 @@ $('layers').addEventListener('pointerdown', e => {
     // The tile keeps up with the number under your hand; the clip itself is redrawn after.
     if (k === 'bpm') pulseRate(+which);
     if (k === 'amount' || k === 'bpm') return needPulse(+which);   // a different picture, not a blend
+    if (k === 'grain') return needNoise(+which);                   // likewise: the file itself moves
     needPaint(); needPlate(); pushLayers();
   };
   const up = () => {
@@ -3315,6 +3351,7 @@ $('layers').addEventListener('click', e => {
     renderLayers(); save(); pulseRates();
     // Nothing to read yet is not an error: pick the file first and the layer is redrawn then.
     if (L.beat !== 'file' || L.audio) needPulse(i, true);
+    else { PULSE_AT = i; $('pulseFile').click(); }   // Import with nothing in it: ask for it now
     return;
   }
   const snd = e.target.closest('[data-snd]');
@@ -3533,14 +3570,15 @@ function beatRow(i, L) {
          title="Tick it out loud — the speed you have set, as a click, so you can judge the cue without rendering anything"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`
     : at === 'clip'
       ? `${swing}<span class="snd s3">${state.clip.name}</span>`
-      : `${swing}<span class="snd s2">${L.audioName || 'no sound yet'}</span>
-         <button class="chip" data-snd="${i}">${L.audio ? 'change' : 'load…'}</button>`;
+      : `${swing}<span class="snd s2">${L.audioName || 'nothing loaded'}</span>
+         <button class="chip" data-snd="${i}" title="${L.audio ? 'Pace it by a different track' : 'Choose a track to pace it by — a sound file, or a video with sound in it'}">${
+           L.audio ? 'change' : 'choose…'}</button>`;
   // Not "BPM": that is the name of the box underneath, and a tab and the value under it should
   // not answer to the same word. Pulse is the layer moving to a speed you set. The clip leads,
   // because pacing the layer to what it is going over is what you get without choosing anything.
   const ways = (clipAudio() ? [['clip', 'Clip', 'Paced by the clip itself — the default: the hits land where the clip’s own beats land, so the layer moves with the edit']] : [])
     .concat([['bpm', 'Pulse', 'A speed you set: so many beats a minute, exact and repeatable, however fast you want it']])
-    .concat([['file', 'Import', 'Paced by a track you load — the layer follows its timing, whether or not that track is ever heard']]);
+    .concat([['file', 'Import', 'Paced by a track you load — the layer follows its timing, whether or not that track is ever heard. Picking this asks for the file: a sound, or a video with sound in it']]);
   return `<span class="beat">
       <div class="seg" data-beat="${i}" style="grid-template-columns:repeat(${ways.length},1fr)">${
         ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
@@ -3570,6 +3608,9 @@ function renderLayers() {
     // controls for something that cannot happen -- and leaving them there to be tuned is the panel
     // lying. The row says what is true instead, and points at the one thing that changes it.
     const bottom = L.matte ? (L.mask ? '' : `<span class="beat"><div class="bl">${levels(i, L)}</div></span>`)
+                           : L.noise ? `<span class="beat"><div class="bl">${
+                               dial(i, 'grain', 'grain', L.grain ?? 1,
+                                 'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static', '', 'wide')}</div></span>`
                            : !beats(L) ? ''
                            : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
                                title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
@@ -3579,11 +3620,13 @@ function renderLayers() {
             title="Drag to reorder \u2014 the order of the stack is the composite">
         <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
         ${!beats(L) ? '' : `<button class="chip ico${L.pinvert ? ' on' : ''}" data-pinv="${i}" title="Upside down: the beat rests at full and is punched out on every hit, instead of resting at nothing and arriving on it. The neutral blend turns over with it \u2014 screen for the light one, multiply for this"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2v15a7.5 7.5 0 0 1 0-15Z"/></svg></button>`}
-        ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer's alpha"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
+        ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="${i === layers().length - 1
+          ? 'Matte: use this layer as a luma matte for the source under it \u2014 its brightness becomes the source&#39;s alpha, and what it hides goes black'
+          : 'Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer&#39;s alpha'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
         <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
         <button class="x" title="Remove">\u2715</button>
       </span>
-      <span class="tile" data-swap="${i}"
+      <span class="tile${L.matte && L.invert ? ' inv' : ''}" data-swap="${i}"
             title="Double-click to put a different video or picture in it">${
         layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
       <span class="side">
@@ -3843,7 +3886,8 @@ function paintPlate(soft) {
     pairs.push([L, above && above.matte ? above : null]);
   });
   pairs.reverse();
-  if (pairs.length) pairs[0][1] = null;              // nothing under the base for a matte to reveal
+  // A matte on the base is kept: what is under the base is black, the same black its opacity
+  // fades into, so the matte punches the source out against it. (engine/layers.py pair_index.)
   const base = layerFrame(pairs[0][0], clipFrame);
   if (!base) return;
   const cv = $('cvPlate'), w = srcW(base), h = srcH(base);
@@ -3852,9 +3896,18 @@ function paintPlate(soft) {
   const c = cv.getContext('2d');
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.fillStyle = '#000'; c.fillRect(0, 0, w, h);      // what the source fades into
-  const b0 = pairs[0][0];
+  const b0 = pairs[0][0], m0 = pairs[0][1], m0Img = m0 && layerFrame(m0, clipFrame);
   c.globalAlpha = b0.opacity;
-  softDraw(c, base, w, h, blurPx(b0.blur, w, h));
+  if (m0 && m0Img) {                                 // the source, cut out against the black below it
+    const t = document.createElement('canvas'); t.width = w; t.height = h;
+    const tx = t.getContext('2d');
+    softDraw(tx, base, w, h, blurPx(b0.blur, w, h));
+    tx.globalCompositeOperation = 'destination-in';
+    tx.drawImage(matteAlpha(m0, m0Img, w, h), 0, 0);
+    c.drawImage(t, 0, 0);
+  } else {
+    softDraw(c, base, w, h, blurPx(b0.blur, w, h));
+  }
   c.globalAlpha = 1;
   for (let n = 1; n < pairs.length; n++) {
     const [L, M] = pairs[n], img = layerFrame(L, clipFrame);
@@ -3931,22 +3984,54 @@ $('layerAdds').onclick = e => {
   const add = e.target.closest('[data-add]');
   if (!add) return;
   if (add.dataset.add === 'matte') return toggleMaskLib(true, -1);
-  if (add.dataset.add === 'noise') return addNoise();
+  if (add.dataset.add === 'noise') return toggleMaskLib(true, -1, 'noise');
   if (add.dataset.add === 'pulse') return toggleMaskLib(true, -1, 'pulse');
   $('layerFile').click();
 };
 // Static, cut to whatever it is going over. A different lever from Denoise: that asks the model to
 // invent more, this changes the pixels it is looking at -- and with the warp carrying paint forward
 // the grain becomes structure the next frame elaborates.
-async function addNoise() {
+// One noise layer of the kind picked, keeping how an existing row is being used -- its blend, its
+// opacity, its grain -- and changing only what is in it.
+async function makeNoise(kind, at = -1) {
   const b = maskBody('circle');              // the size and length the plate will be
+  const was = at >= 0 ? layers()[at] : null;
+  const grain = was && was.noise ? (was.grain ?? 1) : 1;
   try {
     setStatus('making the noise…', 'live');
     const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
-    addLayer(r, { noise: true, mode: 'overlay', opacity: 0.25,
-                  made: { width: r.width, height: r.height, frames: r.frames } });
-    setStatus(`noise · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
+      body: JSON.stringify({ kind, grain, width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
+    const row = { path: r.path, name: r.name, noise: true, nkind: r.kind, grain: r.grain,
+                  made: { width: r.width, height: r.height, frames: r.frames } };
+    if (was) { Object.assign(was, row); renderLayers(); paintSums(); save(); stageSource(); }
+    else addLayer(r, Object.assign(row, { mode: 'overlay', opacity: 0.25 }));
+    setStatus(`${r.label} · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
+  } catch (e) {
+    setStatus('could not make the noise: ' + e.message, 'bad');
+  }
+}
+// Grain moves the file under the layer, which means ffmpeg: debounced, and the row is not rebuilt,
+// so the box you are dragging stays under your hand. The same shape as needPulse.
+var noiseTimers = {};
+function needNoise(i, now) {
+  const L = layers()[i];
+  if (!L || !L.noise) return;
+  clearTimeout(noiseTimers[i]);
+  noiseTimers[i] = setTimeout(() => drawNoise(i), now ? 0 : 350);
+}
+async function drawNoise(i) {
+  const L = layers()[i];
+  if (!L || !L.noise) return;
+  const b = maskBody('circle');
+  try {
+    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: L.nkind || 'static', grain: L.grain ?? 1,
+                             width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
+    if (layers()[i] !== L) return;             // the stack moved while it was drawing
+    L.path = r.path; L.name = r.name; L.made = { width: r.width, height: r.height, frames: r.frames };
+    const tile = $('layers').querySelector(`.lay[data-i="${i}"] .tile img`);
+    if (tile) tile.src = `/api/video/thumbnail?${qs({ path: L.path, frame: 0 })}`;
+    needPaint(); needPlate(); pushLayers(); save();
   } catch (e) {
     setStatus('could not make the noise: ' + e.message, 'bad');
   }
@@ -3964,16 +4049,20 @@ $('layers').addEventListener('dblclick', e => {
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
     if (num.dataset.k === 'amount' || num.dataset.k === 'bpm') return needPulse(+num.dataset.lv, true);
+    if (num.dataset.k === 'grain') return needNoise(+num.dataset.lv, true);
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
   const tile = e.target.closest('[data-swap]');
   if (!tile) return;
   e.preventDefault();
-  // A pulse layer is drawn, not loaded: its tile opens the patterns rather than the file picker,
-  // and the one you pick replaces the pattern without disturbing the beat or the blend.
+  // A drawn layer is drawn, not loaded: its tile opens the gallery it came out of rather than the
+  // file picker, and what you pick replaces the pattern without disturbing the blend, the beat or
+  // the grain. There is no mp4 you could put in a noise layer that would still be noise.
   const row = layers()[+tile.dataset.swap];
   if (row && row.pulse) return toggleMaskLib(true, +tile.dataset.swap, 'pulse');
+  if (row && row.noise) return toggleMaskLib(true, +tile.dataset.swap, 'noise');
+  if (row && row.mask) return toggleMaskLib(true, +tile.dataset.swap, 'matte');
   LAYER_SWAP = tile.dataset.swap;
   $('layerFile').click();
 });
@@ -7670,7 +7759,8 @@ addEventListener('keydown', e => {
 var runLabel = (label, id) => (label || 'run ' + id).replace(/ · single frame$/, ' · frame');
 // How much of the strip is drawn at once, and the generation counter that lets a newer
 // refresh abandon an older background fill. Declared here: refreshRuns reads them.
-var RUNS_FIRST = 12, RUNS_CHUNK = 24, runsFill = 0;
+// runsWant is where a refresh is trying to scroll back to, in pixels, or 0 for nowhere.
+var RUNS_FIRST = 12, RUNS_CHUNK = 24, runsFill = 0, runsWant = 0;
 async function refreshRuns() {
   let res;
   const box = $('runs'), first = box.classList.contains('loading');
@@ -7683,10 +7773,19 @@ async function refreshRuns() {
     $('runsHint').textContent = '· none yet — hit Frame or Preview'; return;
   }
   $('runsHint').textContent = '· ctrl/shift-click to select';
+  // Where the strip was left. Every refresh rewrites it from nothing, and a rewritten element is
+  // scrolled back to its start -- so removing a run you had scrolled a long way to find put you
+  // back at the beginning of the list, and so did every render finishing while you were reading
+  // the far end of it. The place is kept and put back as the cards arrive.
+  const keep = box.scrollLeft;
   // A strip full of cards is a strip full of thumbnail requests, and the ones off the right-hand
   // edge are not being looked at yet. Draw what fits, then feed in the rest between frames.
   const gen = ++runsFill;
   box.innerHTML = runsCache.slice(0, RUNS_FIRST).map(runCard).join('');
+  // The first paint is twelve cards wide, so a place further right than that is clamped here and
+  // reached again in fillRuns, once the chunk it was in has been appended.
+  box.scrollLeft = keep;
+  runsWant = box.scrollLeft < keep ? keep : 0;
   // first load: the real cards rise in one after another where the grey cells were
   if (first && window.anime) anime({ targets: box.querySelectorAll('.run'), opacity: [0, 1], translateX: [-10, 0],
     duration: 520, easing: 'easeOutCubic', delay: anime.stagger(40, { start: 40 }),
@@ -7711,13 +7810,23 @@ function fillRuns(gen, from) {
   if (gen !== runsFill || from >= runsCache.length) return;
   const go = () => {
     if (gen !== runsFill) return;           // the strip has been redrawn since this was queued
-    $('runs').insertAdjacentHTML('beforeend', runsCache.slice(from, from + RUNS_CHUNK).map(runCard).join(''));
+    const box = $('runs');
+    box.insertAdjacentHTML('beforeend', runsCache.slice(from, from + RUNS_CHUNK).map(runCard).join(''));
+    if (runsWant) {                         // the place the strip was at, now that it is wide enough
+      box.scrollLeft = runsWant;
+      if (box.scrollLeft >= runsWant - 1) runsWant = 0;
+    }
     fillRuns(gen, from + RUNS_CHUNK);
   };
   // every chunk waits, the first one included: the point is that the page paints the strip you can
   // see before it builds the part you cannot
   window.requestIdleCallback ? requestIdleCallback(go, { timeout: 400 }) : setTimeout(go, 16);
 }
+// Restoring the place is a want, not a rule: touching the strip yourself calls it off, because a
+// strip scrolling itself under your hand is worse than one that lost where it was.
+['wheel', 'pointerdown', 'touchstart'].forEach(ev =>
+  $('runs').addEventListener(ev, () => { runsWant = 0; }, { passive: true }));
+
 // ---- selection + delete
 const selected = new Set();
 let lastClicked = null;
@@ -8297,12 +8406,13 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   // in milliseconds. The model folders — loras, embeddings, motion modules, checkpoints — are not
   // here any more: they are fetched by the controls that show them (see `need`), which in Comfy
   // mode is never.
-  const [postOpts, cloudWf, fieldKinds, maskPats, pulsePats] = await Promise.all([
+  const [postOpts, cloudWf, fieldKinds, maskPats, pulsePats, noisePats] = await Promise.all([
     api('/api/post/options').catch(() => ({ upscalers: [], cloud: [], rife: false, active: null })),
     api('/api/comfy/workflows').catch(() => ({ workflows: [] })),
     api('/api/fields').catch(() => ({ kinds: [] })),
     api('/api/masks').catch(() => ({ patterns: [] })),
     api('/api/pulse/patterns').catch(() => ({ patterns: [] })),
+    api('/api/noise/patterns').catch(() => ({ patterns: [] })),
   ]);
   POST_OPTS = postOpts;
   // "hidden" parks a workflow without deleting it: out of the picker, still in the manifest
@@ -8311,6 +8421,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   FIELD_KINDS = fieldKinds.kinds || [];            // drawn motion
   MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
   PULSE_PATTERNS = pulsePats.patterns || [];
+  NOISE_PATTERNS = noisePats.patterns || [];
   if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned

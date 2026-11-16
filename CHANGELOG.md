@@ -32,6 +32,74 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
   forward. All that changes on a still is what does the carrying — the camera move rather than the
   footage's own motion — and the button's tooltip says so, along with the part that matters, which
   is that **Source mix** is what lets the layer stack land on each frame rather than only on frame 1.
+- **The runs strip keeps its place.** Removing a run you had scrolled a long way back to find put
+  you at the beginning of the list again, and so did every render finishing while you were reading
+  the far end of it: the strip is rewritten from nothing on each refresh, and a rewritten element
+  is scrolled back to its start. It remembers where it was now and goes back there — and because
+  the first paint is only twelve cards wide, a place further right than that is reached again as
+  the background fill appends the chunk it was in. Touching the strip yourself calls the restore
+  off, since a strip scrolling itself under your hand is worse than one that lost where it was.
+- **The mattes are transitions now, and there are nine of them.** A matte that ends where it
+  started says nothing — it is a loop, and a matte that loops is a flicker. Every pattern now runs
+  from one end to the other across the clip: as a matte that is white to black, the layer there and
+  then gone, with **invert** on the card to turn it round. **Circle** opens until it has swallowed
+  the corners rather than stopping at the short side. **Split** closes in from both edges instead of
+  drifting either side of the middle. **Orbit** still goes round, but swells as it goes and comes
+  home having taken the whole frame. **Blobs** is discs arriving one after another and running
+  together, every other one mid grey, rather than two discs circling forever. **Thirds** is three
+  steps in time — white, then mid grey, then black — so the levels can single out any one of them.
+  Three are new: **Polygon**, a six-sided shape opening out of the middle and turning as it grows;
+  **Clouds**, fractal noise eating the frame away; and **Ink**, a blot spreading out of the middle
+  with its edge broken up by that same noise. The two noise ones are brought up to size smoothly
+  rather than with nearest-neighbour, which the flat-colour ones still need.
+- **A gallery for noise, and a grain dial.** *add noise* made one kind of static and dropped it on
+  the stack. It opens a picker now, the same one the mattes and pulses use, with four kinds that
+  are genuinely different instructions rather than one blurred six ways: **Static** (per-pixel,
+  redrawn every frame), **Cells** (the same thing with a far bigger brush, hard-edged blocks),
+  **Clouds** (fractal noise boiling slowly) and **Lines** (whole rows at a time, the way a tape
+  drops out). Each sits on its card as a moving loop, because four grey rectangles all look alike
+  until they move. The layer itself gets a **grain** dial: every kind rests at mid grey, so at 0 the
+  layer is not there under overlay or soft light and at 100 it is black-to-white. Dragging it
+  redraws the clip underneath without rebuilding the row, the way a pulse's swing does.
+  Double-clicking a drawn layer's thumbnail — noise, pulse or matte — now opens the gallery it came
+  out of rather than a file picker. There is no mp4 you could load into a noise layer that would
+  still be noise.
+- **A matte can be put on the source itself.** The bottom of the stack could not be matted: a
+  matte there was quietly thrown away, on the grounds that there is nothing under the base to
+  reveal. There is — black. It is the same black the base's own opacity has always faded into, and
+  every compositor fills with it before the source goes down, so there was a floor there all along
+  and only the matte was being denied it. A matte directly above the source card now punches the
+  source out against that black: a drawn shape, a pulse, a luma pulled off another clip, anything
+  that makes a matte for a layer now makes one for the source. Nothing new appears in the panel —
+  a black layer you would have to see and manage is not the point, the floor is.
+  All three compositors do it: the per-frame one for local renders, the ffmpeg flatten for the
+  cloud (where the dropped matte used to leave an unconsumed filter output and take the render down
+  with it), and the browser's canvas, so the preview still predicts the render.
+- **The noise patterns are not soft any more.** Clouds, Smoke and Veins came out looking blurred
+  with the blur dial at 0, which is the layer panel telling you something untrue about its own
+  control. It was not blur: three octaves off a three-cell lattice stop at twelve cells across the
+  frame, so the smallest thing in the picture was a twelfth of it. Five octaves (four for the
+  ridged one) reach forty-eight — the masses are the same size and the same shape, and now they
+  have grain on their edges. The cut is tighter to match, since the field's own detail makes the
+  edge rather than a gradient across it. About 50 ms a frame at 768, up from 40.
+- **Import asks for the track.** Choosing Import with nothing loaded opened a row that said "no
+  sound yet" next to a load button — a tab whose job is to take a file, asking you to press
+  something else to give it one. It opens the picker itself now. The chip stays for swapping the
+  track afterwards, and for the case where you close the picker without choosing, so the row is
+  never a dead end.
+- **An inverted matte's tile is inverted.** The *invert* button sits right beside the tile and
+  changed nothing you could see there, so the card and the stage disagreed about what the matte was
+  doing — the stage has always drawn it inverted. The caption over it stays the right way up.
+- **A video handed to a pulse that has no soundtrack says so.** An mp4 is a perfectly good thing to
+  drive a beat with: its audio is what gets read. A video with no audio in it is the usual way to
+  get this wrong, and ffmpeg's own words for it were "Stream map '0:a:0' matches no streams", which
+  tells you nothing about what to do next. It now names the file and says a beat needs a track with
+  sound in it.
+- **The layers card says add media, because that is what it took all along.** The button said
+  *add video*, and the picker, the drop handler and the layer card had all accepted a picture since
+  the day they were written — the label was the only thing claiming otherwise, so a picture on the
+  stack was a feature you had to find by ignoring the button. A picture layer holds still under
+  everything moving over it, which is what you want from a texture, a logo or a plate.
 - **Seven more pulse patterns: five kinds became twelve.** The five that were there were round and
   soft — a ring, a disc, static — and nothing in the list made a shape you could point at.
   Four hard ones: **Blocks**, a square launched at nothing on every hit and expanding until it is
