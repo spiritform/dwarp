@@ -1207,7 +1207,7 @@
       <span class="seed-tag">seed</span>
       <input type="text" id="seed" inputmode="numeric" spellcheck="false" title="Drag left / right to change the seed (Shift: ×100) — click to type one">
       <button id="seedDice" title="New random seed">🎲</button>
-      <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run."></button>
+      <button id="seedLock" title="Locked: every run uses this seed. Unlocked: a new random seed per run. Either way each frame takes its own noise from it."></button>
     </div>
     </div></div>
   </section>
@@ -5521,7 +5521,7 @@ function renderSeed() {
   $('seed').value = state.seed; $('seed').disabled = !state.seedLock;
   $('seedLock').textContent = state.seedLock ? '🔒' : '🔓';
   $('seedLock').classList.toggle('on', state.seedLock);
-  $('seedLock').title = state.seedLock ? 'Locked: every run uses this seed (click to unlock)' : 'Unlocked: a new random seed each run (click to lock)';
+  $('seedLock').title = state.seedLock ? 'Locked: every run uses this seed — each frame still takes its own noise from it (click to unlock)' : 'Unlocked: a new random seed each run — each frame still takes its own noise from it (click to lock)';
 }
 $('seed').onchange = e => {
   const v = Math.floor(+e.target.value);
@@ -5656,7 +5656,13 @@ const capClip = f => { const e = clipEdge(); return e == null ? f : Math.min(f, 
 function toSource() {                      // e.g. scrubbing away from a Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
+// The fill is read from the job every tick, but the *view* can change between two of them -- off a
+// refine's run and back to the source, say -- so the track is asked again whenever it is rebuilt.
+function refreshProgress() {
+  setProgress(job && !['completed', 'cancelled', 'failed'].includes(job.state) ? job.progress || 0 : 0);
+}
 function setupTransport() {
+  refreshProgress();
   if (shapeMode()) {
     $('scrub').hidden = !(state.shape.frames > 1);
     $('scrubRange').max = (state.shape.frames || 1) - 1; $('scrubRange').value = shapeFrame;
@@ -6521,29 +6527,54 @@ function toggleHelp(open = $('helpPanel').hidden) {
 // Stops whose area is hidden in the current mode are skipped; collapsed cards open for their stop only.
 var TOUR_KEY = 'dwarp.tourSeen';
 var TOUR = [
-  { at: () => [$('clipBox')], title: () => srcKind() === 'v2v' ? 'Your source' : srcKind() === 'i2v' ? 'Your picture' : 'Start here', text: () =>
-    (srcKind() === 'v2v' ? `What you loaded is what gets rendered — drag the strip's ends to pick the part of a clip you want. `
-      : srcKind() === 'i2v' ? `Your picture is frame 1 and the camera carries it on. Give it a length in <b>Layers</b> and it becomes the source instead, repainted every frame. `
-      : `Import a video or a picture here, or drop one anywhere on the page — with nothing loaded the prompt paints it alone. How long it runs, and its <b>Aspect</b>. `) +
-    `<b>Size</b> is the long side in pixels: bigger is sharper and slower. <b>FPS</b> paints every frame, or every 2nd / 3rd and holds it, like animation on twos.` },
+  { at: () => [$('clipBox')],
+    title: () => srcKind() === 'v2v' ? (stillClip() ? 'Your picture' : 'Your source') : srcKind() === 'i2v' ? 'Your picture' : 'Start here',
+    text: () =>
+    (srcKind() === 'v2v'
+       ? (stillClip() ? `What you loaded is a still with a length on it — every frame is painted from the same picture. `
+                      : `What you loaded is what gets rendered — drag the strip's ends to pick the part of a clip you want. `)
+     : srcKind() === 'i2v' ? `Your picture is frame 1 and the camera carries it on. Give it a length in <b>Layers</b> and it becomes the source instead, repainted every frame. `
+     : `Import a video or a picture here, or drop one anywhere on the page — with nothing loaded the prompt paints it alone. `
+       + (isH3() ? `` : `How long it runs, and its <b>Aspect</b>. `)) +
+    (isH3() ? `H3 picks its own frame size and runs at 24 fps, so how long it runs and what shape it is are over in <b>Workflow</b>.`
+            : `<b>Size</b> is the long side in pixels: bigger is sharper and slower. <b>FPS</b> paints every frame, or every 2nd / 3rd and holds it, like animation on twos.`) },
   { at: () => [$('camBox')], title: 'Camera', text: () =>
     `How each frame moves on from the last. <b>Zoom</b>, <b>Rotate</b> and <b>Pan</b> are per frame, so small values go a long way.
      <b>3D</b> reads the depth and adds <b>Turn</b> / <b>Tilt</b> with parallax. The sliders steer a running render live.` },
-  { at: () => [document.querySelector('[data-card="prompt"]')], title: 'Prompt', text: () =>
-    `What to paint; <b>random</b> gives you one to try. The lane under the box is a timeline: click it to add a <b>keyframe</b>
-     with its own prompt, and <b>blend</b> sets how many frames it takes to morph in. <b>negative</b> is what to keep out.` },
-  { at: () => [document.querySelector('[data-card="model"]')], title: 'Model', text: () =>
-    `The Stable Diffusion family (<b>SD 1.5</b>, <b>2.1</b>, <b>SDXL</b>) and the checkpoint. <b>Steps</b> trade time for detail,
-     <b>CFG</b> is how literally it follows the prompt. <b>Seed</b>: lock it to compare one change at a time, 🎲 for a new one,
-     drag the number to step through nearby seeds.` },
+  // The brief's boxes move into the Workflow card on Comfy (briefMove), which hides the Prompt card
+  // and used to leave this stop pointing at nothing. It follows them, and says what they are there.
+  { at: () => [$('promptSec').hidden ? $('briefHome') : document.querySelector('[data-card="prompt"]')],
+    title: () => $('promptSec').hidden ? 'The shot' : 'Prompt',
+    text: () => $('promptSec').hidden
+    ? `On Comfy the prompt is a form, and it sits in the <b>Workflow</b> card with everything else the graph takes.
+       <b>Template</b> says what kind of shot this is and what each thing you loaded is for; <b>The shot</b> is what happens
+       in it; <b>Audio prompt</b> is what it should sound like. <b>view prompt</b>, lower down, opens the prompt the form
+       writes — you can type in it, though touching the form writes it again.`
+    : `What to paint; <b>random</b> gives you one to try. The lane under the box is a timeline: click it to add a <b>keyframe</b>
+       with its own prompt, and <b>blend</b> sets how many frames it takes to morph in. <b>negative</b> is what to keep out.` },
+  { at: () => [document.querySelector('[data-card="model"]')],
+    title: () => isH3() ? 'Workflow' : 'Model',
+    text: () => isH3()
+    ? `Which graph runs on Comfy Cloud, and everything that graph takes — so the rows change with what you pick.
+       <b>References</b> are the pictures it works from, each with a job of its own (the subject, the look); <b>Length</b> and
+       <b>Audio track</b> are the clip itself. <b>Seed</b>: lock it to compare one change at a time, 🎲 for a new one.`
+    : `The Stable Diffusion family (<b>SD 1.5</b>, <b>2.1</b>, <b>SDXL</b>) and the checkpoint. <b>Steps</b> trade time for detail,
+       <b>CFG</b> is how literally it follows the prompt. <b>Seed</b>: lock it to compare one change at a time, 🎲 for a new one,
+       drag the number to step through nearby seeds.` },
   { at: () => [document.querySelector('[data-card="render"]')], title: 'Sampler', text: () =>
     `<b>Denoise</b>: how much of each frame is repainted, from keeping the source to repainting it all. Then how frames connect:
      <b>Warp</b> carries the paint along the motion so strokes stick to things, <b>Boil</b> repaints every frame fresh
      (a hand-painted shimmer), <b>Motion</b> (SD 1.5) animates 16 frames at a time for smooth movement.
-     <b>Frame Lock</b> and <b>Source mix</b> fine-tune Warp.` },
+     <b>Frame Lock</b> holds each frame to the one before it — it fine-tunes Warp, and with nothing loaded it is the dial that
+     keeps a clip from cooking. <b>Source mix</b> is the other half of Warp.` },
   { at: () => [document.querySelector('[data-card="style"]')], title: 'Style', text: () =>
     `Optional extras for the look: a <b>LoRA</b>, an <b>Embedding</b>, a <b>Style ref</b> picture to borrow colours and strokes from,
      and a <b>Look</b> preset that adds its style words to your prompt.` },
+  { at: () => [$('layersBox')], title: 'Layers', text: () =>
+    `What each frame is actually painted from: the source at the bottom, and anything stacked on it — <b>add media</b> for a video
+     or a picture, <b>add matte</b>, <b>add noise</b>, <b>add pulse</b>. Each layer has a blend mode, an <b>opacity</b> and a
+     <b>blur</b>, and a black-and-white layer can act as a matte for the one below it. The stack is flattened before a frame is
+     painted or anything is uploaded, and the stage shows it as you build it.` },
   { at: () => [$('guideBox')], title: 'Guidance', text: () =>
     `How much of the source's structure survives. <b>ControlNet</b> holds shapes (<b>depth</b> the 3-D layout, <b>edge</b> the
      outlines) and <b>Hold</b> sets how tightly. <b>DepthDiff</b> is DWARP's own: the source's brightness or depth decides
@@ -6552,18 +6583,22 @@ var TOUR = [
     `Optional: a black-and-white mask, still or moving, that steers where things are. White repaints, black holds.
      <b>library</b> has ready-made shapes to try; <b>QR Code Monster</b> hides the shape in the scene's light and dark.` },
   { at: () => [$('view'), document.querySelector('.stage-wrap'), $('scrub')], title: 'The stage', text: () =>
-    `Your source and your results. <b>Source</b> shows what goes in, <b>Output</b> the run you picked, <b>Split</b> compares the two;
-     other tabs show the maps the guidance reads. Scrub with the bar underneath; hover the top-right corner to save what's shown.` },
-  { at: () => [document.querySelector('.stage-foot .actions')], title: 'Make something', text: () =>
-    `Work up in steps: <b>Frame</b> paints one frame to dial in the look, <b>Preview</b> a few frames to check the motion,
-     <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
+    `Your source and your results. <b>Source</b> shows what goes in, <b>Output</b> the run you picked, <b>Split</b> compares the two` +
+    (isH3() ? `. ` : `; other tabs show the maps the guidance reads. `) +
+    `Scrub with the bar underneath; hover the top-right corner to save what's shown.` },
+  { at: () => [document.querySelector('.stage-foot .actions')], title: 'Make something', text: () => isH3()
+    ? `<b>Render</b> sends the whole thing to Comfy Cloud in one piece — which is why there is no Frame or Preview here, and why
+       the button says what it will spend. <b>live</b> lets you type new prompts into a render while it runs.`
+    : `Work up in steps: <b>Frame</b> paints one frame to dial in the look, <b>Preview</b> a few frames to check the motion,
+       <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
   { at: () => [document.querySelector('footer')], title: 'Runs', text: () =>
-    `Every Frame, Preview and Render lands here. Click one to view it; then <b>copy settings</b> puts its settings back in the panel,
-     <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it and <b>download gif</b> makes a looping gif to paste
-     somewhere. The grid icon at the right opens every run on disk.` },
+    `Every ${isH3() ? 'Render' : 'Frame, Preview and Render'} lands here. Click one to view it; then <b>copy settings</b> puts its
+     settings back in the panel and <b>copy prompt</b> only its words, <b>use frame →</b> takes the frame you are on as the next
+     picture, <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it and <b>download gif</b> makes a looping gif to
+     paste somewhere. The grid icon at the right opens every run on disk.` },
   { at: () => [document.querySelector('.barbtns')], title: 'Status & help', text: () =>
     `The status opens the renderer log, the GPU meter shows memory in use, <b>?</b> has the full guide (and this tour again),
-     <b>⚙</b> sets your model folders. That's it: pick a source and press <b>Frame</b>.` },
+     <b>\u2699</b> sets your model folders. That's it: pick a source and press <b>${isH3() ? 'Render' : 'Frame'}</b>.` },
 ];
 var tour = null;   // { i, stops, el }
 const tourEls = st => st.at().filter(el => el && el.getClientRects().length);
@@ -7020,8 +7055,17 @@ async function startJob(kind) {
 // the frames stop and the playhead stops with it. An enhance is making a different run with a
 // different frame count, so filling this track would draw a line the playhead has no reason to
 // respect -- it reports itself in the status chip instead.
+// The fill and the stop have to be the same line, or the orange edge is a promise the playhead does
+// not keep. It means this track only when the track is the thing being filled: the run on the stage
+// is the one being rendered (its frames *are* the track), or the clip view has a live edge to hold
+// the playhead at. A refine renders a different run of a different length, so its progress here
+// would draw a line nothing respects -- it reports itself in the status chip instead.
+function progressFits() {
+  if (!job || !job.run_id) return false;
+  return clipMode() ? clipEdge() != null : job.run_id === viewRun;
+}
 function setProgress(pct) {
-  const on = pct > 0 && pct < 100;
+  const on = pct > 0 && pct < 100 && progressFits();
   $('scrubRange').style.setProperty('--prog', (on ? pct : 0) + '%');
   if (on) $('scrub').hidden = false;
 }
@@ -8134,8 +8178,17 @@ function cloudParams(u = cloudUp()) {
 function cloudControl(c, val) {
   const head = `<div class="label">${c.label || c.id}</div>`;
   if (c.kind === 'choice') {
-    const opts = (c.options || []).map(o => `<button data-c="${c.id}" data-v="${o}" class="${o === val ? 'on' : ''}">${o}</button>`).join('');
-    return `<div class="ctl">${head}<div class="seg" style="--n:${(c.options || []).length}">${opts}</div>` +
+    // The value is the API's word; `labels` is what a person should read instead, when the API's
+    // word is snake_case. Past four of them a row of buttons is a row of slivers, so it becomes the
+    // panel's own dropdown -- same control, the shape that fits.
+    const opts = c.options || [], name = i => (c.labels || [])[i] || opts[i];
+    if (opts.length > 4) {
+      return `<div class="ctl">${head}<select data-c="${c.id}">` +
+             opts.map((o, i) => `<option value="${o}"${o === val ? ' selected' : ''}>${name(i)}</option>`).join('') +
+             '</select>' + (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
+    }
+    const btns = opts.map((o, i) => `<button data-c="${c.id}" data-v="${o}" class="${o === val ? 'on' : ''}">${name(i)}</button>`).join('');
+    return `<div class="ctl">${head}<div class="seg" style="--n:${opts.length}">${btns}</div>` +
            (c.note ? `<div class="hint">${c.note}</div>` : '') + '</div>';
   }
   if (c.kind === 'toggle') {
@@ -8208,6 +8261,9 @@ function paintCloudUp() {
   // a textarea keeps its own value: repainting under the cursor would lose the caret mid-word
   $('enhCloudCtl').querySelectorAll('textarea').forEach(t => t.oninput = e => {
     cloudParams()[e.target.dataset.c] = e.target.value; save();
+  });
+  $('enhCloudCtl').querySelectorAll('select').forEach(sel => sel.onchange = e => {
+    cloudParams()[e.target.dataset.c] = e.target.value; save(); paintCloudUp();
   });
   $('enhCloudCtl').querySelectorAll('.seg').forEach(seg => seg.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;

@@ -1,0 +1,66 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": ""
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "MagnificImageUpscalerCreativeNode",
+    "inputs": {
+      "image": [
+        "2",
+        0
+      ],
+      "prompt": "",
+      "scale_factor": "2x",
+      "optimized_for": "standard",
+      "creativity": 0,
+      "hdr": 0,
+      "resemblance": 0,
+      "fractality": 0,
+      "engine": "automatic",
+      "auto_downscale": true
+    }
+  },
+  "4": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "audio": [
+        "2",
+        1
+      ]
+    }
+  },
+  "5": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "4",
+        0
+      ],
+      "filename_prefix": "video/dwarp-upscale",
+      "format": "mp4",
+      "format.codec": "auto",
+      "codec": "h264",
+      "codec.encoding": "auto"
+    }
+  }
+}

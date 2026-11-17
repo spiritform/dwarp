@@ -169,8 +169,10 @@ def caps(w: dict) -> dict:
 
 def upscale_caps(w: dict) -> dict:
     """What Enhance should offer for one cloud upscaler. The controls go out as the panel draws them —
-    label, kind, range, options — with the node and input left behind, since only the graph needs those."""
-    keep = ("id", "label", "kind", "min", "max", "step", "default", "options", "note")
+    label, kind, range, options — with the node and input left behind, since only the graph needs those.
+    `labels` rides along with `options`: the option is the word the API wants, the label the word a
+    person should read. Nothing is ever chosen by label — control_values() only knows the options."""
+    keep = ("id", "label", "kind", "min", "max", "step", "default", "options", "labels", "note")
     return {"id": w["id"], "label": w.get("label") or w["id"], "short": w.get("short") or w["id"],
             "model": w.get("model", ""), "note": w.get("note", ""), "cost": w.get("cost", ""),
             "limits": w.get("limits", ""),

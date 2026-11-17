@@ -587,6 +587,148 @@
           "note": "What the new detail should look like."
         }
       ]
+    },
+    {
+      "id": "upscale_magnific",
+      "kind": "upscale",
+      "graph": "upscale_magnific.json",
+      "label": "Magnific · creative",
+      "short": "magnific",
+      "model": "Magnific Image Upscale (Creative) (partner API)",
+      "note": "A <b>picture</b> upscaler, run over a clip frame by frame: it enlarges 2x to 16x and invents the detail it needs, steered by a prompt. <b>Creativity</b> is how far it may depart from what came in and <b>Resemblance</b> is the leash on that; <b>HDR</b> is definition and <b>Fractality</b> is how hard the prompt bites per square pixel. All four run −10 to +10, and 0 is the maker's own default.",
+      "cost": "A partner API node billed <b>per image</b>, and a clip is images — roughly 36 to 109 credits a frame, so a 2-second render on twos is around 24 of those and a 192-frame render is 192. It costs least where it fits best: on a single Frame.",
+      "limits": "Tops out at 25.3 megapixels, and auto-downscale is left on, so a scale that would overshoot comes back smaller rather than failing the run. Each frame is upscaled on its own with no knowledge of the ones beside it, so invented detail can shimmer from frame to frame — the reason to reach for this on a still before a long clip.",
+      "saver": "5",
+      "input": [
+        "1",
+        "file"
+      ],
+      "controls": [
+        {
+          "id": "scale_factor",
+          "label": "Scale",
+          "kind": "choice",
+          "node": "3",
+          "input": "scale_factor",
+          "options": [
+            "2x",
+            "4x",
+            "8x",
+            "16x"
+          ],
+          "default": "2x",
+          "note": "How much bigger, capped by the 25.3 megapixel ceiling."
+        },
+        {
+          "id": "optimized_for",
+          "label": "Subject",
+          "kind": "choice",
+          "node": "3",
+          "input": "optimized_for",
+          "options": [
+            "standard",
+            "soft_portraits",
+            "hard_portraits",
+            "art_n_illustration",
+            "videogame_assets",
+            "nature_n_landscapes",
+            "films_n_photography",
+            "3d_renders",
+            "science_fiction_n_horror"
+          ],
+          "labels": [
+            "Standard",
+            "Soft portraits",
+            "Hard portraits",
+            "Art & illustration",
+            "Videogame assets",
+            "Nature & landscape",
+            "Film & photography",
+            "3D renders",
+            "Sci-fi & horror"
+          ],
+          "default": "standard",
+          "note": "What it should assume it is looking at. 'standard' assumes nothing."
+        },
+        {
+          "id": "creativity",
+          "label": "Creativity",
+          "kind": "number",
+          "node": "3",
+          "input": "creativity",
+          "min": -10,
+          "max": 10,
+          "step": 1,
+          "default": 0,
+          "note": "How far it may invent beyond what came in."
+        },
+        {
+          "id": "resemblance",
+          "label": "Resemblance",
+          "kind": "number",
+          "node": "3",
+          "input": "resemblance",
+          "min": -10,
+          "max": 10,
+          "step": 1,
+          "default": 0,
+          "note": "How close it is held to the original."
+        },
+        {
+          "id": "hdr",
+          "label": "HDR",
+          "kind": "number",
+          "node": "3",
+          "input": "hdr",
+          "min": -10,
+          "max": 10,
+          "step": 1,
+          "default": 0,
+          "note": "Definition and detail."
+        },
+        {
+          "id": "fractality",
+          "label": "Fractality",
+          "kind": "number",
+          "node": "3",
+          "input": "fractality",
+          "min": -10,
+          "max": 10,
+          "step": 1,
+          "default": 0,
+          "note": "How strongly the prompt bites, per square pixel."
+        },
+        {
+          "id": "engine",
+          "label": "Engine",
+          "kind": "choice",
+          "node": "3",
+          "input": "engine",
+          "options": [
+            "automatic",
+            "magnific_illusio",
+            "magnific_sharpy",
+            "magnific_sparkle"
+          ],
+          "labels": [
+            "Automatic",
+            "Illusio",
+            "Sharpy",
+            "Sparkle"
+          ],
+          "default": "automatic",
+          "note": "Magnific's own models. 'automatic' picks one for the picture."
+        },
+        {
+          "id": "prompt",
+          "label": "Prompt",
+          "kind": "text",
+          "node": "3",
+          "input": "prompt",
+          "default": "",
+          "note": "Describes the frame so the invented detail lands somewhere. Empty is neutral."
+        }
+      ]
     }
   ]
 }

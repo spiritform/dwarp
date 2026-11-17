@@ -2,7 +2,42 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-17
+
+- **The tour walks the panel as it is now.** It dims one area at a time and says what it is for — but
+  the panel has been reorganised under it, and a stop whose card is hidden is dropped without a word.
+  On Comfy that left six stops of twelve, and the two that mattered most were among the missing: the
+  prompt (its boxes move into the **Workflow** card there, so the stop was pointing at an empty one)
+  and **Layers**, which never had a stop in any mode. Both are in now, and the stops that stayed no
+  longer describe things that aren't on screen — no Stable Diffusion families on a cloud workflow, no
+  *Frame* and *Preview* where only **Render** exists, no "drag the strip's ends" on a still. **copy
+  prompt** joined the list of what a run offers, and **Frame Lock** is described as holding each frame
+  to the one before, which is what it does with nothing loaded as much as in a warp.
+
 ## 2026-11-16
+
+- **Magnific · creative**, a fifth cloud upscaler under Enhance. It is a *picture* upscaler, so the
+  graph pulls the run apart into frames, sends each one, and puts the clip back together with its
+  sound: 2x to 16x with the detail invented, steered by a prompt, plus Creativity, Resemblance, HDR
+  and Fractality on their −10..+10 dials, a subject hint and Magnific's own engines. Auto-downscale
+  is pinned on, so a scale that would pass the 25.3 megapixel ceiling comes back smaller instead of
+  failing the run. It bills **per image**, and a clip is images — which is why its cost line says so
+  and why a single Frame is where it fits best.
+
+  Its nine subject presets are the first cloud control too long to be a row of buttons, so a choice
+  with more than four options is drawn as a dropdown now, and a control may carry `labels` beside its
+  `options` — the option stays the word the API wants, the label becomes the words you read
+  (`science_fiction_n_horror` → *Sci-fi & horror*). Nothing is ever chosen by label: the clamp that
+  guards the graph only knows the options.
+
+- **The orange fill on the transport means this track, or it is not drawn.** The playhead has always
+  stopped at the last frame that exists — but a **refine** renders a *different* run, of a different
+  length, and its progress was being painted on the track of whatever was on the stage. So the fill
+  stopped early, the playhead carried on past it, and the bar looked broken when it was only
+  describing something else. The fill and the stop come from one place now: it fills when the run on
+  the stage is the one being rendered, or when the clip view has a live edge to hold the playhead at,
+  and otherwise a refine reports itself in the status chip alone. It is also re-read when the stage
+  changes view, not only when a frame lands.
 
 - **copy prompt**, beside *copy settings* under a run. *copy settings* brings a run's whole panel
   back — model, sliders, seed, clip, stack — which is more than you want when the only thing you
