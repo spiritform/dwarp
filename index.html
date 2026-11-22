@@ -795,6 +795,8 @@
   .stage-foot a { color: #d4d2da; text-decoration: none; cursor: pointer; background: #2a2930; border: 0;
                  border-radius: var(--radius-sm); padding: 6px 12px; white-space: nowrap; }
   .stage-foot a:hover { background: #34333b; color: #fff; }
+  /* a button whose panel is open reads as held down: a brighter grey that outlasts the hover */
+  .stage-foot a.on, .stage-foot a.on:hover { background: #45434e; color: #fff; }
   /* ✕ next to Render, only while something is running */
   .stage-foot #cancelLink { color: #ff9a8a; padding: 6px 10px; }
   .stage-foot a.icon { display: grid; place-items: center; padding: 5px 8px; }
@@ -1560,12 +1562,12 @@
       <a id="liveBtn" title="Live: starts a Render (or joins the running one); type a prompt and press Enter — the video morphs into it from the frame being rendered (it's saved as a keyframe there)">live</a>
       <a id="cancelLink" class="hide" title="Cancel">✕</a>
     </div>
-    <a id="loadRun" class="hide" title="Copy this run's settings into the panel: its look, prompt, keyframes, sliders, model, seed and clip">copy settings</a>
-    <a id="copyPrompt" class="hide" title="Copy only this run's words into the panel — its prompt, its keyframes and its negative. Nothing else moves: your model, sliders, seed, clip and stack stay as they are">copy prompt</a>
-    <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">use frame →</a>
-    <a id="enhanceLink" class="hide">enhance</a>
-    <a id="mp4Link" class="hide" title="Download the run's mp4">download mp4</a>
-    <a id="gifLink" class="hide" title="Download the run as a looping gif">download gif</a>
+    <a id="enhanceLink" class="hide">Enhance run</a>
+    <a id="loadRun" class="hide" title="Copy this run's settings into the panel: its look, prompt, keyframes, sliders, model, seed and clip">Copy settings</a>
+    <a id="copyPrompt" class="hide" title="Copy only this run's words into the panel — its prompt, its keyframes and its negative. Nothing else moves: your model, sliders, seed, clip and stack stay as they are">Copy prompt</a>
+    <a id="animateLink" class="hide" title="Take the frame under the transport — of a Frame or out of a render — into Image mode as the picture, with Motion on (SD 1.5): press Preview to see it move">Use frame</a>
+    <a id="mp4Link" class="hide" title="Download the run's mp4">Download mp4</a>
+    <a id="gifLink" class="hide" title="Download the run as a looping gif">Download gif</a>
     <span class="outputs" id="outputs"></span>
     <span class="spacer"></span>
     <span id="footInfo"></span>
@@ -6323,7 +6325,7 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
        batches rather than one by one, and even a short Preview renders one full window. With <b>Settings → Smooth long
        clips</b> on, a long clip renders in one pass instead, the windows blended at every step so the whole clip shares one
        motion (no drift from window to window) — it needs more VRAM.</p>
-    <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>use frame →</b> (under the stage) sends it
+    <p>From Text mode: press <b>Frame</b> until you have a still you like, then <b>Use frame</b> (under the stage) sends it
        to Image mode as the picture, with Motion on. It works on any run — scrub a render to the frame you want and
        take that one. If the picture in the panel already has a <b>length</b>, the frame replaces it and keeps that
        length and whatever mode you are in — Camera, Boil or Motion — rather than switching you to Motion.</p>
@@ -6431,8 +6433,8 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
     <h3>Runs, seeds and Enhance</h3>
     <h4>The strip</h4>
     <p>Every Frame, Preview and Render is a run in the strip at the bottom, newest on the left. Click one to view it;
-       <b>copy settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.
-       <b>copy prompt</b> takes the words only: its prompt, keyframes and negative, with everything else left as you have it.</p>
+       <b>Copy settings</b> puts its look, prompt, keyframes, sliders, model, seed, clip and Shape back in the panel — tweak from there.
+       <b>Copy prompt</b> takes the words only: its prompt, keyframes and negative, with everything else left as you have it.</p>
     <table>
       <tr><td><b>← →</b></td><td>After clicking a run: the previous / next run (the strip keeps it in view). Click the
           stage or the timeline and they step frames again.</td></tr>
@@ -6592,10 +6594,10 @@ var TOUR = [
     : `Work up in steps: <b>Frame</b> paints one frame to dial in the look, <b>Preview</b> a few frames to check the motion,
        <b>Render</b> the whole thing. <b>live</b> lets you type new prompts into a render while it runs. Hover a button for a time estimate.` },
   { at: () => [document.querySelector('footer')], title: 'Runs', text: () =>
-    `Every ${isH3() ? 'Render' : 'Frame, Preview and Render'} lands here. Click one to view it; then <b>copy settings</b> puts its
-     settings back in the panel and <b>copy prompt</b> only its words, <b>use frame →</b> takes the frame you are on as the next
-     picture, <b>enhance</b> upscales or smooths it, <b>download mp4</b> saves it and <b>download gif</b> makes a looping gif to
-     paste somewhere. The grid icon at the right opens every run on disk.` },
+    `Every ${isH3() ? 'Render' : 'Frame, Preview and Render'} lands here. Click one to view it, and the row under the stage acts on
+     it: <b>Enhance run</b> upscales or smooths it, <b>Copy settings</b> puts its settings back in the panel and <b>Copy prompt</b>
+     only its words, <b>Use frame</b> takes the frame you are on as the next picture, <b>Download mp4</b> saves it and
+     <b>Download gif</b> makes a looping gif to paste somewhere. The grid icon at the right opens every run on disk.` },
   { at: () => [document.querySelector('.barbtns')], title: 'Status & help', text: () =>
     `The status opens the renderer log, the GPU meter shows memory in use, <b>?</b> has the full guide (and this tour again),
      <b>\u2699</b> sets your model folders. That's it: pick a source and press <b>${isH3() ? 'Render' : 'Frame'}</b>.` },
@@ -7125,7 +7127,7 @@ async function showRun(runId, { follow = false } = {}) {
   // one button: it downloads the mp4, building it first if the run has none yet (cancelled, or just finished)
   $('mp4Link').classList.toggle('hide', !!(job && job.run_id === runId && job.state === 'running'));
   const still = frames.length === 1;        // a Frame: its picture, not a one-frame video
-  $('mp4Link').textContent = still ? 'download image' : 'download mp4';
+  $('mp4Link').textContent = still ? 'Download image' : 'Download mp4';
   $('mp4Link').title = still ? "Download the run's picture (PNG)" : "Download the run's mp4";
   $('mp4Link').href = still ? img(runId, 'output', frames[0]) : `/api/runs/${runId}/video?${runQ()}&t=${r?.video_modified || Date.now()}`;
   $('mp4Link').download = still ? mp4Name(runId).replace(/\.mp4$/, '.png') : mp4Name(runId);
@@ -8298,6 +8300,11 @@ async function openEnhance() {
   $('enh').hidden = false; paintEnhance();
 }
 $('enhanceLink').onclick = () => $('enh').hidden ? openEnhance() : ($('enh').hidden = true);
+// The Enhance panel is closed from a dozen places -- Escape, every other panel opening, a job
+// finishing. Rather than have each of them remember to put the button back, the button watches
+// the panel: one place, and it cannot fall out of step.
+new MutationObserver(() => $('enhanceLink').classList.toggle('on', !$('enh').hidden))
+  .observe($('enh'), { attributes: true, attributeFilter: ['hidden'] });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('enh').hidden) $('enh').hidden = true; });
 // Refine: the run's frames, bigger, through a local model at a low Denoise (see refineConfig)
 var refSrc = null, refPromptRun = null;

@@ -2,6 +2,24 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-22
+
+- **The row under the stage reads as a row of actions.** Every label is sentence case now, and
+  **Enhance run** leads it — it is the one that makes something new, the rest copy or download. The
+  arrow came off *Use frame*, which was the only label wearing one. While the Enhance panel is open
+  its button stays lit in a brighter grey, so you can see which panel you are in without hunting for
+  it; the button watches the panel rather than being told, which matters because a dozen things close
+  that panel.
+
+- **Wan 2.2 Creative is gone from Enhance.** It was the one upscaler that loaded a real model on a
+  Comfy Cloud GPU instead of calling a partner API, and it broke at their end: the WanVideoWrapper
+  sampler calls `comfy.model_management.is_directml_enabled`, which ComfyUI core no longer has, so a
+  run queued, waited for a GPU, sampled for a minute and then died. Nothing here could pin around it
+  — the versions in a graph's `_meta` are editor notes, and `/api/prompt` runs whichever build the
+  cloud has installed. **FlashVSR**, **Topaz Astra**, **Flux BFL** and **Magnific** are untouched,
+  and a saved choice that no longer exists falls back to the first in the list on its own. The graph
+  is kept in git, so it can come back if the pack is repaired.
+
 ## 2026-11-17
 
 - **The tour walks the panel as it is now.** It dims one area at a time and says what it is for — but
