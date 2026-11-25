@@ -35,14 +35,14 @@ PATTERNS = [
     {"id": "rings", "label": "Rings", "base": "black",
      "note": "Rings travelling outward, one launched on each hit, brightest as it leaves."},
     {"id": "blocks", "label": "Blocks", "base": "black",
-     "note": "A square launched at nothing on every hit, expanding past the edges of the frame "
-             "and fading as it goes \u2014 hard edges, no glow."},
+     "note": "A white square opening from nothing to the whole frame and closing again on every "
+             "hit \u2014 hard edges, flat white, no glow."},
+    {"id": "circle", "label": "Circle", "base": "black",
+     "note": "A disc opening out of the middle on every hit until it is past the corners \u2014 "
+             "hard edged and flat white, so it reads as a matte and not as light."},
     {"id": "grid", "label": "Grid", "base": "black",
      "note": "The frame cut into big squares; a handful light on every hit and fade in their own "
              "time, so no two hits land the same."},
-    {"id": "prism", "label": "Prism", "base": "black",
-     "note": "Rings with corners: a wide polygon opening out of the middle, turned a little on "
-             "each hit."},
     {"id": "slabs", "label": "Slabs", "base": "black",
      "note": "Big hard rectangles thrown across the frame on every hit, holding a moment and "
              "going out \u2014 no two hits in the same place."},
@@ -59,7 +59,7 @@ PATTERNS = [
 BY_ID = {p["id"]: p for p in PATTERNS}
 
 DRAW_MAX = 768          # the long side these are painted at before being scaled back up
-DRAW_VERSION = 1        # bump when _frame changes shape, so an old cache is not handed back
+DRAW_VERSION = 3        # bump when _frame changes shape, so an old cache is not handed back
 
 
 def spec(kind: str) -> dict:
@@ -67,8 +67,13 @@ def spec(kind: str) -> dict:
 
 
 def catalogue() -> dict:
-    """What the panel draws its picker from."""
-    return {"patterns": PATTERNS}
+    """What the panel draws its picker from, and which draw it is looking at.
+
+    The version goes out with it because the preview URLs are cached for an hour and read the same
+    whatever the pattern now looks like: without something in the address that changes, a redrawn
+    pattern is invisible until the cache lets go of it, restart or no restart.
+    """
+    return {"patterns": PATTERNS, "version": DRAW_VERSION}
 
 
 # ---------------------------------------------------------------- the signal
@@ -275,21 +280,44 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
             ring = np.maximum(ring, np.clip(1.0 - np.abs(r - pos) / 0.28, 0.0, 1.0) * lvl)
         return (ring * rng.random((h, w), dtype=np.float32)).astype(np.float32)
     if kind == "blocks":
-        # A square out of nothing on every hit, growing until it is off the frame on all four
-        # sides. Rings' trick with corners and no hole: each hit launches its own, they travel at
-        # one rate and dim as they spread, and the newest is the brightest, so a square inside a
-        # square reads as the one that just landed. Hard edges: this is a shape, not a light.
+        # The square IS the beat: its size is the envelope, so it opens from nothing on the hit and
+        # closes back to nothing as the hit lets go -- 0 to the whole frame and back, once a beat,
+        # for as long as the clip runs. Nothing is carried between frames and nothing travels on a
+        # clock of its own, which is what keeps it locked to the count however fast you set it.
+        #
+        # It does not dim, either. Fading a shape that is already changing size says the same thing
+        # twice and leaves the moment it fills the frame a flat grey; here the white stays white
+        # and the size does all the talking -- white, black, and the line between them.
         short = max(1.0, min(cx, cy))
         sq = np.maximum(np.abs(x - cx), np.abs(y - cy)) / short
         soft = 2.0 / short                          # a pixel of edge, so it is not a staircase
-        carry[:] = [c for c in ((size + 0.09, lvl * 0.975) for size, lvl in carry)
-                    if c[0] < 2.3 and c[1] > 0.02]
-        if k > 0.25 and (not carry or carry[-1][0] > 0.14):
-            carry.append((0.045, k))    # one step wide already: a hit you see on the frame it lands
-        out = np.zeros((h, w), dtype=np.float32)
-        for size, lvl in carry:
-            out = np.maximum(out, np.clip((size - sq) / soft, 0.0, 1.0) * lvl)
-        return out.astype(np.float32)
+        full = max(cx, cy) / short                  # the size at which it is past every corner
+        return np.clip((k * full - sq) / soft, 0.0, 1.0).astype(np.float32)
+    if kind == "circle":
+        # One disc, out of the middle, until it is past the corners -- `r` is measured to the
+        # corner, so a size of 1.0 is a frame exactly covered. The edge is the one pixel it takes
+        # not to be a staircase, and nothing else: white inside, black outside, which is what makes
+        # it hold up as a matte where Bloom's falloff does not. One, not a stack: a hit that lands
+        # while one is still travelling restarts it rather than nesting inside it, because two
+        # flat-white discs would read as the larger one alone and the hit would be invisible.
+        soft = 2.0 / half
+        if not carry:
+            carry.append([9.0, 0.0])                # size, and what the envelope last was
+        st = carry[0]
+        was, st[1] = st[1], k
+        # The EDGE of a hit, not every frame of one. A hit sits above this line for several frames
+        # as it lets go, and restarting on each of them pinned the disc at a dot that never grew.
+        if k > 0.25 and was <= 0.25:
+            st[0] = 0.03                            # a new hit takes the frame back over
+        else:
+            st[0] += 0.11                           # ~9 frames from nothing to past the corners
+        if st[0] > 1.34:        # it holds the frame whole for a few frames before letting go: the
+            return np.zeros((h, w), dtype=np.float32)   # corners fill last, and that moment is the point
+        # Flat white, never the hit's own level. The size is what carries the beat here, so dimming
+        # the disc as well says it twice and leaves the moment it covers the frame an 88% grey field
+        # instead of a white one. Swing still decides whether a hit fires at all, through the gate
+        # above; what it must not do is decide how white the white is.
+        return np.clip((st[0] - r) / soft, 0.0, 1.0).astype(np.float32)
     if kind == "grid":
         # The frame cut into a few big cells. A hit lights half of them at random and they fade
         # on their own clock, so the pattern never repeats while the count does.
@@ -310,23 +338,6 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         fx, fy = (np.arange(w) * cols / w) % 1.0, (np.arange(h) * rows / h) % 1.0
         gap = ((fx > 0.03) & (fx < 0.97))[None, :] & ((fy > 0.03) & (fy < 0.97))[:, None]
         return (out * gap).astype(np.float32)
-    if kind == "prism":
-        # Rings with corners. A regular polygon is the farthest of a few half-planes, so a front is
-        # a distance like r and travels the same way; each one is turned at random, and a wide band
-        # keeps it a shape crossing the frame rather than a wire.
-        sides, dx, dy = 6, (x - cx) / half, (y - cy) / half
-        carry[:] = [c for c in ((pos + 0.05, lvl * 0.95, ang) for pos, lvl, ang in carry)
-                    if c[0] < 1.8 and c[1] > 0.02]
-        if k > 0.25 and (not carry or carry[-1][0] > 0.12):
-            carry.append((0.0, k, float(rng.random()) * np.pi))
-        out = np.zeros((h, w), dtype=np.float32)
-        for pos, lvl, ang in carry:
-            d = None
-            for t in ang + np.arange(sides) * (2.0 * np.pi / sides):
-                v = dx * float(np.cos(t)) + dy * float(np.sin(t))
-                d = v if d is None else np.maximum(d, v)
-            out = np.maximum(out, np.clip(1.0 - np.abs(d - pos) / 0.14, 0.0, 1.0) * lvl)
-        return out.astype(np.float32)
     if kind == "slabs":
         # Rectangles thrown at the frame: a few on every hit, somewhere else each time, held for a
         # moment and then gone. Hard edges and flat white, so what moves is the arrangement.

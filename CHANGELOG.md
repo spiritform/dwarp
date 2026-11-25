@@ -2,6 +2,30 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-24
+
+- **Two hard-edged pulses, and one of them is the beat itself.** **Blocks** was a stack of squares
+  travelling outward and dimming as they went; it is now a single white square whose *size* is the
+  envelope — nothing from nothing on the hit, out to the whole frame, and closed again, once a beat
+  for as long as the clip runs. **Circle** is new beside it: a disc opening out of the middle until
+  it has filled every corner, holding the frame completely white for a few frames, then gone until
+  the next hit. Neither dims as it moves. Fading a shape that is already changing size says the same
+  thing twice and leaves the moment it covers the frame a grey field, which is the one thing these
+  two are not for — what you get is white, black, and the line between them, which is what makes
+  them hold up as a matte where Bloom's falloff does not.
+
+  **Prism** is gone. Twelve patterns now.
+
+- **A redrawn pulse is no longer invisible.** The picker's previews are cached for an hour and their
+  addresses said nothing about which draw they were, so a pattern that had changed kept showing the
+  old loop — through a reload, through a restart, with nothing to suggest why. The draw version
+  travels with the catalogue now and rides on every preview URL, so changing a pattern changes its
+  address and the browser fetches it. The hour still stands for everything that has not changed.
+
+- **Picking a pulse pattern lands on Pulse.** Choosing a new pattern for a layer that was paced by an
+  imported track used to keep the track, leaving the Import tab naming a file you had chosen for the
+  pattern you just replaced. A pattern now comes with its own count, and the track is let go.
+
 ## 2026-11-22
 
 - **The row under the stage reads as a row of actions.** Every label is sentence case now, and

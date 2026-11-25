@@ -2979,6 +2979,9 @@ $('h3Aspect').onclick = e => {
 // no idea what red means until the brief says so, which is why the legend travels with the mask.
 var MASK_PATTERNS = [], MASK_READY = false;                                  // var: read from above
 var PULSE_PATTERNS = [];                   // the kinds of pulse layer, from the engine
+// Which draw they are. It rides on every preview URL so a redrawn pattern is not hidden
+// behind the hour the browser is told it may keep the old one for.
+var PULSE_DRAW = 0;
 var NOISE_PATTERNS = [];                   // and the kinds of noise
 var MASK_GREY = '#9a98a3';      // the mask's own frame: it hands colours out, it does not wear one
 var MASK_COLOURS = ['#e61919', '#19d23c', '#285aff'];
@@ -3082,7 +3085,7 @@ function paintPulseLib() {
   const at = ML.at >= 0 ? layers()[ML.at] : null, cur = at && at.pulse;
   const [pw, ph] = maskPreviewSize();
   const card = p => `<div class="sl-card${p.id === cur ? ' on' : ''}" data-pattern="${p.id}" title="${p.note}">
-      <div class="thumb"><video src="/api/pulse/preview?${qs({ kind: p.id, width: pw, height: ph })}" autoplay muted loop playsinline></video>
+      <div class="thumb"><video src="/api/pulse/preview?${qs({ kind: p.id, width: pw, height: ph, v: PULSE_DRAW })}" autoplay muted loop playsinline></video>
         <span class="tag">${p.base === 'grey' ? 'mid grey at rest' : 'black at rest'}</span></div>
       <b>${p.label}</b><span class="note">${p.note}</span></div>`;
   $('maskLib').innerHTML = `<div class="rs-head stack">
@@ -3138,8 +3141,12 @@ async function makePulse(kind, at = -1) {
   try {
     setStatus('drawing the pulse\u2026', 'live');
     const was = at >= 0 ? layers()[at] : null;
-    const L = Object.assign({ pulse: kind, beat: clipAudio() ? 'clip' : 'bpm', bpm: 120, division: 1, amount: 1,
-                              audio: '', audioName: '' }, was || {}, { pulse: kind });
+    // The layer's look rides along -- blend, opacity, blur, swing, speed -- because you are changing
+    // the picture, not starting the layer again. A loaded track does not: it was brought in for the
+    // pulse you are replacing, and leaving it attached means the Import tab still names a file you
+    // chose for something else. So picking a pattern lands on Pulse, its own speed, every time.
+    const L = Object.assign({ pulse: kind, bpm: 120, division: 1, amount: 1 }, was || {},
+                            { pulse: kind, beat: 'bpm', audio: '', audioName: '' });
     const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
                                                body: JSON.stringify(pulseBody(L)) });
     Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse`, base: r.base }); madeAt(L, r);
@@ -3515,7 +3522,7 @@ function pulseTileSrc(L) {
   const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
   const [pw, ph] = maskPreviewSize();
   return (at !== 'bpm' || L.pinvert) && L.path ? `/api/video/file?${qs({ path: L.path })}`
-                                : `/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph })}`;
+                                : `/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph, v: PULSE_DRAW })}`;
 }
 // One row's tile brought up to date without rebuilding the panel -- half the time this is called
 // there is a pointer down on a value box, and a rebuild would pull it out from under it.
@@ -8571,7 +8578,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   CLOUD_WF = (cloudWf.workflows || []).filter(w => !w.hidden);
   FIELD_KINDS = fieldKinds.kinds || [];            // drawn motion
   MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
-  PULSE_PATTERNS = pulsePats.patterns || [];
+  PULSE_PATTERNS = pulsePats.patterns || []; PULSE_DRAW = pulsePats.version || 0;
   NOISE_PATTERNS = noisePats.patterns || [];
   if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
