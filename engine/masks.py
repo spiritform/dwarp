@@ -13,6 +13,7 @@ second or two, so a mask can be made and remade while you are deciding.
 from __future__ import annotations
 
 import hashlib
+import os
 import math
 import subprocess
 from pathlib import Path
@@ -223,6 +224,12 @@ def make(dest_dir: Path, *, pattern: str = "circle", width: int = 848, height: i
     out = dest_dir / f"{p['id']}-{'matte-' if grey else ''}{hashlib.sha1(key.encode()).hexdigest()[:6]}.mp4"
     dw, dh, k = _draw_size(width, height)
     if not out.is_file():
+        # ffmpeg writes to a part file and the finished clip is moved into place, because the name
+        # is also the cache: anything else asking for this one checks `out.is_file()` and a file
+        # being written passes that check happily. The flatten then opened a clip that was half a
+        # clip -- "Invalid data found when processing input", from a layer that was fine seconds
+        # later. os.replace is atomic, so a reader sees either nothing or the whole thing.
+        tmp = out.with_name(out.name + ".part.mp4")   # still an mp4: ffmpeg reads the container off the name
         cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
                "-s", f"{dw}x{dh}", "-r", f"{fps:.4f}", "-i", "-"]
         if (dw, dh) != (width, height):
@@ -233,7 +240,7 @@ def make(dest_dir: Path, *, pattern: str = "circle", width: int = 848, height: i
             smooth = bool(p.get("smooth")) and grey
             cmd += ["-vf", f"scale={width}:{height}:flags={'bicubic' if smooth else 'neighbor'}"]
         # flat colour, so the encoder is told to keep the edges rather than smooth them away
-        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12", "-preset", "veryfast", str(out)]
+        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12", "-preset", "veryfast", str(tmp)]
         pipe = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         st: dict = {}                            # the noise patterns' lattices, one clip's worth
         try:
@@ -246,8 +253,10 @@ def make(dest_dir: Path, *, pattern: str = "circle", width: int = 848, height: i
             pipe.stdin.close()
             err = pipe.stderr.read().decode("utf-8", "replace")
             pipe.wait()
-        if pipe.returncode or not out.is_file():
+        if pipe.returncode or not (tmp.is_file() and tmp.stat().st_size):
+            tmp.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg could not write the mask: {err.strip()[:200] or 'no output'}")
+        os.replace(tmp, out)
     return {"path": str(out), "name": out.name, "pattern": p["id"], "label": p["label"],
             "colours": int(p.get("colours", 2)), "legend": legend(p["id"]), "grey": bool(grey),
             "width": width, "height": height, "frames": frames, "fps": round(fps, 3),

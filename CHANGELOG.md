@@ -2,6 +2,43 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-25
+
+- **A drawn layer can no longer leave a corpse behind.** A pulse, a noise layer and a drawn matte are
+  all cached under a name made from their settings, and the check for "is it already drawn?" was
+  whether a file of that name existed and was not empty. An mp4 keeps its index at the *end*, so a
+  write that was interrupted left a file that passed that check and could never be read — and from
+  then on every composite and every Frame was handed the same dead clip, reporting *invalid data* for
+  a layer that had worked seconds earlier. They are written to a part file and moved into place now,
+  which is atomic: a reader sees either nothing or the whole clip, and an interrupted write leaves
+  something no cache will ever accept.
+
+- **A pulse on a count is drawn once, not once per beat.** Flash, Bloom, Blocks, Circle and Wipe do
+  the identical thing on every beat, so a 1437-frame clip was 120 copies of the same 12 frames. Only
+  one beat is drawn now and the compositors loop it — which they already did for any layer shorter
+  than the clip. At 120 that is 12 frames instead of 1437: instant, and kilobytes instead of
+  megabytes. It picks the fewest beats that land on a whole frame, so 133 bpm draws six beats rather
+  than rounding one into a slightly wrong tempo. Anything that varies still draws in full: a drifted
+  count, a beat taken from sound, and the patterns that boil on a clock of their own.
+
+- **Source plays the part you selected.** The transport spanned the whole source file while the trim
+  selected a piece of it, so you could scrub into footage that was not in the render — and then
+  Frame and Use frame pointed at a frame nothing was going to paint. The in and out points are the
+  track now, playback stops at the out point, and pausing lands inside it.
+
+- **Thumb through a render while it runs.** A frame landing used to move the playhead to it, whatever
+  you were looking at. Now it only follows if you were already on the newest frame: park on frame 12
+  and you stay there while the renderer works ahead. Press **play** on a run still being made and it
+  runs up to the newest frame and waits there, taking each new one as it arrives — so play becomes
+  watching it being made rather than looping the opening second.
+
+- **A sound switch on the transport**, after the timecode. One switch over everything the stage plays:
+  the clip's own audio, a finished run's mp4, and the layer carrying the sound while a stack plays
+  live. It applies to whatever is playing at the time, not just the next thing you start.
+
+- **The beat row is one line.** The die leads it and the metronome ends it, instead of the two
+  buttons wrapping onto a row of their own: seed, swing, drift, speed, tick.
+
 ## 2026-11-24
 
 - **Drift: a count that is not a metronome.** A hit used to land on exactly the beat, forever, which

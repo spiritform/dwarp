@@ -772,6 +772,12 @@
            background: #070709; border-radius: var(--radius-sm); }
   .scrub button { background: #1f1e24; border: 0; color: var(--text); width: 28px; height: 24px; border-radius: 3px; cursor: pointer; font-size: 11px; }
   .scrub button:hover { background: #2a2930; }
+  /* The sound switch is a state, not an action: no fill until you are over it, and the muted one
+     keeps a mark so a glance says which way it is set. */
+  .scrub #muteBtn { background: none; color: var(--faint); display: grid; place-items: center; }
+  .scrub #muteBtn:hover { background: #1f1e24; color: var(--text); }
+  .scrub #muteBtn.off { color: #ff9a8a; }
+  .scrub #muteBtn svg { width: 15px; height: 15px; }
   #scrubRange { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; cursor: pointer; }
   #scrubRange::-webkit-slider-runnable-track { height: 8px; border-radius: 2px;
            background: linear-gradient(90deg, var(--accent) 0 var(--prog, 0%), #25242b var(--prog, 0%) 100%); }
@@ -1552,6 +1558,7 @@
     <button id="playBtn" title="Play frames (space)">▶</button>
     <input type="range" id="scrubRange" min="0" max="0" value="0">
     <span id="scrubText"></span>
+    <button id="muteBtn" title="Mute"></button>
   </div>
   <details class="err" id="err" hidden><summary id="errSummary"></summary><pre id="errLog"></pre></details>
   <div class="stage-foot">
@@ -1690,6 +1697,7 @@ $('sampler').onchange = e => { state.sampler = e.target.value; renderControls();
 $('schedule').onchange = e => { state.schedule = e.target.value; save(); };
 let state = {
   clip: null,                  // { path, name, source: {width,height,fps,frames,duration} }
+  mute: false,                 // the stage's own sound switch: the clip's audio, a run's, the stack's
   range: [0, 1],               // fractions of the clip
   preset: 'raw', prompt: '', style: 0.8, hold: 60, size: 512, steps: 20, cfg: 5,
   mode: 'sd15',
@@ -3131,9 +3139,34 @@ function paintNoiseLib() {
 function beatAudio(L) {
   return L.beat === 'clip' ? (state.clip?.path || '') : (L.beat === 'file' ? (L.audio || '') : '');
 }
+// On a count, some of these do the identical thing on every beat: nothing in them carries over
+// from the beat before and nothing in them is random. So the clip only has to BE one beat. Both
+// compositors already read a layer shorter than the clip -- the flatten by `(off + i) % len`, the
+// live preview by `at % duration` -- so a loop tiles itself at both ends for free. At 120 over a
+// 1437-frame clip that is 12 frames drawn instead of 1437, and a few KB on disk instead of 46 MB.
+//
+// The hit lands on the loop's first frame, so the seam is a real beat: the envelope's tail at the
+// end of the loop runs into the next hit exactly as it does mid-clip.
+//
+// Left out, and why: Grain, Grid and Slabs draw from the rng every frame; Burst and Rings keep
+// fronts travelling from earlier hits; Clouds, Smoke, Veins and Fall run a clock of their own and
+// would visibly repeat. Drift is excluded by definition -- making each hit different is its job.
+const LOOP_OK = ['flash', 'bloom', 'blocks', 'circle', 'wipe'];
+function pulseLoop(L, frames, fps) {
+  if (!LOOP_OK.includes(L.pulse) || L.drift > 0 || beatAt(L) !== 'bpm') return frames;
+  const step = 60 / Math.max(1, L.bpm || 120) / Math.max(0.125, L.division || 1);
+  // A beat is rarely a whole number of frames. Rounding one beat to the nearest frame would hold
+  // the wrong tempo for the whole clip, so take the fewest beats that land ON a frame boundary --
+  // at 133 bpm and 24 fps that is six beats (64.96 frames), not one (10.83).
+  for (let n = 1; n <= 8; n++) {
+    const f = n * step * fps;
+    if (Math.abs(f - Math.round(f)) < 0.04 && Math.round(f) >= 2) return Math.min(frames, Math.round(f));
+  }
+  return frames;
+}
 function pulseBody(L) {
   const b = maskBody(L.pulse);
-  return { kind: L.pulse, width: b.width, height: b.height, frames: b.frames, fps: b.fps,
+  return { kind: L.pulse, width: b.width, height: b.height, frames: pulseLoop(L, b.frames, b.fps), fps: b.fps,
            amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
            invert: !!L.pinvert, seed: L.seed || 0, drift: L.drift || 0 };
 }
@@ -3661,17 +3694,22 @@ function beatRow(i, L) {
   // Speed is the row; this is depth. How far each hit carries the layer, not how often one comes.
   const swing = dial(i, 'amount', 'swing', L.amount ?? 1,
     'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way');
+  // The die leads and the metronome trails: one row, read left to right, with the two buttons at
+  // the ends of it rather than wrapped onto a line of their own. The die comes first because it
+  // decides every value after it; the metronome last because it only makes sense once there is a
+  // speed to tick.
+  const die = `<button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>`;
   // Drift belongs to the count and nowhere else: a sound has no grid to come off.
   const drift = dial(i, 'drift', 'drift', L.drift || 0,
     'How far each hit may wander off the count — at 0 it is a metronome, turned up they land early or late, with different weight, and now and then not at all');
   const line = at === 'bpm'
-    ? `${swing}${drift}
+    ? `${die}${swing}${drift}
        ${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'How fast it pulses, in beats per minute — drag it, double-click for 120', '', 's2')}
        <button class="chip metro${METRO.at === i ? ' on' : ''}" data-metro="${i}"
          title="Tick it out loud — the speed you have set, as a click, so you can judge the cue without rendering anything"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`
     : at === 'clip'
-      ? `${swing}<span class="snd s3">${state.clip.name}</span>`
-      : `${swing}<span class="snd s2">${L.audioName || 'nothing loaded'}</span>
+      ? `${die}${swing}<span class="snd s3">${state.clip.name}</span>`
+      : `${die}${swing}<span class="snd s2">${L.audioName || 'nothing loaded'}</span>
          <button class="chip" data-snd="${i}" title="${L.audio ? 'Pace it by a different track' : 'Choose a track to pace it by — a sound file, or a video with sound in it'}">${
            L.audio ? 'change' : 'choose…'}</button>`;
   // Not "BPM": that is the name of the box underneath, and a tab and the value under it should
@@ -3683,9 +3721,7 @@ function beatRow(i, L) {
   return `<span class="beat">
       <div class="seg" data-beat="${i}" style="grid-template-columns:repeat(${ways.length},1fr)">${
         ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
-      <div class="bl">${line}
-        <button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>
-      </div></span>`;
+      <div class="bl">${line}</div></span>`;
 }
 function renderLayers() {
   $('layersBox').hidden = !layersOn();
@@ -5483,7 +5519,7 @@ function renderControls() {
   $('frameBtn').hidden = $('testBtn').hidden = isH3();
   $('prompt').value = state.keySel >= 0 && state.keys[state.keySel] ? state.keys[state.keySel].prompt : state.prompt;
   $('style').value = state.style; $('styleV').textContent = (+state.style).toFixed(2);
-  renderStyleRef(); renderColourRef(); renderShape(); paintNeg();
+  renderStyleRef(); renderColourRef(); renderShape(); paintNeg(); paintMute();
   $('styleNext').value = state.frameLock; $('styleNextV').textContent = (+state.frameLock).toFixed(2);   // Frame Lock
   $('srcMix').value = state.srcMix; $('srcMixV').textContent = (+state.srcMix).toFixed(2);
   const ad = adOn();
@@ -5702,7 +5738,15 @@ function clipEdge() {
   if (t.video && t.video !== state.clip.path) return null;
   return Math.min(state.clip.source.frames - 1, (t.frame_start + frames[frames.length - 1]) * t.nth);
 }
-const capClip = f => { const e = clipEdge(); return e == null ? f : Math.min(f, e); };
+// Clip view is the clip you are RENDERING, which is the trimmed range and not the file. The
+// transport used to span the whole source, so it would walk you into footage that is not in the
+// render at all -- and then Frame and Use frame pointed at a frame nothing was going to paint.
+// Everything that puts the playhead somewhere comes through here, so the trim is held in one place.
+const capClip = f => {
+  if (!state.clip) return f;             // no clip, no range to hold it inside
+  const e = clipEdge(), [fa, fb] = rangeFrames();
+  return Math.max(fa, Math.min(e == null ? fb : Math.min(fb, e), f));
+};
 function toSource() {                      // e.g. scrubbing away from a Frame result
   view = 'src'; setControlTabs(); setupTransport();
 }
@@ -5723,11 +5767,13 @@ function setupTransport() {
     $('scrubRange').max = (state.shape.frames || 1) - 1; $('scrubRange').value = shapeFrame;
     return;
   }
+  $('scrubRange').min = 0;                 // only the clip's own track is offset into the source
   if (clipMode() || oneFrameRun()) {
     $('scrub').hidden = false;
     // The track stays the whole clip -- how far it has got is the fill, and the playhead stops there
     clipFrame = capClip(clipFrame);
-    $('scrubRange').max = state.clip.source.frames - 1; $('scrubRange').value = clipFrame;
+    const [ra, rb] = rangeFrames();
+    $('scrubRange').min = ra; $('scrubRange').max = rb; $('scrubRange').value = clipFrame;
   } else if (frames.length) {
     $('scrub').hidden = false;
     $('scrubRange').max = Math.max(frames.length, liveTotal()) - 1; $('scrubRange').value = frameIdx;
@@ -7153,6 +7199,10 @@ async function showRun(runId, { follow = false } = {}) {
   const newFrames = out ? out.frames : [];
   const switched = viewRun !== runId;
   if (playing === 'clip' || playing === 'live' || ((playing === 'out' || playing === 'seq') && switched)) stopPlay();   // a run replaces what was on the stage
+  // Were we parked on the newest frame before this one landed? If so, following means staying on
+  // the newest; if not, the playhead is somewhere you put it on purpose and a new frame arriving is
+  // no reason to take it away from you.
+  const wasAtHead = !frames.length || frameIdx >= frames.length - 1;
   viewRun = runId; frames = newFrames; runTiming = desc.timing;
   if (singleShape() != null) shapeFrame = runTiming.shape_start;
   // A picked run opens on its result -- and so does one being followed, however long ago the stage
@@ -7165,7 +7215,7 @@ async function showRun(runId, { follow = false } = {}) {
   // following a render jumps to each new frame, unless it's playing: then the loop just grows
   // a picked run opens at its start
   if (switched && !follow) frameIdx = 0;
-  else if (switched || (follow && !playing)) frameIdx = frames.length - 1;
+  else if (switched || (follow && !playing && wasAtHead)) frameIdx = frames.length - 1;
   frameIdx = Math.min(frameIdx, frames.length - 1);
   ensureFrameEl(!!initL);
   setupTransport();
@@ -7438,7 +7488,7 @@ function playOut() {
   const fps = r?.fps || 24, n = frames.length;
   const url = `/api/runs/${viewRun}/video?${runQ()}&t=${r?.video_modified || 0}`;
   if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
-  v.muted = false; v.volume = 1; v.hidden = false;
+  v.muted = !!state.mute; v.volume = 1; v.hidden = false; delete v.dataset.quiet;
   const im = $('imgOut');                  // exactly over the still (the box can be wider than the image)
   v.style.width = im.offsetWidth + 'px'; v.style.height = im.offsetHeight + 'px';
   v.currentTime = frameIdx / fps;
@@ -7498,15 +7548,27 @@ function frameAt(secs) {
 // Frames with no gaps in them. A Preview is every other frame of the clip: played against the clock
 // each of its frames would hold for its real span, which is honest but is not what Preview is for.
 const seqContig = () => frames.length > 1 && frames[frames.length - 1] - frames[0] + 1 === frames.length;
+// The run on the stage is the one the renderer is filling in. Its last frame is not the end of
+// anything -- it is just as far as it has got.
+const liveRun = () => !!(job && job.run_id === viewRun && !['completed', 'cancelled', 'failed'].includes(job.state));
 function stepFrames() {                        // the plain sequence: one frame per tick, no sound
   const fps = runsCache.find(r => r.id === viewRun)?.fps || 24;   // the run's own rate, same as its mp4
-  playing = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; $('scrubRange').value = frameIdx; paintFrame(); }, 1000 / fps);
+  // A finished run loops. One still rendering does not: it runs up to the newest frame and waits
+  // there, and from then on each tick takes whatever the renderer has added since -- so play turns
+  // into watching it being made, frame by frame, rather than looping the opening second forever.
+  playing = setInterval(() => {
+    frameIdx = liveRun() && frameIdx >= frames.length - 1 ? frames.length - 1
+                                                          : (frameIdx + 1) % frames.length;
+    $('scrubRange').value = frameIdx; paintFrame();
+  }, 1000 / fps);
 }
 function playSeq() {
   stepFrames();                                // start stepping at once: the probe is a round trip
   const step = playing, run = viewRun;
   clipSound(run).then(path => {
-    if (!path || playing !== step || viewRun !== run || !seqContig()) return;
+    // Not while it is still rendering: the sound would loop over a stretch of frames that does not
+    // exist yet, and the whole point of playing a live run is to arrive at the head and stay there.
+    if (!path || playing !== step || viewRun !== run || !seqContig() || liveRun()) return;
     const a = $('sndOut') || document.body.appendChild(Object.assign(new Audio(), { id: 'sndOut' }));
     const url = `/api/video/file?${qs({ path: path })}`;
     if (a.dataset.src !== url) { a.src = url; a.dataset.src = url; }
@@ -7540,6 +7602,7 @@ function liveVid(path) {
     v = liveVids[path] = document.createElement('video');
     v.src = `/api/video/file?${qs({ path: path })}`;
     v.loop = true; v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.dataset.quiet = '1';                 // a tile's own loop is never the one you hear
     v.style.cssText = 'position:absolute;left:-9999px;width:2px;height:2px;opacity:0;pointer-events:none';
     document.body.appendChild(v);          // a detached video decodes unreliably; parked off-screen
   }
@@ -7596,7 +7659,9 @@ function playLive() {
   liveDraw = true; playing = 'live'; $('playBtn').textContent = '❚❚';
   showPlateCv(true);
   for (const v of vids) {
-    v.muted = v !== master; if (v === master) v.volume = 1;
+    // Only one of a live stack carries the sound; the rest are silent whatever the switch says.
+    v.muted = v !== master || !!state.mute;
+    if (v === master) { v.volume = 1; v.dataset.master = '1'; } else { delete v.dataset.master; }
     const d = v.duration || 0;
     try { v.currentTime = d ? from % d : 0; } catch {}
   }
@@ -7615,7 +7680,8 @@ function stopLive() {
 function playClip() {
   let v = $('vidSrc');
   if (!v) v = makeStageVideo();
-  v.muted = false; v.volume = 1;           // it is the clip's own file: play what is on it
+  v.muted = !!state.mute; v.volume = 1;    // it is the clip's own file: play what is on it
+  delete v.dataset.quiet;
   const fps = state.clip.source.fps || 24, n = state.clip.source.frames;
   const url = `/api/video/file?${qs({ path: sourcePath() })}`;
   if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
@@ -7625,10 +7691,13 @@ function playClip() {
   v.currentTime = (clipFrame + 0.5) / fps;
   const follow = () => {                   // transport follows the video
     if (playing !== 'clip') return;
-    const edge = clipEdge();
+    const edge = clipEdge(), out = rangeFrames()[1];
     clipFrame = Math.min(n - 1, Math.floor(v.currentTime * fps));
-    if (edge != null && clipFrame >= edge) {      // caught up with the render: wait there
-      clipFrame = edge; $('scrubRange').value = edge; scrubReadout(clipSec(edge), edge, n);
+    // The out point is a hard stop, the same as catching up with a running render: past it is
+    // footage this render does not include, and playing on into it says otherwise.
+    const stop = edge == null ? out : Math.min(out, edge);
+    if (clipFrame >= stop) {
+      clipFrame = stop; $('scrubRange').value = stop; scrubReadout(clipSec(stop), stop, n);
       return stopPlay();
     }
     $('scrubRange').value = clipFrame; scrubReadout(clipSec(clipFrame), clipFrame, n);
@@ -7637,17 +7706,34 @@ function playClip() {
   playing = 'clip'; $('playBtn').textContent = '❚❚';
   v.play().then(follow).catch(() => stopPlay());
 }
+// One switch over everything the stage can play -- the clip's own file, a finished run's mp4, and
+// the layer that carries the sound while a stack plays live. It is applied where each of those
+// starts AND to whatever is already playing, so hitting it mid-playback is heard at once rather
+// than at the next press.
+var SPK_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+var SPK_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="m16 9 5 6"/><path d="m21 9-5 6"/></svg>';
+function paintMute() {
+  const b = $('muteBtn'); if (!b) return;
+  b.innerHTML = state.mute ? SPK_OFF : SPK_ON;
+  b.classList.toggle('off', !!state.mute);
+  b.title = state.mute ? 'Muted \u2014 the stage plays silently' : 'Sound on \u2014 click to mute the stage';
+  // Whatever is playing right now, not just the next thing to start.
+  const v = $('vidSrc');
+  if (v && !v.dataset.quiet) v.muted = !!state.mute;
+  document.querySelectorAll('video[data-master="1"]').forEach(m => { m.muted = !!state.mute; });
+}
 function stopClip() {
   const v = $('vidSrc'); if (!v) return;
   v.pause(); v.hidden = true;
   if (state.clip) {
-    clipFrame = Math.min(state.clip.source.frames - 1, Math.floor(v.currentTime * (state.clip.source.fps || 24)));
+    clipFrame = capClip(Math.floor(v.currentTime * (state.clip.source.fps || 24)));
     $('scrubRange').value = clipFrame;
   }
   // Pausing hands back to the still, and with a stack on, the still is the composite -- not the
   // frame-exact grab paintFrame just asked the server for.
   if (clipMode()) { paintFrame(); if (typeof paintPlate === 'function') paintPlate(); }
 }
+$('muteBtn').onclick = () => { state.mute = !state.mute; save(); paintMute(); };
 function togglePlay() {
   if (playing) return stopPlay();
   if (shapeMode()) {                       // step through the mask at its own rate (frames come one by one)
@@ -8614,6 +8700,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.onN ??= 1;
   state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
   state.styleRef ??= null; state.styleRefW ??= 0.6; state.styleOnly ??= true;
+  state.mute ??= false;        // saved before the stage had a sound switch: it was on
   state.negative ??= ''; state.negOpen ??= false;
   state.t2v ??= false; state.i2v ??= false; state.image ??= null; state.t2vLen ??= 5; state.t2vAspect ??= '1:1'; state.collapsed ??= {};
   state.h3refs ??= [];                      // H3's reference pictures, in <Picture 1>, <Picture 2> ... order
