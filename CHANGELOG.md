@@ -4,6 +4,13 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-24
 
+- **A layer's thumbnail shows what its dials are doing.** Blur and opacity are applied to the tile
+  as you drag them, so softening a hard-edged pulse is something you watch rather than guess at and
+  check on the stage. It is the compositor's own curve, measured against the tile instead of the
+  frame, so the number means the same softening on a 128px thumbnail as it does on a 1280px render.
+  Blend mode is left off on purpose: a tile has nothing underneath it, so every mode would draw the
+  same picture.
+
 - **Two hard-edged pulses, and one of them is the beat itself.** **Blocks** was a stack of squares
   travelling outward and dimming as they went; it is now a single white square whose *size* is the
   envelope — nothing from nothing on the hit, out to the whole frame, and closed again, once a beat

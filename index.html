@@ -3394,6 +3394,7 @@ $('layers').addEventListener('pointerdown', e => {
     if (k === 'bpm') pulseRate(+which);
     if (k === 'amount' || k === 'bpm') return needPulse(+which);   // a different picture, not a blend
     if (k === 'grain') return needNoise(+which);                   // likewise: the file itself moves
+    if (k === 'blur' || k === 'opacity') paintTileFx();            // the tile softens as you drag
     needPaint(); needPlate(); pushLayers();
   };
   const up = () => {
@@ -3537,6 +3538,27 @@ function pulseTile(i) {
     const p = v.play(); if (p) p.catch(() => {});
   }
   pulseRate(i);
+}
+// What the dials are doing to a layer, shown on its own tile. The blur is the compositor's own
+// number put through the compositor's own curve -- blurPx() again -- only measured against the
+// tile instead of the frame, so 47 on a 128px tile is the same amount of softening as 47 on a
+// 1280px render rather than a number that happens to share its name.
+//
+// Blend mode is deliberately left off: a tile has nothing underneath it, so screen, overlay and
+// multiply would all draw the same picture and the tile would be claiming to show something it
+// cannot. Blur and opacity are the two that mean something on their own.
+function paintTileFx() {
+  $('layers').querySelectorAll('.tile[data-swap]').forEach(t => {
+    const key = t.dataset.swap, L = key === 'base' ? baseLayer() : layers()[+key];
+    const el = t.querySelector('video, img');
+    if (!L || !el) return;
+    const px = blurPx(L.blur, el.clientWidth || 128, el.clientHeight || 72);
+    // .tile.inv paints invert(1) in the stylesheet; an inline filter replaces that rather than
+    // adding to it, so it has to be carried along here or a matte stops being inverted.
+    el.style.filter = (t.classList.contains('inv') ? 'invert(1) ' : '') +
+                      (px > 0.3 ? `blur(${px.toFixed(2)}px)` : '');
+    el.style.opacity = L.opacity ?? 1;
+  });
 }
 function pulseRate(i) {
   const L = layers()[i];
@@ -3733,6 +3755,7 @@ function renderLayers() {
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
   pulseRates();                            // each pulse tile beats at its own speed
+  paintTileFx();                           // and wears its own blur and opacity
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
   // A beat over a single frame is one frame of it: not a pulse, and not worth offering. A picture
   // with a duration is not a single frame, so there it is offered like anywhere else.
