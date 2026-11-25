@@ -554,7 +554,7 @@
     border-radius: var(--radius); color: var(--dim); cursor: pointer; white-space: nowrap; }
   #layerAdds .clip-empty:hover { background: #2d2c33; color: var(--text); }
   /* An explicit display beats the browser's own [hidden] rule, so hiding one of these has to say
-     so here: "add pulse" is taken away over a still source, and used to stay anyway. */
+     so here: "add audio" is taken away over a still source, and used to stay anyway. */
   #layerAdds .clip-empty[hidden] { display: none; }
   #layerAdds .clip-empty svg { width: 13px; height: 13px; }
   body.runDrag #layers, body.dragging #layers { background: rgba(255,106,61,.14); border-radius: var(--radius); }
@@ -1332,7 +1332,7 @@
       <div class="clip-empty slim" data-add="video" title="Another source on the stack: a video or a picture — click, drop a file, or drag a run in off the strip. A picture holds still under everything that moves over it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add media</div>
       <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
       <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
-      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer that moves on a beat — static, light or rings, paced by the clip, by a speed you set, or by a track you load. It lands on the stack like any other clip, so the blend mode decides how the hit reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add pulse</div>
+      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer drawn to sound — paced by the clip, by a speed you set, or by a track you load. Some of its patterns hit on the beat and some drift with it. It lands on the stack like any other clip, so the blend mode decides how it reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add audio</div>
     </div>
     <div id="layers"></div>
     </div></div>
@@ -3135,7 +3135,7 @@ function pulseBody(L) {
   const b = maskBody(L.pulse);
   return { kind: L.pulse, width: b.width, height: b.height, frames: b.frames, fps: b.fps,
            amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
-           invert: !!L.pinvert };
+           invert: !!L.pinvert, seed: L.seed || 0, drift: L.drift || 0 };
 }
 async function makePulse(kind, at = -1) {
   try {
@@ -3315,7 +3315,9 @@ function stillLen() {
 // tried and taken out again: it made a pattern safe in every blend mode at the cost of making half
 // of them do nothing at all, which is a worse trade than knowing that a pattern made of light
 // wants a mode that adds light. A transition is a cross dissolve, and belongs somewhere else.
-function beats(L) { return !!(L && !L.matte && L.pulse); }
+// A pulse is a pulse whether it is drawn or used as a matte: making it a matte changes what
+// the picture is FOR, not what the picture does. It still beats, so it still has a beat.
+function beats(L) { return !!(L && L.pulse); }
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
   if (!layersOn()) return [];
@@ -3354,7 +3356,7 @@ function paintNum(el, v) {
 // A length while the picture has none: there is no still to keep it on until it has one.
 var picSecs = 0;
 function secsNow() { return stillClip() ? stillSecs() : picSecs; }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, grain: 1, bpm: 120, secs: STILL_SECS };
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, grain: 1, bpm: 120, drift: 0, secs: STILL_SECS };
 // Most of these are 0..1 shown as a percentage. Two are not: a count in beats per minute, and a
 // length in seconds whose floor is "none at all", which is what a picture being animated looks
 // like. One table, so a box only has to say which of them it is.
@@ -3392,7 +3394,7 @@ $('layers').addEventListener('pointerdown', e => {
     L[k] = v;
     // The tile keeps up with the number under your hand; the clip itself is redrawn after.
     if (k === 'bpm') pulseRate(+which);
-    if (k === 'amount' || k === 'bpm') return needPulse(+which);   // a different picture, not a blend
+    if (k === 'amount' || k === 'bpm' || k === 'drift') return needPulse(+which);   // a different picture, not a blend
     if (k === 'grain') return needNoise(+which);                   // likewise: the file itself moves
     if (k === 'blur' || k === 'opacity') paintTileFx();            // the tile softens as you drag
     needPaint(); needPlate(); pushLayers();
@@ -3425,6 +3427,12 @@ $('layers').addEventListener('click', e => {
   }
   const snd = e.target.closest('[data-snd]');
   if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
+  const die = e.target.closest('[data-pseed]');
+  if (die) {
+    const i = +die.dataset.pseed, L = layers()[i];
+    if (L) { L.seed = 1 + Math.floor(Math.random() * 2147483646); save(); needPulse(i, true); }
+    return;
+  }
   const pin = e.target.closest('[data-pinv]');
   if (pin) {
     const i = +pin.dataset.pinv, L = layers()[i];
@@ -3653,8 +3661,11 @@ function beatRow(i, L) {
   // Speed is the row; this is depth. How far each hit carries the layer, not how often one comes.
   const swing = dial(i, 'amount', 'swing', L.amount ?? 1,
     'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way');
+  // Drift belongs to the count and nowhere else: a sound has no grid to come off.
+  const drift = dial(i, 'drift', 'drift', L.drift || 0,
+    'How far each hit may wander off the count — at 0 it is a metronome, turned up they land early or late, with different weight, and now and then not at all');
   const line = at === 'bpm'
-    ? `${swing}
+    ? `${swing}${drift}
        ${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'How fast it pulses, in beats per minute — drag it, double-click for 120', '', 's2')}
        <button class="chip metro${METRO.at === i ? ' on' : ''}" data-metro="${i}"
          title="Tick it out loud — the speed you have set, as a click, so you can judge the cue without rendering anything"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`
@@ -3672,7 +3683,9 @@ function beatRow(i, L) {
   return `<span class="beat">
       <div class="seg" data-beat="${i}" style="grid-template-columns:repeat(${ways.length},1fr)">${
         ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
-      <div class="bl">${line}</div></span>`;
+      <div class="bl">${line}
+        <button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>
+      </div></span>`;
 }
 function renderLayers() {
   $('layersBox').hidden = !layersOn();
@@ -3697,14 +3710,19 @@ function renderLayers() {
     // flattened into frame 1 and stays there, so the speed, the swing and the metronome are all
     // controls for something that cannot happen -- and leaving them there to be tuned is the panel
     // lying. The row says what is true instead, and points at the one thing that changes it.
-    const bottom = L.matte ? (L.mask ? '' : `<span class="beat"><div class="bl">${levels(i, L)}</div></span>`)
-                           : L.noise ? `<span class="beat"><div class="bl">${
-                               dial(i, 'grain', 'grain', L.grain ?? 1,
-                                 'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static', '', 'wide')}</div></span>`
-                           : !beats(L) ? ''
-                           : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
-                               title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
-                           : beatRow(i, L);
+    // What the layer makes, and then what is done with it. These used to be one choice, so turning
+    // a pulse into a matte took its beat away -- the speed and the swing that were driving the
+    // thing you were now cutting with became unreachable, and getting them back meant turning the
+    // matte off. They are two questions and they both get a row.
+    const own = !beats(L)
+      ? (L.noise ? `<span class="beat"><div class="bl">${
+            dial(i, 'grain', 'grain', L.grain ?? 1,
+              'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static', '', 'wide')}</div></span>` : '')
+      : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
+            title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
+      : beatRow(i, L);
+    const bottom = own + (L.matte && !L.mask
+      ? `<span class="beat"><div class="bl">${levels(i, L)}</div></span>` : '');
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
       <span class="hd" draggable="true"
             title="Drag to reorder \u2014 the order of the stack is the composite">
@@ -6604,7 +6622,7 @@ var TOUR = [
      and a <b>Look</b> preset that adds its style words to your prompt.` },
   { at: () => [$('layersBox')], title: 'Layers', text: () =>
     `What each frame is actually painted from: the source at the bottom, and anything stacked on it — <b>add media</b> for a video
-     or a picture, <b>add matte</b>, <b>add noise</b>, <b>add pulse</b>. Each layer has a blend mode, an <b>opacity</b> and a
+     or a picture, <b>add matte</b>, <b>add noise</b>, <b>add audio</b>. Each layer has a blend mode, an <b>opacity</b> and a
      <b>blur</b>, and a black-and-white layer can act as a matte for the one below it. The stack is flattened before a frame is
      painted or anything is uploaded, and the stage shows it as you build it.` },
   { at: () => [$('guideBox')], title: 'Guidance', text: () =>
@@ -7300,10 +7318,38 @@ function setControlTabs(layers = runLayers) {
   [...$('view').children].forEach(b => b.classList.toggle('on', b.dataset.v === view));
   applyView();
 }
+// Source and Diff scrub the clip; Output and Split scrub the run. Those are two different
+// timelines -- a run is a trimmed, every-nth window on the clip -- and each tab kept its own index,
+// so changing tabs dropped you wherever the other one happened to be pointing. The frame under the
+// playhead is the same MOMENT in both, and runTiming is already the map between them, so carry the
+// moment across rather than the number.
+//
+// Nothing to map is not a failure: a run made from another clip, or no run at all, leaves each
+// timeline where it was, which is the best answer available.
+function carryPlayhead(wasClip) {
+  const t = runTiming, nowClip = clipMode();
+  if (wasClip === nowClip || !state.clip || state.t2v) return;
+  if (!t || !frames.length || (t.video && t.video !== state.clip.path)) return;
+  const nth = Math.max(1, t.nth || 1);
+  if (nowClip) {                           // run -> clip: where this frame sits in the clip
+    const n = frames[frameIdx];
+    if (n != null) clipFrame = capClip((t.frame_start + n) * nth);
+    return;
+  }
+  // clip -> run: the rendered frame nearest that moment. On twos and threes most clip frames have
+  // no frame of their own in the run, and the gaps are uneven once a Preview skips about, so this
+  // picks the closest rather than trusting the arithmetic to land on one.
+  const want = clipFrame / nth - t.frame_start;
+  let best = 0;
+  for (let i = 1; i < frames.length; i++)
+    if (Math.abs(frames[i] - want) < Math.abs(frames[best] - want)) best = i;
+  frameIdx = best;
+}
 $('view').onclick = e => {
-  const v = e.target.dataset.v; if (!v) return; view = v;
+  const v = e.target.dataset.v; if (!v) return;
+  const wasClip = clipMode(); view = v;
   [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target));
-  stopPlay(); applyView(); setupTransport();
+  stopPlay(); carryPlayhead(wasClip); applyView(); setupTransport();
   if (shapeMode()) return showShape();
   if (!viewRun && !clipMode() && !picMode()) return clearStage();   // off the Shape tab, no source: the placeholder
   if (viewRun && shapePrevFoot) { setFoot(shapePrevFoot); shapePrevFoot = ''; }   // the run's own footer back

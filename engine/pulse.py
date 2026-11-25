@@ -50,8 +50,14 @@ PATTERNS = [
      "note": "Fractal noise, coarse and slowly boiling: whole billows open out of nothing on the "
              "hit and close again."},
     {"id": "smoke", "label": "Smoke", "base": "black",
-     "note": "The same noise drifting upward, each layer at its own speed \u2014 thick at the floor, "
-             "thinning as it climbs."},
+     "note": "Smoke billowing out of nothing on every hit until it has taken the whole frame, and "
+             "drawing back again \u2014 climbing as it goes, each layer at its own speed."},
+    {"id": "wipe", "label": "Wipe", "base": "black",
+     "note": "A band of light falling down the frame on every hit \u2014 a straight gradient, no "
+             "texture: white at its middle, black either side of it."},
+    {"id": "fall", "label": "Fall", "base": "black",
+     "note": "Smoke's own field, carried down the frame by a front instead of sitting still \u2014 "
+             "it gathers at the ceiling and leaves by the floor."},
     {"id": "veins", "label": "Veins", "base": "black",
      "note": "Ridged fractal noise: thick marbled filaments that swell wide on the hit and close "
              "to nothing between."},
@@ -59,7 +65,7 @@ PATTERNS = [
 BY_ID = {p["id"]: p for p in PATTERNS}
 
 DRAW_MAX = 768          # the long side these are painted at before being scaled back up
-DRAW_VERSION = 3        # bump when _frame changes shape, so an old cache is not handed back
+DRAW_VERSION = 5        # bump when _frame changes shape, so an old cache is not handed back
 
 
 def spec(kind: str) -> dict:
@@ -143,17 +149,34 @@ def _from_audio(frames: int, fps: float, audio: Path, band: str, start: float, r
     return out / top if top > 1e-6 else out
 
 
-def _from_bpm(frames: int, fps: float, bpm: float, division: float, offset: float) -> np.ndarray:
+def _from_bpm(frames: int, fps: float, bpm: float, division: float, offset: float,
+              drift: float = 0.0, rng=None) -> np.ndarray:
     """A hit every beat (or half, or third of one): 1 on the frame it lands, 0 between.
 
     The shape of the hit is left to the follower, so a count and a sound are smoothed by the same
     thing and a pattern cannot tell them apart.
+
+    `drift` unlocks the grid. At 0 this is a metronome and every hit is identical, which is what
+    makes even a field that boils on its own clock pulse like a machine. Turned up, each hit moves
+    off the line by up to half a beat, lands with a different weight, and now and then does not
+    land at all -- the count is still the count, it has just stopped being quantised. It is drawn
+    from the layer's seed, so a take you like comes back.
     """
     step = 60.0 / max(1.0, bpm) / max(0.125, division)      # seconds between hits
     out = np.zeros(frames, dtype=np.float32)
+    d = min(1.0, max(0.0, float(drift)))
+    loose = rng if (d > 0.0 and rng is not None) else None
     t = float(offset) % step
     while t < frames / fps:
-        out[min(frames - 1, int(round(t * fps)))] = 1.0
+        at, lvl = t, 1.0
+        if loose is not None:
+            at = t + (float(loose.random()) - 0.5) * d * step      # half a beat either way at full
+            lvl = 1.0 - 0.6 * d * float(loose.random())            # and not every one as hard
+            if float(loose.random()) < 0.18 * d:                   # every so often, a hit missing
+                lvl = 0.0
+        i = int(round(at * fps))
+        if lvl > 0.0 and 0 <= i < frames:
+            out[i] = max(out[i], lvl)       # two that drifted onto one frame are one hit, not two
         t += step
     return out
 
@@ -161,7 +184,7 @@ def _from_bpm(frames: int, fps: float, bpm: float, division: float, offset: floa
 def envelope(frames: int, fps: float, *, bpm: float = 0.0, division: float = 1.0,
              audio: str = "", band: str = "all", start: float = 0.0,
              attack: float = 0.02, release: float = 0.22, gain: float = 1.0,
-             curve: float = 1.0) -> list[float]:
+             curve: float = 1.0, drift: float = 0.0, seed: int = 0) -> list[float]:
     """One number per frame, 0..1. A sound if there is one, otherwise the count."""
     frames, fps = max(1, int(frames)), max(1.0, float(fps))
     src = Path(str(audio or ""))
@@ -169,8 +192,10 @@ def envelope(frames: int, fps: float, *, bpm: float = 0.0, division: float = 1.0
         # Falling back to a count here would hand back a pulse that looks right and is not the one
         # asked for: a sound that has gone missing is worth saying out loud.
         raise RuntimeError(f"no sound at {src.name or audio}")
+    # A sound has no grid to come off, so drift is a count's dial and nothing else's.
     raw = (_from_audio(frames, fps, src, str(band or "all"), float(start)) if src.is_file()
-           else _from_bpm(frames, fps, float(bpm or 120.0), float(division or 1.0), float(start)))
+           else _from_bpm(frames, fps, float(bpm or 120.0), float(division or 1.0), float(start),
+                          float(drift or 0.0), np.random.default_rng(int(seed) or 7)))
     env = _follow(raw * float(gain or 1.0), fps, float(attack), float(release))
     env = np.clip(env, 0.0, 1.0) ** max(0.1, float(curve))
     return [round(float(v), 4) for v in env]
@@ -216,18 +241,22 @@ def _lattice(st: dict, key: str, gh: int, gw: int, z: float, rng) -> np.ndarray:
 
 
 def _fbm(st: dict, w: int, h: int, z: float, rng, *, octaves: int = 3, cells: float = 3.0,
-         drift: float = 0.0, ridged: bool = False) -> np.ndarray:
+         drift: float = 0.0, ridged: bool = False, tall: float = 1.0) -> np.ndarray:
     """Octaves of value noise, each at half the amplitude and twice the frequency, as 0..1.
 
     `cells` is how many lattice cells fit across the frame at the first octave: three is a picture
     made of a handful of masses, which is the whole point of these. `drift` slides each octave
     upward at its own speed, so the layers part as they climb instead of sliding as one sheet.
+
+    `tall` stretches the lattice vertically -- fewer cells down the frame than across it, so the
+    masses come out taller than they are wide. An even field reads as foam however it is
+    thresholded, because its masses are as wide as they are high.
     """
     out = np.zeros((h, w), dtype=np.float32)
     amp, tot, g = 1.0, 0.0, float(cells)
     for o in range(octaves):
         gw = max(2, int(round(g)))
-        gh = max(2, int(round(g * h / max(1, w))))
+        gh = max(2, int(round(g * h / max(1, w) / max(0.1, tall))))
         lat = _lattice(st, f"o{o}", gh, gw, z * (1.0 + 0.35 * o), rng)
         v = _up(lat, w, h, oy=-drift * z * (o + 1))
         out += amp * ((1.0 - np.abs(v * 2.0 - 1.0)) if ridged else v)
@@ -302,17 +331,24 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         # flat-white discs would read as the larger one alone and the hit would be invisible.
         soft = 2.0 / half
         if not carry:
-            carry.append([9.0, 0.0])                # size, and what the envelope last was
+            carry.append([-1.0, 0.0, -1.0])         # size, what the envelope last was, which way
         st = carry[0]
         was, st[1] = st[1], k
         # The EDGE of a hit, not every frame of one. A hit sits above this line for several frames
         # as it lets go, and restarting on each of them pinned the disc at a dot that never grew.
         if k > 0.25 and was <= 0.25:
-            st[0] = 0.03                            # a new hit takes the frame back over
-        else:
+            st[0], st[2] = 0.03, 1.0                # a new hit takes the frame back over
+        elif st[2] > 0:
             st[0] += 0.11                           # ~9 frames from nothing to past the corners
-        if st[0] > 1.34:        # it holds the frame whole for a few frames before letting go: the
-            return np.zeros((h, w), dtype=np.float32)   # corners fill last, and that moment is the point
+            if st[0] > 1.0 + soft:                  # the corners are covered: turn around here,
+                st[2] = -1.0                        # or the next hit arrives before it can close
+        else:
+            # Closing is nearly three times quicker than opening. It has to go somewhere -- cutting
+            # from a white frame to a black one in a single frame is a pop you feel more than see --
+            # but a close that takes as long as the open reads as a second, slower pulse of its own.
+            st[0] -= 0.30
+        if st[0] <= 0.0:
+            return np.zeros((h, w), dtype=np.float32)
         # Flat white, never the hit's own level. The size is what carries the beat here, so dimming
         # the disc as well says it twice and leaves the moment it covers the frame an 88% grey field
         # instead of a white one. Swing still decides whether a hit fires at all, through the gate
@@ -357,6 +393,69 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
             band = ((fx >= x0) & (fx <= x1)) & ((fy >= y0) & (fy <= y1))
             out = np.maximum(out, band.astype(np.float32) * lvl)
         return out
+    if kind == "wipe":
+        # A band of light falling down the frame: linear and untextured, which is the whole of it.
+        # Straight across, so every row is one value and what travels is where the white is -- a
+        # point on the frame goes black, white as the band arrives, black again once it is past,
+        # and white once more on the next hit.
+        #
+        # It travels on its own clock rather than the beat's, launched on each hit, so a fast count
+        # starts the fall again from the top instead of making the band jitter in place.
+        HALF = 0.45                                 # how deep the band is, as a share of the frame
+        if not carry:
+            carry.append([9.0, 0.0])                # where the middle of the band is, and what the
+        st = carry[0]                               # envelope last was
+        was, st[1] = st[1], k
+        if k > 0.25 and was <= 0.25:
+            st[0] = -HALF                           # just above the ceiling, not yet showing
+        else:
+            # ~12 frames from above the ceiling to below the floor, which is a beat at 120. Slower
+            # than this and the next hit restarts the fall before the bottom of the frame ever
+            # lights, which is not a wipe -- it is the top half flashing.
+            st[0] += 0.16
+        if st[0] > 1.0 + HALF:
+            return np.zeros((h, w), dtype=np.float32)
+        y01 = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]   # 0 at the ceiling
+        # A linear ramp off the middle of the band. Not a curve: a straight fall is what reads as a
+        # wipe, where anything eased reads as a glow travelling.
+        g = np.clip(1.0 - np.abs(y01 - st[0]) / HALF, 0.0, 1.0)
+        return np.repeat(g, w, axis=1).astype(np.float32)
+    if kind == "fall":
+        # Wipe's travel with Smoke's field inside it. The noise boils on its own clock as it does
+        # there; what lets you see it is a band falling from the ceiling, launched on each hit.
+        if not carry:
+            carry.append({"t": 0.0, "pos": 9.0, "was": 0.0})
+        st = carry[0]
+        st["t"] = t = st["t"] + 1.0
+        was, st["was"] = st["was"], k
+        if k > 0.25 and was <= 0.25:
+            st["pos"] = -0.5
+        else:
+            st["pos"] += 0.16
+        if st["pos"] > 1.6:
+            return np.zeros((h, w), dtype=np.float32)
+        # Negative drift: _fbm slides each octave by -drift*z, so Smoke climbs and this falls. The
+        # texture has to move with the front or the band looks like a window dragged over a field
+        # that is going the other way.
+        v = _fbm(st, w, h, t * 0.05, rng, octaves=5, cells=3.0, drift=-1.1)
+        y01 = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]
+        # Thicker behind the front than ahead of it, so it reads as weather arriving rather than a
+        # ruled edge: the leading side is the short ramp, the trailing side the long one.
+        lead = np.clip((st["pos"] - y01) / 0.30, 0.0, 1.0)
+        tail = np.clip(1.0 - (st["pos"] - y01 - 0.45) / 0.60, 0.0, 1.0)
+        band = lead * tail
+        if float(band.max()) <= 0.0:
+            # _cut takes a SHARE of a field, by quantile. Handed nothing it puts the threshold at 0
+            # and every pixel comes back at exactly mid grey -- so the frames before the band has
+            # arrived would be a flat grey field rather than black. Smoke never meets this because
+            # its own field is never identically zero.
+            return np.zeros((h, w), dtype=np.float32)
+        # Cut the field, THEN window it. Cutting the masked field instead lets the black outside the
+        # band own the quantile, and what little shows comes back as hard blobs.
+        #
+        # The cover is the amount, not the beat: letting the hit set it as Smoke does would fade the
+        # band out from under its own travel, and the travel is the point here.
+        return (_cut(v, 0.72 * min(1.5, max(0.05, amount)), 0.07) * band).astype(np.float32)
     if kind in ("clouds", "smoke", "veins"):
         # The three noise layers. One clock ticking a frame at a time, so the field boils at its
         # own pace and the beat only decides how much of it you are allowed to see: at rest the
@@ -369,9 +468,20 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
             v = _fbm(st, w, h, t * 0.055, rng, octaves=5, cells=3.0)
             return _cut(v, 0.6 * k, 0.07)
         if kind == "smoke":
-            v = _fbm(st, w, h, t * 0.05, rng, octaves=5, cells=3.0, drift=1.1)
-            up = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]   # 1 at the floor
-            return _cut(v * (0.45 + 0.8 * up), 0.5 * k, 0.07)
+            # A pulse of it, filling the frame and drawing back. Clouds opens to 60% of the frame
+            # and stops; this one takes all of it, so the hit ends on white rather than on a lot of
+            # white with gaps -- which is what makes it read as one breath instead of a boil.
+            #
+            # The 1.2 is headroom. The envelope's own peak is not reliably 1.0 (a follower rounds
+            # the top off a hit), so asking for exactly the envelope would leave a frame that never
+            # quite closed over -- the same thing that kept Circle at 88% grey.
+            #
+            # Stretched taller than it is wide, and drifting up: an even field reads as foam.
+            v = _fbm(st, w, h, t * 0.045, rng, octaves=5, cells=2.5, drift=1.2, tall=2.6)
+            # A wide soft edge, where Clouds takes a narrow one. The threshold IS the silhouette
+            # here, so a sharp cut gives torn paper and a wide one gives something with air in it --
+            # the difference between blobs and smoke, at the same coverage.
+            return _cut(v, min(1.0, 1.2 * k), 0.13)
         v = _fbm(st, w, h, t * 0.06, rng, octaves=4, cells=3.0, ridged=True)
         return _cut(v, 0.35 * k, 0.07)
     # rings: the same fronts, drawn as light rather than used as a window
@@ -399,7 +509,7 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
     amount = min(1.5, max(0.05, float(amount)))
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    signal = list(env) if env else envelope(frames, fps, **sound)
+    signal = list(env) if env else envelope(frames, fps, seed=seed, **sound)
     signal = [float(v) for v in signal[:frames]] + [0.0] * max(0, frames - len(signal))
 
     sig = hashlib.sha1(json.dumps([round(v, 3) for v in signal]).encode()).hexdigest()[:8]

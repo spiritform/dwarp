@@ -4,6 +4,44 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-24
 
+- **Drift: a count that is not a metronome.** A hit used to land on exactly the beat, forever, which
+  is why even a pattern boiling on its own clock pulsed like a machine. Turned up, each hit wanders
+  off the line by up to half a beat, lands with a different weight, and now and then does not land
+  at all. The count is still the count — it has stopped being quantised. It is a count's dial and
+  shows only there, since a sound has no grid to come off.
+
+  Beside it, **a die**: a seed for the layer. It decides which take of a drifted beat you get, and
+  it also reaches the patterns that were always random but never repeatable — which cells Grid
+  lights, where Slabs fall, how the noise fields boil. The same seed draws the same clip, so one you
+  like comes back.
+
+- **Wipe, Fall, and Smoke redrawn.** **Wipe** is a band of light falling down the frame, linear and
+  untextured: every row is one value, so what travels is where the white is. **Fall** is the same
+  travel with a noise field inside it, drifting downward with the front rather than against it.
+  **Smoke** is no longer thick at the floor and thin at the ceiling — it billows out of nothing on
+  every hit until it has taken the whole frame, then draws back. Its masses are stretched taller
+  than they are wide now, because an even field reads as foam however it is cut.
+
+- **Circle closes instead of vanishing.** It filled the frame, held white, and then cut to black in
+  a single frame — a pop you feel more than see. It opens over nine frames, holds whole for one and
+  shuts in three. The hold had to go entirely: at 120 the opening plus the old hold came to exactly
+  one beat, so the next hit restarted it before the close could ever run.
+
+- **A pulse used as a matte keeps its beat.** Turning one into a matte took its speed, swing and
+  count away and put the matte's levels there instead — so the thing driving the shape you were
+  cutting with became unreachable, and the only way back was to turn the matte off. The layer gets
+  both rows now: what it makes, and what is done with it. Noise keeps its grain the same way.
+
+- **add pulse is now add audio.** The button named one of the things the layer can be. It is a layer
+  drawn to sound, and a pulse is one of the ways it can answer.
+
+- **The playhead stays where it is when you change tabs.** Source and Diff scrub the clip; Output and
+  Split scrub the run. Those are different timelines — a run is a trimmed, every-nth window on the
+  clip — and each tab kept its own index, so switching dropped you wherever the other one happened
+  to be pointing. The moment under the playhead is carried across now instead of the number. Going
+  back to a run it finds the rendered frame nearest that moment, because on twos and fives most clip
+  frames have no frame of their own.
+
 - **A layer's thumbnail shows what its dials are doing.** Blur and opacity are applied to the tile
   as you drag them, so softening a hard-edged pulse is something you watch rather than guess at and
   check on the stage. It is the compositor's own curve, measured against the tile instead of the

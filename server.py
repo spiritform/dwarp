@@ -1056,7 +1056,8 @@ def build_app() -> FastAPI:
                 amount=float(body.get("amount", 1.0)), seed=int(body.get("seed", 0)),
                 bpm=float(body.get("bpm", 120.0)), division=float(body.get("division", 1.0)),
                 audio=str(body.get("audio") or ""), band=str(body.get("band") or "all"),
-                start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)))
+                start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)),
+                drift=float(body.get("drift", 0.0)))
         except (TypeError, ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail=f"could not make the pulse: {exc}") from None
 
