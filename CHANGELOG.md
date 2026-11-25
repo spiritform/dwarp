@@ -4,6 +4,14 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-25
 
+- **Sound on a run that is still rendering, and a speaker that covers it.** Playing a live run was
+  silent on purpose — the sound would have run on past frames that did not exist. But the frames
+  that *do* exist are a stretch of clip like any other, so it plays them with their sound now, and
+  the sound stops when it reaches the head rather than looping; from there it goes back to taking
+  each new frame as the renderer finishes it. The speaker on the transport also reaches a run's
+  soundtrack at last: it is an `Audio()` rather than a `<video>`, so muting the stage silenced the
+  clip and the live stack but left a run playing on, out loud.
+
 - **A folder per day, and a delete that doesn't make you wait.** A thousand runs in one flat `renders/`
   folder is not something you can look through, so runs now go in `renders/<YYYYMMDD>/<n>/`, a folder
   per day. A run is still named by its number alone — the day folder is only where it sits — so

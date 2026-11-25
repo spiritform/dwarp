@@ -7730,17 +7730,29 @@ function playSeq() {
   stepFrames();                                // start stepping at once: the probe is a round trip
   const step = playing, run = viewRun;
   clipSound(run).then(path => {
-    // Not while it is still rendering: the sound would loop over a stretch of frames that does not
-    // exist yet, and the whole point of playing a live run is to arrive at the head and stay there.
-    if (!path || playing !== step || viewRun !== run || !seqContig() || liveRun()) return;
+    // A run still being rendered plays with its sound too, as far as it has got: what is already
+    // there is a stretch of clip like any other. It is the arriving at the head that is different —
+    // there the sound stops rather than looping, because the rest of it has not been painted yet.
+    if (!path || playing !== step || viewRun !== run || !seqContig()) return;
     const a = $('sndOut') || document.body.appendChild(Object.assign(new Audio(), { id: 'sndOut' }));
+    a.muted = !!state.mute;                    // the speaker covers this too, not just the clip
     const url = `/api/video/file?${qs({ path: path })}`;
     if (a.dataset.src !== url) { a.src = url; a.dataset.src = url; }
     a.currentTime = outSecs(frames[frameIdx]);
     const follow = () => {
       if (playing !== 'seq') return;
       // the frames loop, so the sound loops with them -- and the end moves as a render adds to it
-      if (a.currentTime >= outSecs(frames[frames.length - 1] + 1)) a.currentTime = outSecs(frames[0]);
+      if (a.currentTime >= outSecs(frames[frames.length - 1] + 1)) {
+        // ... except on a run still rendering, where the end is only as far as it has got. Hand back
+        // to the stepper, which parks on the newest frame and takes each one as it arrives.
+        if (liveRun()) {
+          a.pause();
+          frameIdx = frames.length - 1; $('scrubRange').value = frameIdx; paintFrame();
+          stepFrames();
+          return;
+        }
+        a.currentTime = outSecs(frames[0]);
+      }
       const i = frameAt(a.currentTime);
       if (i !== frameIdx) { frameIdx = i; $('scrubRange').value = i; paintFrame(); }
       requestAnimationFrame(follow);
@@ -7885,6 +7897,7 @@ function paintMute() {
   const v = $('vidSrc');
   if (v && !v.dataset.quiet) v.muted = !!state.mute;
   document.querySelectorAll('video[data-master="1"]').forEach(m => { m.muted = !!state.mute; });
+  const a = $('sndOut'); if (a) a.muted = !!state.mute;   // a run's soundtrack is an Audio(), not a <video>
 }
 function stopClip() {
   const v = $('vidSrc'); if (!v) return;
