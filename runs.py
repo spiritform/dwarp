@@ -1,8 +1,13 @@
 """Run folders on disk.
 
-Engine runs:   renders/<n>/  frames/NNNNNN.png  src/NNNNNN.jpg  control/<kind>/NNNNNN.jpg  debug/  job.json  meta.json
-               video.mp4  post/*.mp4  .thumbs/
+Engine runs:   renders/<YYYYMMDD>/<n>/  frames/NNNNNN.png  src/NNNNNN.jpg  control/<kind>/NNNNNN.jpg
+               debug/  job.json  meta.json  video.mp4  post/*.mp4  .thumbs/
+               A run is still named by its number alone — the day folder is only where it sits, so a
+               run keeps its id when the folders are tidied, and runs made before the day folders
+               existed still lie flat in renders/<n>/ and are found exactly the same way.
 Legacy runs:   renders/warpbox/<n>/  (made by VibeWarp) — listed read-only as id "v<n>".
+Deleted runs:  renders/.trash/ — a purge moves the folder there whole (one rename) and a background
+               thread empties the bin, so deleting a hundred runs is as quick as deleting one.
 """
 from __future__ import annotations
 
@@ -21,22 +26,75 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 RENDERS = HERE / "renders"
 LEGACY = RENDERS / "warpbox"
+TRASH = RENDERS / ".trash"
 _LEGACY_FRAME = re.compile(r"^warpbox\(\d+\)_(\d+)\.png$")
+_DAY = re.compile(r"^20\d{6}$")          # a day folder, 20261125
 
 
 class RunNotFound(Exception):
     pass
 
 
+# ------------------------------------------------------------------ where a run lives
+# A run's id is its number; the folder it sits in is not part of it. New runs go under the day they
+# were made, older ones lie flat in renders/, and both are found through one index built from a
+# single listing — so nothing else in DWARP has to know which layout a run is in, and a run keeps
+# its id (and every link, label and source_run pointing at it) when the folders are tidied.
+_INDEX: dict[str, Path] = {}
+_INDEX_AT = 0.0
+_INDEX_LOCK = threading.Lock()
+
+
+def _is_day(path: Path) -> bool:
+    """A day folder, not a run that happens to be numbered like one: a run carries its own files."""
+    return not any((path / f).exists() for f in ("meta.json", "job.json", "frames"))
+
+
+def _scan() -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    if not RENDERS.is_dir():
+        return found
+    with os.scandir(RENDERS) as it:
+        for e in it:
+            if not e.is_dir() or not e.name.isdigit():
+                continue
+            path = Path(e.path)
+            if _DAY.match(e.name) and _is_day(path):
+                with os.scandir(path) as day:
+                    for d in day:
+                        if d.is_dir() and d.name.isdigit():
+                            found[d.name] = Path(d.path)
+            else:
+                found[e.name] = path
+    return found
+
+
+def index(fresh: bool = False) -> dict[str, Path]:
+    """Run id -> folder. Built on demand; a miss rebuilds it once (a run can arrive from the engine,
+    or be moved, while the server is up) but not oftener than once a second."""
+    global _INDEX_AT
+    with _INDEX_LOCK:
+        if fresh or not _INDEX:
+            _INDEX.clear()
+            _INDEX.update(_scan())
+            _INDEX_AT = time.time()
+        return dict(_INDEX)
+
+
 def run_dir(run_id: str) -> Path:
-    if re.fullmatch(r"\d+", run_id):
-        path = RENDERS / run_id
-    elif re.fullmatch(r"v\d+", run_id):
+    if re.fullmatch(r"v\d+", run_id):
         path = LEGACY / run_id[1:]
-    else:
+        if not path.is_dir():
+            raise RunNotFound(run_id)
+        return path
+    if not re.fullmatch(r"\d+", run_id):
         raise RunNotFound(run_id)
-    if not path.is_dir():
-        raise RunNotFound(run_id)
+    path = _INDEX.get(run_id) or index().get(run_id)
+    if path is None or not path.is_dir():
+        if time.time() - _INDEX_AT > 1.0:           # don't rescan once per miss in a tight loop
+            path = index(fresh=True).get(run_id)
+        if path is None or not path.is_dir():
+            raise RunNotFound(run_id)
     return path
 
 
@@ -44,12 +102,22 @@ def is_legacy(run_id: str) -> bool:
     return run_id.startswith("v")
 
 
+def day_dir(when: float | None = None) -> Path:
+    """Today's folder, made if it isn't there."""
+    path = RENDERS / time.strftime("%Y%m%d", time.localtime(when))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def new_run() -> tuple[str, Path]:
     RENDERS.mkdir(exist_ok=True)
-    nums = [int(p.name) for p in RENDERS.iterdir() if p.is_dir() and p.name.isdigit()]
-    n = str(max(nums, default=-1) + 1)
-    path = RENDERS / n
-    path.mkdir()
+    with _INDEX_LOCK:
+        _INDEX.clear()
+        _INDEX.update(_scan())                  # the highest number on disk, not the highest we remember
+        n = str(max((int(k) for k in _INDEX), default=-1) + 1)
+        path = day_dir() / n
+        path.mkdir()
+        _INDEX[n] = path
     return n, path
 
 
@@ -310,9 +378,7 @@ def summary(run_id: str) -> dict:
 
 
 def list_runs() -> list[dict]:
-    ids = []
-    if RENDERS.is_dir():
-        ids += [p.name for p in RENDERS.iterdir() if p.is_dir() and p.name.isdigit()]
+    ids = list(index(fresh=True))
     if LEGACY.is_dir():
         ids += ["v" + p.name for p in LEGACY.iterdir() if p.is_dir() and p.name.isdigit()]
     runs = []
@@ -357,29 +423,49 @@ class _nothing:
     def __exit__(self, *a): return False
 
 
+_CARDS: dict[str, tuple[tuple, dict]] = {}     # run id -> (the times it was read at, its catalog entry)
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def catalog() -> list[dict]:
     """Every run, hidden ones too, kept light (no per-frame stat) so a thousand runs list quickly."""
     out = []
-    ids = [p.name for p in RENDERS.iterdir() if p.is_dir() and p.name.isdigit()] if RENDERS.is_dir() else []
+    ids = list(index(fresh=True))
     ids += ["v" + p.name for p in LEGACY.iterdir() if p.is_dir() and p.name.isdigit()] if LEGACY.is_dir() else []
     for rid in ids:
         try:
             path = run_dir(rid)
-            meta = read_meta(rid)
             fdir = path / "frames"
+            # when its frames were written (the run folder's own time moves with thumbnails and hiding)
+            stamp = next((f for f in (fdir, path / "meta.json") if f.exists()), path)
+            # A finished run never changes again, so its whole card is remembered against the times of
+            # the only two things that could change it. That is what makes the second open of the Runs
+            # section instant rather than a thousand folders read through again.
+            key = (stamp.stat().st_mtime, _mtime(path / "meta.json"))
+            known = _CARDS.get(rid)
+            if known and known[0] == key:
+                out.append({**known[1], "hidden": is_hidden(rid)})
+                continue
+            meta = read_meta(rid)
             if is_legacy(rid):
                 frames = sorted(output_frames(rid))
             else:                                  # a plain listing: far quicker than glob over a thousand runs
                 with os.scandir(fdir) if fdir.is_dir() else _nothing() as it:
                     frames = sorted(int(e.name[:-4]) for e in it if e.name.endswith(".png") and e.name[:-4].isdigit())
-            # when its frames were written (the run folder's own time moves with thumbnails and hiding)
-            stamp = next((f for f in (fdir, path / "meta.json") if f.exists()), path)
-            modified = stamp.stat().st_mtime
-            out.append({"id": rid, "label": meta.get("label", ""), "kind": _kind(meta), "frames": len(frames),
-                        "last_frame": frames[-1] if frames else None, "modified": modified,
-                        "hidden": is_hidden(rid), "legacy": is_legacy(rid)})
+            card = {"id": rid, "label": meta.get("label", ""), "kind": _kind(meta), "frames": len(frames),
+                    "last_frame": frames[-1] if frames else None, "modified": key[0], "legacy": is_legacy(rid)}
+            _CARDS[rid] = (key, card)
+            out.append({**card, "hidden": is_hidden(rid)})
         except (RunNotFound, OSError, ValueError):
             pass
+    for gone in set(_CARDS) - set(ids):
+        _CARDS.pop(gone, None)
     # latest first by run number (new runs count up); old VibeWarp runs after
     return sorted(out, key=lambda r: (not r["legacy"], int(r["id"].lstrip("v"))), reverse=True)
 
@@ -448,17 +534,70 @@ def sizes(recount: bool = False) -> dict:
     return {"sizes": {rid: b for rid, (_, b) in list(_SIZES.items())}, "done": _SIZER is None or not _SIZER.is_alive()}
 
 
+def _force(func, p, _exc):                     # read-only files (Windows) would stop rmtree
+    os.chmod(p, stat.S_IWRITE)
+    func(p)
+
+
+_BINMAN: threading.Thread | None = None
+
+
+def _empty_now() -> None:
+    while True:
+        try:
+            with os.scandir(TRASH) as it:
+                doomed = [Path(e.path) for e in it]
+        except OSError:
+            return
+        went = False
+        for p in doomed:
+            try:
+                shutil.rmtree(p, onexc=_force) if p.is_dir() else p.unlink()
+                went = True
+            except OSError:
+                pass      # something still holds it: leave it, the next purge or the next start tries again
+        if not went:      # the bin is empty, or what is left will not go
+            return
+
+
+def empty_trash() -> None:
+    """Clear renders/.trash in the background. Called after a purge, and once at startup so a bin left
+    behind by a crash (or by quitting mid-delete) is cleared the next time DWARP runs."""
+    global _BINMAN
+    if _BINMAN is None or not _BINMAN.is_alive():
+        _BINMAN = threading.Thread(target=_empty_now, daemon=True)
+        _BINMAN.start()
+
+
 def purge(run_id: str) -> int:
-    """Delete a run's folder from disk for good. Returns the bytes freed. Old VibeWarp runs are read-only."""
+    """Delete a run's folder from disk for good. Returns the bytes freed. Old VibeWarp runs are read-only.
+
+    The folder is moved into renders/.trash and a background thread empties the bin, because a run is
+    thousands of PNGs and deleting a stack of them takes minutes — minutes you would otherwise spend
+    watching a Runs section that cannot answer. The move is one rename, so the run is gone from every
+    listing the instant you confirm it, and whether the bytes have left the disk yet is the disk's
+    own business. If a run cannot be moved (something still holds a file in it open) it is deleted
+    where it lies, the slow way, exactly as it always was.
+    """
     if is_legacy(run_id):
         raise PermissionError("old VibeWarp runs are read-only")
     path = run_dir(run_id)
     freed = _SIZES.pop(run_id, (0, None))[1]
     if freed is None:
         freed = dir_size(path)
-
-    def force(func, p, _exc):                  # read-only files (Windows) would stop rmtree
-        os.chmod(p, stat.S_IWRITE)
-        func(p)
-    shutil.rmtree(path, onexc=force)
+    _CARDS.pop(run_id, None)
+    try:
+        TRASH.mkdir(parents=True, exist_ok=True)
+        os.rename(path, TRASH / f"{run_id}-{int(time.time() * 1000):x}")
+    except OSError:
+        shutil.rmtree(path, onexc=_force)
+    else:
+        with _INDEX_LOCK:
+            _INDEX.pop(run_id, None)
+        if _DAY.match(path.parent.name):
+            try:
+                path.parent.rmdir()        # the last run of that day: don't leave the empty folder
+            except OSError:
+                pass
+        empty_trash()
     return freed

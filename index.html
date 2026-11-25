@@ -512,8 +512,8 @@
                   border-radius: var(--radius);
                   overflow: hidden; background: #1b1a20; display: flex; align-items: center;
                   justify-content: center; color: var(--faint); }
-  #layers .tile img, #layers .tile video { position: absolute; inset: 0; width: 100%; height: 100%;
-                  object-fit: cover; display: block; }
+  #layers .tile img, #layers .tile video, #layers .tile canvas { position: absolute; inset: 0;
+                  width: 100%; height: 100%; object-fit: cover; display: block; }
   #layers .tile svg { width: 16px; height: 16px; }
   #layers .band { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; background: rgba(16,15,20,.86);
                   color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-align: center;
@@ -544,7 +544,8 @@
   #layers .eye.off { color: var(--accent); }
   /* A matte tile shows the matte: inverted when it is inverted, so the card and the stage agree.
      The media only -- the MATTE caption over it stays legible. */
-  #layers .lay .tile.inv video, #layers .lay .tile.inv img { filter: invert(1); }
+  #layers .lay .tile.inv video, #layers .lay .tile.inv img,
+  #layers .lay .tile.inv canvas { filter: invert(1); }
   /* A hidden layer stays where it is, with everything it was set to, and simply stops counting. */
   #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
   #layers .lay.off .ctl, #layers .lay.off .beat, #layers .lay.off .nm { opacity: .38; }
@@ -3124,12 +3125,13 @@ function paintNoiseLib() {
       <b>${p.label}</b><span class="note">${p.note}</span></div>`;
   $('maskLib').innerHTML = `<div class="rs-head stack">
       <h3>Noise</h3>
-      <div class="rs-info">Monochrome grain drawn at this render's size and length, laid on the
-        stack like any other clip. It is a different lever from Denoise: that asks the model to
-        invent more, this changes the pixels it is looking at \u2014 and under Warp the grain is
-        carried into the next frame, where it becomes structure. Every kind rests at mid grey, so
-        <b>overlay</b> and <b>soft light</b> leave the picture alone until the layer's
-        <b>grain</b> opens it either side of that.</div>
+      <div class="rs-info">Monochrome grain, generated as each frame is composited rather than
+        written to a file \u2014 so there is nothing to wait for, and the dials move under your
+        hand. It is a different lever from Denoise: that asks the model to invent more, this
+        changes the pixels it is looking at \u2014 and under Warp the grain is carried into the
+        next frame, where it becomes structure. Every kind rests at mid grey, so <b>overlay</b> and
+        <b>soft light</b> leave the picture alone until the layer's <b>grain</b> opens it either
+        side of that; the kinds made of something bigger than a pixel take a <b>size</b> too.</div>
       <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
     </div><div class="sl-grid">${NOISE_PATTERNS.map(card).join('')}</div>`;
   playTiles($('maskLib'));
@@ -3246,15 +3248,15 @@ async function freshenMasks() {
     if (v.mask && maskStale(v)) await makeMask(v.mask, i);
   }
 }
-// A drawn layer -- a pulse, a drawn matte, static -- is made here at the frame's size and length,
-// the same as a colour mask, so the same thing goes wrong with it: move the length and the file
-// under the layer is the wrong length, and the flatten loops it or cuts it off. A still is where
-// that bites, because its length is a number you type. They all have a generator behind them, so
-// they are simply drawn again -- ffmpeg, a second or two, no GPU. A layer you loaded off disk is
-// yours as it is and is never touched.
+// A drawn layer -- a pulse, a drawn matte -- is made at the frame's size and length, the same as a
+// colour mask, so the same thing goes wrong with it: move the length and the file under the layer
+// is the wrong length, and the flatten loops it or cuts it off. A still is where that bites,
+// because its length is a number you type. They have a generator behind them, so they are simply
+// drawn again -- ffmpeg, a second or two, no GPU. A layer you loaded off disk is yours as it is and
+// is never touched; a noise layer has no file at all, so it is never the wrong shape either.
 function madeAt(L, r) { L.made = { width: r.width, height: r.height, frames: r.frames }; }
 function layerStale(L) {
-  const kind = L.pulse || L.mask || (L.noise ? 'circle' : '');
+  const kind = L.pulse || L.mask || '';
   if (!kind || !L.path) return false;
   const b = maskBody(kind), m = L.made;
   return !m || m.width !== b.width || m.height !== b.height || m.frames !== b.frames;
@@ -3263,21 +3265,7 @@ async function freshenLayers() {
   for (const [i, L] of layers().entries()) {
     if (!layerStale(L)) continue;
     if (L.pulse) await drawPulse(i);
-    else if (L.mask) await makeMatte(L.mask, i);
-    else await drawNoise(i);
-  }
-}
-async function drawNoise(i) {
-  const L = layers()[i], b = maskBody('circle');
-  if (!L) return;
-  try {
-    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
-    if (layers()[i] !== L) return;
-    L.path = r.path; madeAt(L, r);
-    renderLayers(); needPaint(); needPlate(); pushLayers(); save();
-  } catch (e) {
-    setStatus('could not make the noise: ' + e.message, 'bad');
+    else await makeMatte(L.mask, i);
   }
 }
 // ---- Layers: the stack, flattened to one clip before anything is uploaded
@@ -3308,6 +3296,16 @@ function layerDefaults(L) {
   // A drawn matte is already black and white, so it shows no levels -- and therefore carries none.
   // A setting you cannot see is worse than one you cannot change.
   if (d.matte && d.mask) { d.black = 0; d.mid = 0.5; d.white = 1; }
+  // A noise layer from an older save still points at the mp4 that was drawn for it, under that
+  // file's name. It is generated now, from the settings on the row itself, so the path goes and
+  // the row is called what it is made of.
+  if (d.noise) {
+    d.path = '';
+    if (d.scale == null) d.scale = noiseScale(d);
+    if (!d.name || /\.(mp4|mov|webm)$/i.test(d.name)) {
+      d.name = 'noise \u00b7 ' + ((noiseSpec(d.nkind) || {}).label || 'static');
+    }
+  }
   return d;
 }
 // The layer a matte belongs to: the one directly below it, which is the After Effects rule and the
@@ -3428,7 +3426,9 @@ $('layers').addEventListener('pointerdown', e => {
     // The tile keeps up with the number under your hand; the clip itself is redrawn after.
     if (k === 'bpm') pulseRate(+which);
     if (k === 'amount' || k === 'bpm' || k === 'drift') return needPulse(+which);   // a different picture, not a blend
-    if (k === 'grain') return needNoise(+which);                   // likewise: the file itself moves
+    // Noise is generated under your hand: there is no file to redraw, so the tile and the stage
+    // both move with the number instead of a third of a second behind it.
+    if (k === 'grain' || k === 'scale') { noiseTiles(); needPaint(); needPlate(); pushLayers(); return; }
     if (k === 'blur' || k === 'opacity') paintTileFx();            // the tile softens as you drag
     needPaint(); needPlate(); pushLayers();
   };
@@ -3591,7 +3591,7 @@ function pulseTile(i) {
 function paintTileFx() {
   $('layers').querySelectorAll('.tile[data-swap]').forEach(t => {
     const key = t.dataset.swap, L = key === 'base' ? baseLayer() : layers()[+key];
-    const el = t.querySelector('video, img');
+    const el = t.querySelector('video, img, canvas');
     if (!L || !el) return;
     const px = blurPx(L.blur, el.clientWidth || 128, el.clientHeight || 72);
     // .tile.inv paints invert(1) in the stylesheet; an inline filter replaces that rather than
@@ -3613,7 +3613,173 @@ function pulseRate(i) {
   v.playbackRate = v.defaultPlaybackRate = Math.min(4, Math.max(0.25, want));
 }
 function pulseRates() { layers().forEach((L, i) => { if (L.pulse) pulseRate(i); }); }
-function layerTile(L) {
+// ---- Noise: the kinds engine/noise.py draws, drawn again here
+// A noise layer has no file under it and never needed one. It used to have one: an mp4 at the
+// render's size and length, written by ffmpeg before any of it could be seen and extracted back to
+// frames afterwards -- a minute of work either side of a dial whose entire content is random().
+// So it is generated where it is composited instead: here for the stage and the tile, numpy for a
+// local render, an lavfi input for the flatten. Three draws of the same idea, which only works if
+// they agree about what the dials mean -- engine/noise.py is where that is written down, and these
+// are the page's copy of it.
+var NOISE_FEATURE_MIN = 0.004, NOISE_FEATURE_MAX = 0.22;   // feature size, as a share of the short side
+var NOISE_CLOUD_STEP = 0.08, NOISE_CLOUD_GAIN = 1.7;       // how fast a cloud boils, and its contrast
+// The kinds come from the engine, so the page never holds a second copy of them. Asked before
+// they have landed, this says what the row already says it is and nothing more -- so a layer keeps
+// its kind through a cold boot, and the dials for it arrive with the answer.
+function noiseSpec(kind) {
+  return NOISE_PATTERNS.find(p => p.id === (kind || 'static'))
+      || (NOISE_PATTERNS.length ? NOISE_PATTERNS[0] : { id: kind || 'static', label: kind || 'static', scale: null });
+}
+// Each kind rests where that kind looks like itself: cells at blocks, lines at hairlines.
+function noiseScale(L) {
+  const p = noiseSpec(L.nkind);
+  return L.scale != null ? L.scale : (p && p.scale ? p.scale.default : 0);
+}
+// How big the thing the noise is made of is, in pixels at this size. A share of the short side
+// rather than a number of pixels, so what you judged on the preview is what the render draws.
+function noiseFeaturePx(scale, w, h) {
+  const s = Math.min(1, Math.max(0, scale || 0));
+  return Math.max(2, Math.round((NOISE_FEATURE_MIN + (NOISE_FEATURE_MAX - NOISE_FEATURE_MIN) * s * s)
+                                * Math.min(w, h)));
+}
+// Seeded by the frame rather than carried on from the frame before, so scrubbing back to a frame
+// gets the frame you left -- and the tile and the stage are looking at the same draw of it.
+function noiseRng(a, b, c) {
+  let s = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 2246822519)) | 0;
+  return function () {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// One lattice of greys: gw x gh of them, mid grey at rest, the grain dial opening them either side
+// of it. Static's lattice is the frame itself, so it is drawn straight into the frame.
+function noiseLattice(seed, i, gw, gh, grain, into) {
+  const cv = into || document.createElement('canvas');
+  if (!into) { cv.width = gw; cv.height = gh; }
+  const x = cv.getContext('2d'), d = x.createImageData(gw, gh), p = d.data, r = noiseRng(seed, i, 0);
+  const g = Math.min(1, Math.max(0, grain == null ? 1 : grain));
+  for (let k = 0; k < gw * gh; k++) {
+    const v = Math.round(255 * Math.min(1, Math.max(0, 0.5 + (r() - 0.5) * g)));
+    p[k * 4] = p[k * 4 + 1] = p[k * 4 + 2] = v;
+    p[k * 4 + 3] = 255;
+  }
+  x.putImageData(d, 0, 0);
+  return cv;
+}
+// One octave of the cloud at one step of its own clock, lerped between two draws of the lattice:
+// noise that boils, not noise that flickers.
+function noiseOctave(seed, o, i0, f, gw, gh) {
+  const cv = document.createElement('canvas');
+  cv.width = gw; cv.height = gh;
+  const x = cv.getContext('2d'), d = x.createImageData(gw, gh), p = d.data;
+  const a = noiseRng(seed, o, i0), b = noiseRng(seed, o, i0 + 1);
+  for (let k = 0; k < gw * gh; k++) {
+    const v = Math.round(255 * (a() * (1 - f) + b() * f));
+    p[k * 4] = p[k * 4 + 1] = p[k * 4 + 2] = v;
+    p[k * 4 + 3] = 255;
+  }
+  x.putImageData(d, 0, 0);
+  return cv;
+}
+// Octaves of value noise, each at half the amplitude and twice the frequency. Summed by the canvas
+// rather than pixel by pixel -- `lighter` at a share of the alpha is exactly the weighted sum the
+// engine computes, and the upscale is the browser's own.
+function noiseClouds(into, L, n, w, h) {
+  const px = noiseFeaturePx(noiseScale(L), w, h);
+  const cells = Math.min(48, Math.max(1, Math.min(w, h) / (px * 4)));
+  const seed = L.seed | 0, z = n * NOISE_CLOUD_STEP;
+  const f = document.createElement('canvas');
+  f.width = w; f.height = h;
+  const fx = f.getContext('2d');
+  fx.fillStyle = '#000';
+  fx.fillRect(0, 0, w, h);
+  fx.imageSmoothingEnabled = true;
+  let amp = 1, tot = 0, g = cells;
+  const oct = [];
+  for (let o = 0; o < 4; o++) { oct.push([o, amp, g]); tot += amp; amp *= 0.5; g *= 2; }
+  fx.globalCompositeOperation = 'lighter';
+  for (const [o, a, gg] of oct) {
+    const gw = Math.max(2, Math.round(gg)), gh = Math.max(2, Math.round(gg * h / Math.max(1, w)));
+    const zo = z * (1 + 0.35 * o), i0 = Math.floor(zo);
+    let t = zo - i0;
+    t = t * t * (3 - 2 * t);                 // cells, not facets
+    fx.globalAlpha = a / tot;
+    fx.drawImage(noiseOctave(seed, o, i0, t, gw, gh), 0, 0, w, h);
+  }
+  // The field keeps to the middle of its range, and grain says how far either side of mid grey it
+  // is allowed to go. One contrast pass does both: it pivots on mid grey, as the engine's does.
+  const x = into.getContext('2d');
+  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  x.filter = 'contrast(' + Math.max(0, (L.grain == null ? 1 : L.grain) * NOISE_CLOUD_GAIN * 100).toFixed(1) + '%)';
+  x.drawImage(f, 0, 0);
+  x.filter = 'none';
+}
+// One frame of a noise layer at the size it is going over. Kept by everything it depends on, so a
+// still stage redraws nothing and a playing one keeps the last few frames it drew.
+var noiseCache = new Map();
+function noiseFrame(L, n, w, h) {
+  w = Math.round(w || 0); h = Math.round(h || 0);
+  if (w < 2 || h < 2) return null;
+  const kind = (noiseSpec(L.nkind) || { id: 'static' }).id;
+  const grain = L.grain == null ? 1 : L.grain, scale = noiseScale(L), seed = L.seed | 0;
+  const at = Math.max(0, n | 0);
+  const key = [kind, grain, scale, seed, at, w, h].join('|');
+  const got = noiseCache.get(key);
+  if (got) return got;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  cv.src = key;                      // matteAlpha keys its cache off .src, as it does for an <img>
+  if (kind === 'clouds') {
+    noiseClouds(cv, L, at, w, h);
+  } else if (kind === 'static') {
+    noiseLattice(seed, at, w, h, grain, cv);     // per-pixel: the lattice is the frame
+  } else {
+    const px = noiseFeaturePx(scale, w, h);
+    const gw = kind === 'lines' ? 1 : Math.max(2, Math.round(w / px));
+    const gh = Math.max(2, Math.round(h / px));
+    const x = cv.getContext('2d');
+    // Nearest-neighbour on purpose: a block with a soft edge is just blurred static, and the point
+    // of these is that the warp has something with a shape to carry forward.
+    x.imageSmoothingEnabled = false;
+    x.drawImage(noiseLattice(seed, at, gw, gh, grain), 0, 0, w, h);
+  }
+  if (noiseCache.size > 24) noiseCache.delete(noiseCache.keys().next().value);
+  noiseCache.set(key, cv);
+  return cv;
+}
+// The tiles of noise layers run on a slow clock of their own. Four grey rectangles all look alike
+// until they move, and a noise tile holding still would be the one thing in the panel you could
+// not judge -- 12 a second reads as grain and costs nothing at tile size.
+var noiseTileAt = 0, noiseTileTimer = 0;
+function noiseTiles() {
+  const box = $('layers'), on = box && $('layersBox') && !$('layersBox').hidden;
+  const cvs = on ? box.querySelectorAll('canvas[data-noise]') : [];
+  if (!cvs.length) { clearInterval(noiseTileTimer); noiseTileTimer = 0; return; }
+  if (!document.hidden) {
+    for (const cv of cvs) {
+      const L = layers()[+cv.dataset.noise];
+      if (!L || !L.noise) continue;
+      const g = noiseFrame(L, noiseTileAt, cv.width, cv.height);
+      if (g) cv.getContext('2d').drawImage(g, 0, 0);
+    }
+  }
+  if (!noiseTileTimer) noiseTileTimer = setInterval(() => { noiseTileAt++; noiseTiles(); }, 83);
+}
+// What a noise layer is made of, as dials: how far it swings either side of mid grey, and -- for
+// the kinds made of something bigger than a pixel -- how big that something is. The kind says
+// which of those it has, so the panel only asks what this kind can answer.
+function noiseRow(i, L) {
+  const p = noiseSpec(L.nkind), sc = p && p.scale;
+  return `<span class="beat"><div class="bl">${
+    dial(i, 'grain', 'grain', L.grain == null ? 1 : L.grain,
+      'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static',
+      '', sc ? '' : 'wide')}${
+    sc ? dial(i, 'scale', sc.label, noiseScale(L), sc.note, '') : ''}</div></span>`;
+}
+function layerTile(L, i) {
+  if (L.noise) return `<canvas data-noise="${i}" width="192" height="108"></canvas>`;
   if (L.pulse) return `<video src="${pulseTileSrc(L)}" autoplay muted loop playsinline></video>`;
   if (L.mask) {
     const [pw, ph] = maskPreviewSize();
@@ -3751,9 +3917,7 @@ function renderLayers() {
     // thing you were now cutting with became unreachable, and getting them back meant turning the
     // matte off. They are two questions and they both get a row.
     const own = !beats(L)
-      ? (L.noise ? `<span class="beat"><div class="bl">${
-            dial(i, 'grain', 'grain', L.grain ?? 1,
-              'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static', '', 'wide')}</div></span>` : '')
+      ? (L.noise ? noiseRow(i, L) : '')
       : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
             title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
       : beatRow(i, L);
@@ -3772,7 +3936,7 @@ function renderLayers() {
       </span>
       <span class="tile${L.matte && L.invert ? ' inv' : ''}" data-swap="${i}"
             title="Double-click to put a different video or picture in it">${
-        layerTile(L)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
+        layerTile(L, i)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
       <span class="side">
         <span class="ctl">${L.matte ? `
           <button class="chip${L.invert ? ' on' : ''}" data-inv="${i}" title="Invert: swap what is in for what is out">invert</button>
@@ -3802,6 +3966,7 @@ function renderLayers() {
         <span class="snd s3" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
           : 'no length — the picture is animated'}</span></div></span>` : ''}</div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
+  noiseTiles();                        // a canvas comes back empty when the panel is redrawn
   // The boxes that are not percentages paint themselves from what they are for.
   $('layers').querySelectorAll('.num[data-k="secs"]').forEach(el => paintNum(el, picSecs = secsNow()));
   $('layers').querySelectorAll('.num[data-k="bpm"]').forEach(el =>
@@ -3890,7 +4055,10 @@ function plateLive() {
 // so everything below takes either.
 const srcW = x => x.naturalWidth || x.videoWidth || x.width || 0;
 const srcH = x => x.naturalHeight || x.videoHeight || x.height || 0;
-function layerFrame(L, n) {
+function layerFrame(L, n, w, h) {
+  // Generated layers are drawn at the size of whatever they are going over, which is the frame the
+  // base laid down -- there is no file to fetch and nothing to wait for.
+  if (L.noise) return noiseFrame(L, n, w, h);
   // Playing: the layer's own file is decoding in a <video> of its own, and that is this frame.
   if (liveDraw) { const v = liveVids[L.path]; if (v && v.readyState >= 2) return v; }
   const len = plateLens[L.path] || 0;
@@ -4041,7 +4209,7 @@ function paintPlate(soft) {
   const c = cv.getContext('2d');
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.fillStyle = '#000'; c.fillRect(0, 0, w, h);      // what the source fades into
-  const b0 = pairs[0][0], m0 = pairs[0][1], m0Img = m0 && layerFrame(m0, clipFrame);
+  const b0 = pairs[0][0], m0 = pairs[0][1], m0Img = m0 && layerFrame(m0, clipFrame, w, h);
   c.globalAlpha = b0.opacity;
   if (m0 && m0Img) {                                 // the source, cut out against the black below it
     const t = document.createElement('canvas'); t.width = w; t.height = h;
@@ -4055,11 +4223,11 @@ function paintPlate(soft) {
   }
   c.globalAlpha = 1;
   for (let n = 1; n < pairs.length; n++) {
-    const [L, M] = pairs[n], img = layerFrame(L, clipFrame);
+    const [L, M] = pairs[n], img = layerFrame(L, clipFrame, w, h);
     if (!img) continue;
     c.globalAlpha = L.opacity;
     c.globalCompositeOperation = CANVAS_MODE[L.mode] || L.mode;
-    const mImg = M && layerFrame(M, clipFrame);
+    const mImg = M && layerFrame(M, clipFrame, w, h);
     const soft = blurPx(L.blur, w, h);
     if (M && mImg) {
       const t = document.createElement('canvas'); t.width = w; t.height = h;
@@ -4133,53 +4301,29 @@ $('layerAdds').onclick = e => {
   if (add.dataset.add === 'pulse') return toggleMaskLib(true, -1, 'pulse');
   $('layerFile').click();
 };
-// Static, cut to whatever it is going over. A different lever from Denoise: that asks the model to
-// invent more, this changes the pixels it is looking at -- and with the warp carrying paint forward
-// the grain becomes structure the next frame elaborates.
-// One noise layer of the kind picked, keeping how an existing row is being used -- its blend, its
-// opacity, its grain -- and changing only what is in it.
-async function makeNoise(kind, at = -1) {
-  const b = maskBody('circle');              // the size and length the plate will be
+// A different lever from Denoise: that asks the model to invent more, this changes the pixels it is
+// looking at -- and with the warp carrying paint forward the grain becomes structure the next frame
+// elaborates. One noise layer of the kind picked, keeping how an existing row is being used -- its
+// blend, its opacity, its grain -- and changing only what it is made of. Nothing is drawn and
+// nothing is asked of the server: a kind, a grain and a size is the whole layer.
+function makeNoise(kind, at = -1) {
+  const p = noiseSpec(kind) || { id: kind, label: kind };
   const was = at >= 0 ? layers()[at] : null;
-  const grain = was && was.noise ? (was.grain ?? 1) : 1;
-  try {
-    setStatus('making the noise…', 'live');
-    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind, grain, width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
-    const row = { path: r.path, name: r.name, noise: true, nkind: r.kind, grain: r.grain,
-                  made: { width: r.width, height: r.height, frames: r.frames } };
-    if (was) { Object.assign(was, row); renderLayers(); paintSums(); save(); stageSource(); }
-    else addLayer(r, Object.assign(row, { mode: 'overlay', opacity: 0.25 }));
-    setStatus(`${r.label} · ${r.frames} frames at ${r.width}×${r.height}`, 'done');
-  } catch (e) {
-    setStatus('could not make the noise: ' + e.message, 'bad');
+  const held = was && was.noise;
+  const row = { path: '', name: 'noise \u00b7 ' + (p.label || p.id), noise: true, nkind: p.id,
+                grain: held ? (was.grain == null ? 1 : was.grain) : 1,
+                // The size carries over between kinds that both have one; otherwise the new kind
+                // rests where it looks like itself.
+                scale: held && was.nkind === p.id ? noiseScale(was) : noiseScale({ nkind: p.id }),
+                seed: (held && was.seed) || 1 + Math.floor(Math.random() * 2147483646) };
+  if (was) {
+    delete was.made;
+    Object.assign(was, row);
+    renderLayers(); paintSums(); save(); stageSource(); needPaint(); needPlate(); pushLayers();
+  } else {
+    addLayer({ path: '', name: row.name }, Object.assign({}, row, { mode: 'overlay', opacity: 0.25 }));
   }
-}
-// Grain moves the file under the layer, which means ffmpeg: debounced, and the row is not rebuilt,
-// so the box you are dragging stays under your hand. The same shape as needPulse.
-var noiseTimers = {};
-function needNoise(i, now) {
-  const L = layers()[i];
-  if (!L || !L.noise) return;
-  clearTimeout(noiseTimers[i]);
-  noiseTimers[i] = setTimeout(() => drawNoise(i), now ? 0 : 350);
-}
-async function drawNoise(i) {
-  const L = layers()[i];
-  if (!L || !L.noise) return;
-  const b = maskBody('circle');
-  try {
-    const r = await api('/api/layers/noise', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: L.nkind || 'static', grain: L.grain ?? 1,
-                             width: b.width, height: b.height, frames: b.frames, fps: b.fps }) });
-    if (layers()[i] !== L) return;             // the stack moved while it was drawing
-    L.path = r.path; L.name = r.name; L.made = { width: r.width, height: r.height, frames: r.frames };
-    const tile = $('layers').querySelector(`.lay[data-i="${i}"] .tile img`);
-    if (tile) tile.src = `/api/video/thumbnail?${qs({ path: L.path, frame: 0 })}`;
-    needPaint(); needPlate(); pushLayers(); save();
-  } catch (e) {
-    setStatus('could not make the noise: ' + e.message, 'bad');
-  }
+  setStatus(`${p.label || p.id} \u00b7 generated as it is composited`, 'done');
 }
 // Double-clicking a thumbnail asks for a file for THAT slot rather than a new layer on top; the
 // picker is the same one, so this is which row asked, remembered until it answers.
@@ -4194,7 +4338,9 @@ $('layers').addEventListener('dblclick', e => {
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
     if (num.dataset.k === 'amount' || num.dataset.k === 'bpm') return needPulse(+num.dataset.lv, true);
-    if (num.dataset.k === 'grain') return needNoise(+num.dataset.lv, true);
+    // Scale has no one default: each kind rests where that kind looks like itself.
+    if (num.dataset.k === 'scale') { L.scale = noiseScale({ nkind: L.nkind }); paintNum(num, L.scale); }
+    if (num.dataset.k === 'grain' || num.dataset.k === 'scale') noiseTiles();
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
@@ -6547,11 +6693,15 @@ the whole frame is redrawn, buildings and smoke and crowd included.</pre>
       <tr><td><b>Click · Shift-click · Ctrl-A</b></td><td>Select one, a range, or everything shown (<b>Select all</b> does the same).</td></tr>
       <tr><td><b>Hide / Show</b></td><td>Take runs out of the strip, or put hidden ones back. The files stay.</td></tr>
       <tr><td><b>Delete</b></td><td>Deletes the selected runs <b>from disk, for good</b> — it asks first (the button, or
-          Delete twice / Enter). The space comes back at once.</td></tr>
+          Delete twice / Enter). However many you picked, they go at once: the folders are moved aside in one step and
+          emptied in the background, so the space comes back over the next minute or so without you waiting on it.</td></tr>
       <tr><td><b>Double-click</b></td><td>Opens a run on the stage, hidden ones too (it stays out of the strip).</td></tr>
     </table>
     <p>So: the strip is your working set, and hiding is how you tidy it; <b>All runs</b> is where you look back
        through everything and free disk space.</p>
+    <p>On disk a run lives in <b>renders / the day it was made / its number</b> — 20261125/1043. A run is named by its
+       number alone, so the folder it sits in is only where it sits: nothing that points at a run minds it being moved,
+       and runs made before the day folders existed open exactly as they did.</p>
     <h4>Seed</h4>
     <p><b>Locked</b> (🔒): every run uses the same seed, so changing one slider shows just that change. Unlocked: a new
        seed per run, shown in the box, so locking then keeps the one you just saw. 🎲 rolls a new one. Drag the number left / right to step through nearby seeds (Shift: faster),
@@ -6668,7 +6818,8 @@ var TOUR = [
      and a <b>Look</b> preset that adds its style words to your prompt.` },
   { at: () => [$('layersBox')], title: 'Layers', text: () =>
     `What each frame is actually painted from: the source at the bottom, and anything stacked on it — <b>add media</b> for a video
-     or a picture, <b>add matte</b>, <b>add noise</b>, <b>add audio</b>. Each layer has a blend mode, an <b>opacity</b> and a
+     or a picture, <b>add matte</b>, <b>add noise</b> (static, cells, clouds or lines, generated live), <b>add audio</b>.
+     Each layer has a blend mode, an <b>opacity</b> and a
      <b>blur</b>, and a black-and-white layer can act as a matte for the one below it. The stack is flattened before a frame is
      painted or anything is uploaded, and the stage shows it as you build it.` },
   { at: () => [$('guideBox')], title: 'Guidance', text: () =>
@@ -6854,7 +7005,7 @@ $('setBtn').onclick = () => toggleSettings();
 // Every run on disk, newest first, hidden ones too (tagged). Select (click, shift for a range, ctrl-A), then hide from
 // the strip, put back, or delete from disk for good (asked inline first). Sizes are counted by the server in the
 // background and fill in as they come.
-var RS = { list: [], sizes: {}, done: false, kind: 'all', sel: new Set(), last: null, ask: false, timer: 0, note: '' };
+var RS = { list: [], loaded: false, sizes: {}, done: false, kind: 'all', sel: new Set(), last: null, ask: false, timer: 0, note: '' };
 const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
 const rsBytes = ids => ids.reduce((t, id) => t + (RS.sizes[id] || 0), 0);
 // every run, newest first (hidden ones tagged), or one kind: Frames, Previews, Renders (refines count as renders)
@@ -6868,11 +7019,16 @@ function toggleRunsPanel(open = $('runsPanel').hidden) {
 }
 $('manageRuns').onclick = () => toggleRunsPanel();
 async function loadRunsPanel() {
-  try { RS.list = (await api('/api/runs/catalog')).runs; }
+  // The panel goes up before the disk is asked anything \u2014 with the runs it already knows if it has
+  // been open before, and saying what it is doing if it hasn't. Waiting on a thousand folders with a
+  // blank screen reads as nothing happening at all.
+  const first = !RS.loaded;
+  paintRunsPanel(false);
+  try { RS.list = (await api('/api/runs/catalog')).runs; RS.loaded = true; }
   catch { $('runsPanel').innerHTML = '<div class="rs-head"><h3>Runs</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="rsClose">\u2715</button></div>';
           $('rsClose').onclick = () => toggleRunsPanel(false); return; }
   const have = new Set(RS.list.map(r => r.id)); [...RS.sel].forEach(id => have.has(id) || RS.sel.delete(id));
-  paintRunsPanel(true); pollSizes(false); setTimeout(() => pollSizes(true), 1500);
+  paintRunsPanel(first); pollSizes(false); setTimeout(() => pollSizes(true), 1500);
   document.querySelector('#rsGrid .rs-card.on')?.scrollIntoView({ block: 'center' });   // back where you left off
 }
 async function pollSizes(recount) {
@@ -6963,7 +7119,7 @@ function paintRsGrid(intro) {
   }), { root, rootMargin: '200px 0px' });
   rsMore = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) rsAppend(rsShown(), grid.querySelectorAll('.rs-card').length + RS_CHUNK); },
     { root, rootMargin: '600px 0px' });
-  grid.innerHTML = list.length ? '' : '<p class="rs-empty">Nothing here.</p>';
+  grid.innerHTML = list.length ? '' : `<p class="rs-empty">${RS.loaded ? 'Nothing here.' : 'Reading renders\u2026'}</p>`;
   const at = list.findIndex(r => r.id === viewRun);             // the run on the stage is always built, to scroll to
   const added = rsAppend(list, Math.max(RS_CHUNK, at + RS_CHUNK / 2));
   if (intro && window.anime) anime({ targets: added.slice(0, 48), opacity: [0, 1], translateY: [10, 0],
@@ -7015,16 +7171,24 @@ async function rsVisibility(hidden) {
   paintRsSum(); paintRsGrid(); paintRsAct(); await rsAfter();
 }
 async function rsDelete() {
-  const ids = [...RS.sel]; RS.ask = false;     // a second Enter can't start it twice
-  $('rsInfo').innerHTML = `<b>Deleting ${ids.length} run${ids.length === 1 ? '' : 's'}\u2026</b>`;
+  // The cards go the moment you confirm. The server only has to rename each folder into renders/.trash
+  // and a thread empties the bin behind it, so there is nothing here worth watching \u2014 and a run it
+  // could not take (one still rendering) comes straight back, selected, with the reason beside it.
+  const ids = [...RS.sel], doomed = new Set(ids), was = RS.list;
+  RS.ask = false; RS.sel.clear();              // a second Enter can't start it twice
+  RS.list = was.filter(r => !doomed.has(r.id));
+  ids.forEach(id => selected.delete(id));
+  if (doomed.has(viewRun)) viewRun = null;
+  RS.note = `deleting ${ids.length} run${ids.length === 1 ? '' : 's'}\u2026`;
+  paintRsGrid(); paintRsAct();
   const res = await api('/api/runs/purge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) })
-    .catch(e => ({ deleted: [], failed: [{ error: e.message }], freed: 0 }));
-  const gone = new Set(res.deleted);
-  RS.list = RS.list.filter(r => !gone.has(r.id)); gone.forEach(id => { delete RS.sizes[id]; selected.delete(id); });
-  RS.sel = new Set(res.failed.map(f => f.id).filter(Boolean)); RS.ask = false;
+    .catch(e => ({ deleted: [], failed: ids.map(id => ({ id, error: e.message })), freed: 0 }));
+  const back = new Set(res.failed.map(f => f.id).filter(Boolean));
+  if (back.size) RS.list = was.filter(r => !doomed.has(r.id) || back.has(r.id));
+  res.deleted.forEach(id => delete RS.sizes[id]);
+  RS.sel = new Set(back);
   RS.note = `deleted ${res.deleted.length}, freed ${fmtBytes(res.freed)}` + (res.failed.length ? ` \u00b7 ${res.failed.length} not deleted (${res.failed[0].error})` : '');
-  paintRsSum(); paintRsGrid(); paintRsAct();
-  if (gone.has(viewRun)) viewRun = null;
+  paintRsGrid(); paintRsAct();
   await rsAfter();
 }
 async function rsAfter() {                      // the strip below follows; a run that left it leaves the stage too
@@ -7907,7 +8071,11 @@ $('loadRun').onclick = async () => {
     const want = Array.isArray(ui.layers) ? ui.layers : [];
     const live = [];
     for (const L of want) {
-      if (!L || !L.path) continue;
+      if (!L) continue;
+      // A generated layer has no file that could have gone missing: it is a kind, a grain and a
+      // size, all of them written down in the run, so it comes back exactly as it was.
+      if (L.noise) { live.push(JSON.parse(JSON.stringify(L))); continue; }
+      if (!L.path) continue;
       const e = await api(`/api/fs/exists?${qs({ path: L.path })}`).catch(() => ({}));
       if (e && e.exists) live.push(JSON.parse(JSON.stringify(L)));
       else gone = ' (a layer\'s file is gone)';
@@ -8736,6 +8904,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
   PULSE_PATTERNS = pulsePats.patterns || []; PULSE_DRAW = pulsePats.version || 0;
   NOISE_PATTERNS = noisePats.patterns || [];
+  if (layers().some(L => L.noise)) renderLayers();  // their dials were waiting on the kinds
   if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned

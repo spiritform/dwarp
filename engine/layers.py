@@ -106,14 +106,24 @@ def _source(i: int, width: int, height: int, fps: float, blur: float = 0.0) -> s
 
 
 def clean(layers) -> list[dict]:
-    """The stack as the engine will read it: topmost first, every field present and in range."""
+    """The stack as the engine will read it: topmost first, every field present and in range.
+
+    A layer is usually a file, and then `path` is what it is. A noise layer is not: it has nothing
+    on disk and never did -- it is a kind, a grain and a size, and whichever compositor gets to it
+    draws it. That row carries `noise` instead of a path, and everything else about it (its blend,
+    its opacity, its blur, whether it is a matte) is the same as any other layer's.
+    """
     out = []
     for raw in layers or []:
-        if not isinstance(raw, dict) or not raw.get("path"):
+        if not isinstance(raw, dict):
+            continue
+        gen = noise_settings(raw)
+        if not gen and not raw.get("path"):
             continue
         mode = str(raw.get("mode") or "normal").lower().replace(" ", "").replace("-", "")
         out.append({
-            "path": str(raw["path"]),
+            "noise": gen,
+            "path": "" if gen else str(raw["path"]),
             "mode": mode if mode in MODES else "normal",
             "opacity": _num(raw.get("opacity"), 0.0, 1.0, 1.0),
             "blur": _num(raw.get("blur"), 0.0, 1.0, 0.0),
@@ -124,6 +134,21 @@ def clean(layers) -> list[dict]:
             "invert": bool(raw.get("invert")),
         })
     return out
+
+
+def label(L) -> str:
+    """What to call a layer in a log: its file, or what a generated one is made of."""
+    return f"noise · {L['noise']['kind']}" if L.get("noise") else Path(L["path"]).name
+
+
+def noise_settings(raw) -> dict | None:
+    """The generated-layer settings on a row, or None if the row is a file like any other."""
+    if not isinstance(raw, dict) or not raw.get("noise"):
+        return None
+    from engine import noise
+    # An older save has `noise: true` beside an mp4 that was drawn for it. The settings are all
+    # still on the row, so it is read as a generated layer and the stale file is simply not opened.
+    return noise.settings(raw if raw.get("noise") is True else raw["noise"])
 
 
 def pair_index(stack) -> list[tuple]:
@@ -175,7 +200,14 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
         key = id(layer)
         if key not in idx:
             idx[key] = len(idx)
-            inputs.extend(["-stream_loop", "-1", "-i", layer["path"]])
+            if layer["noise"]:
+                # Generated as it is consumed rather than drawn to a file first: an infinite source,
+                # which is fine because `-frames:v` below is what says how long the output is.
+                from engine import noise
+                inputs.extend(["-f", "lavfi", "-i",
+                               noise.lavfi(width=width, height=height, fps=fps, **layer["noise"])])
+            else:
+                inputs.extend(["-stream_loop", "-1", "-i", layer["path"]])
         return idx[key]
 
     for drawn, matte in pairs:
@@ -286,6 +318,10 @@ def flatten_like_base(layers, dest: Path) -> Path:
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     base = pairs[0][0]                          # bottom-up, so the first pair is the base
+    if base["noise"]:
+        # Generated layers have no size of their own -- they are drawn at the size of what they are
+        # going over. With nothing underneath there is nothing to take that from.
+        raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
     w, h, frames, fps = probe(base["path"])
     return flatten(layers, dest, width=w, height=h, frames=frames, fps=fps)
 
@@ -315,6 +351,8 @@ def plate(dest_dir: Path, layers, *, width: int = 0, height: int = 0, frames: in
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height and frames and fps):
+        if pairs[0][0]["noise"]:
+            raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
         bw, bh, bn, bf = probe(pairs[0][0]["path"])
         width, height, frames, fps = width or bw, height or bh, frames or bn, fps or bf
     dest_dir = Path(dest_dir)
@@ -338,6 +376,8 @@ def plate_still(dest_dir: Path, layers, *, width: int = 0, height: int = 0) -> d
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height):
+        if pairs[0][0]["noise"]:
+            raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
         bw, bh, _, _ = probe(pairs[0][0]["path"])
         width, height = width or bw, height or bh
     dest_dir = Path(dest_dir)
@@ -416,6 +456,15 @@ class FrameStack:
         # looking at, the picture being the same in every one of them.
         still_base = int(getattr(job, "source_frames", 0) or 0) > 0
         for k, L in enumerate(self.stack):
+            # A generated layer has no frames to extract: it is drawn at the size of whatever it is
+            # going over, at the moment that frame is composited. Nothing to decode, nothing on
+            # disk, and a dial moved mid-render lands on the next frame like every other dial.
+            if L["noise"]:
+                self.frames[k], self.off[k] = None, 0
+                g = L["noise"]
+                log(f"  noise · {g['kind']} · generated"
+                    + (" · matte" if L["matte"] else f" · {L['mode']} {L['opacity'] * 100:.0f}%"))
+                continue
             one = copy(job)
             one.video = L["path"]
             # Fill the frame and keep the shape, as the flatten does. The clip itself is left alone:
@@ -432,14 +481,19 @@ class FrameStack:
         # How long the stack runs. The base usually says -- it is the clip -- but a picture at the
         # bottom is one frame and still has a length, the one that was asked for. Every layer is
         # looked up by frame number and loops, so a one-frame base simply repeats under the rest.
-        base = self.frames[self.pairs[0][0]]
+        base = self.frames[self.pairs[0][0]] or []
         n = int(getattr(job, "source_frames", 0) or 0) if len(base) == 1 else 0
         self.paths = [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
         self.done: dict[int, str] = {}
 
-    def _frame(self, k: int, i: int):
+    def _frame(self, k: int, i: int, size=None, gen=None):
         from PIL import Image
         got = self.frames[k]
+        if got is None:                        # generated: drawn at the size of what it is over
+            from engine import noise
+            w, h = size or (512, 512)
+            g = noise.draw(width=w, height=h, i=i, **(gen or self.stack[k]["noise"]))
+            return Image.fromarray((g * 255.0).astype("uint8"), "L").convert("RGB")
         return Image.open(got[(self.off[k] + i) % len(got)]).convert("RGB")
 
     def write(self, i: int, stack=None) -> Path:
@@ -464,7 +518,8 @@ class FrameStack:
         # The matte's alpha: luma, levels, invert, then the feather -- in that order, so a hard
         # pattern can be given a soft edge without the levels clipping the softness back off.
         def alpha(mk, M):
-            m = np.asarray(soft(self._frame(mk, i), 0.0, w, h).convert("RGB"), np.float32) / 255.0
+            m = np.asarray(soft(self._frame(mk, i, (w, h), M["noise"]), 0.0, w, h).convert("RGB"),
+                           np.float32) / 255.0
             lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
             b, wt = M["black"], M["white"]
             lum = np.where(abs(wt - b) < 1e-6, (lum > b).astype(np.float32),
@@ -484,7 +539,8 @@ class FrameStack:
         for n in range(1, len(pairs)):
             a, mk = pairs[n]
             L, M = live[a], (live[mk] if mk is not None else None)
-            top = np.asarray(soft(self._frame(a, i), L["blur"], w, h), np.float32) / 255.0
+            top = np.asarray(soft(self._frame(a, i, (w, h), L["noise"]), L["blur"], w, h),
+                             np.float32) / 255.0
             mixed = np.clip(_blend(acc, top, L["mode"]), 0.0, 1.0)
             mixed = acc + (mixed - acc) * L["opacity"]
             if M:

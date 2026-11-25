@@ -87,8 +87,11 @@ and the cloud path flattens the whole stack to one clip and uploads that.
 
 Each layer is a card with a 16:9 thumbnail and its own controls:
 
-- **What's in it** — another video, a run dragged off the strip, a picture, monochrome **static**, a black-and-white
-  **matte** pattern drawn here at this render's size and length, or a **pulse** (below). Drag a card by its header to
+- **What's in it** — another video, a run dragged off the strip, a picture, **noise** (static, cells, clouds or
+  lines), a black-and-white **matte** pattern drawn here at this render's size and length, or a **pulse** (below). A
+  noise layer has no file under it: it is generated as each frame is composited — in the canvas for the preview, in
+  numpy for a local render, as a generated ffmpeg input for the flatten — so its **grain** and its **size** move
+  under your hand, with nothing to draw and nothing to wait for. Drag a card by its header to
   reorder; an eye hides it (hidden means hidden everywhere, and a stack with every layer off renders the clip with no
   flatten at all) and a ✕ removes it.
 - **How it's laid down** — a blend mode, an **opacity** and a **blur**. The blend set is the eleven modes a browser
@@ -228,16 +231,21 @@ empty field. A render needs an active Comfy subscription.
 - **FPS on ones, twos or threes**: render every frame, or every 2nd / 3rd and hold it like hand-drawn animation — half or a third of the render time, and the mp4 still plays at the clip's fps
 - **Live**: while a Preview or Render runs, type a prompt and press Enter — the video morphs into it from the frame being rendered, saved as a keyframe
 - **[DepthDiff](#depthdiff-choose-where-it-repaints)**: the source's luma or depth decides where the style repaints, per pixel, with a live preview of the map
-- **[Layers](#layers-a-stack-of-sources)**: a stack of sources composited into the frame the model paints — another video, a picture, static, a drawn matte — with blend modes, opacity, blur and luma mattes with their own levels. It previews live in the browser and keeps following the dials while the render runs
+- **[Layers](#layers-a-stack-of-sources)**: a stack of sources composited into the frame the model paints — another video, a picture, generated noise, a drawn matte — with blend modes, opacity, blur and luma mattes with their own levels. It previews live in the browser and keeps following the dials while the render runs
 - **[Pulse](#pulse-a-layer-that-moves-on-a-beat)**: a layer that moves on a beat — static, light, rings, big hard-edged squares and polygons, or thick fractal noise, paced by the clip's own soundtrack, by a BPM you type (with a metronome) or by a track you load. Any layer can take the beat
 - **[Sound](#sound)**: a render comes out with the clip's audio on it, and the frames on the stage play with that audio under them — in sync, and while the render is still going
 - **[Shape](#shape-a-latent-mask-of-your-own)**: your own mask picture or video as a latent mask — cut-outs, growing shapes, wipes and transitions, with levels, blur, opacity and in / out
 - Seed you can drag left / right to step through nearby ones
+- Runs are kept in `renders/<YYYYMMDD>/<n>/` — a folder per day, so a month of work is something you can open in
+  Explorer and find your way around. A run is named by its number alone, so moving one between folders changes nothing
+  that points at it; runs made before the day folders existed stay where they are and still open. `tools/tidy_runs.py`
+  moves them under their day if you want them tidied (`--dry` first to see what it would do)
 - **Frame** renders the frame under the playhead; **Preview** renders 5 frames (every 2nd); **Render** does the trimmed clip. All three render at the chosen Size, so a locked seed starts each on the same picture. Every run fills the stage at the same size
 - Source playback with sound, live split view (source / output), a scrubber with clip timecode, live log. While a render runs the playhead stops at the frame being generated — wherever that frame sits in the clip — and moves on as it does
 - **Runs strip**: every Frame / Preview / Render, newest first. Click one, then **← →** browse runs and **Delete** twice takes the one on show off the strip (the files stay on disk); **copy settings** puts a run's settings back in the panel — and on an upscale, a smooth or a refine, which are not made by the left panel, it opens the Enhance panel with the settings that run was made with, pointed at the run underneath it
 - **download mp4** saves the run, **download gif** saves it as a looping gif to paste somewhere — any run of more than one frame, fitted to 640px, built from the mp4 so the timing is the same
-- **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first)
+- **All runs**: a grid of every run on disk, hidden ones too, with sizes — filter by Frames / Previews / Renders, select, hide or show, or delete from disk for good (asked first). Deleting
+  is instant however many you picked: the folders are moved aside in one go and emptied in the background
 - A built-in guide: the **?** button explains every control
 - **[Comfy](#comfy-the-one-mode-that-renders-somewhere-else)** (optional, cloud): runs a ComfyUI graph on Comfy Cloud, picked from a Workflow list you can add to. It ships with MiniMax-H3 / Pika H3 Flex: a 5–15 s clip **with sound** from your footage and reference pictures. Needs an API key; everything else in DWARP stays on your own GPU
 - **Enhance**: upscale any finished run with your ESRGAN-family models (via [spandrel](https://github.com/chaiNNer-org/spandrel)) and smooth it with [RIFE](https://github.com/hzwer/Practical-RIFE) or [FILM](https://github.com/google-research/frame-interpolation) frame interpolation (FILM downloads on first use)

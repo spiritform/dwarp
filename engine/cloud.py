@@ -779,8 +779,8 @@ def render_cloud(job, progress: Callable = lambda *a: None, cancelled: Callable[
     if stack:
         progress("uploading", 0, frames, "flattening the layers")
         for L, m in drawn:
-            log(f"  {Path(L['path']).name} · {L['mode']} {L['opacity'] * 100:.0f}%"
-                + (f" · matted by {Path(m['path']).name}" if m else ""))
+            log(f"  {layers.label(L)} · {L['mode']} {L['opacity'] * 100:.0f}%"
+                + (f" · matted by {layers.label(m)}" if m else ""))
         plate = layers.flatten(stack, out / "comfy_plate.mp4",
                                width=width, height=height, frames=frames, fps=fps)
         log(f"  plate · {plate.stat().st_size / 2**20:.1f} MB, {frames / fps:.1f}s")

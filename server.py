@@ -144,6 +144,7 @@ def fit(width: int, height: int, max_size: int) -> tuple[int, int]:
 
 def build_app() -> FastAPI:
     runs.RENDERS.mkdir(exist_ok=True)
+    runs.empty_trash()          # anything a purge left behind last time goes now, not while you wait
     INPUTS.mkdir(exist_ok=True)
     app = FastAPI(title="DWARP")
 
@@ -938,7 +939,8 @@ def build_app() -> FastAPI:
         body = await request.json()
         stack = layerlib.clean(body.get("layers") or [])
         for L in stack:
-            if not os.path.isfile(L["path"]):
+            # A generated layer has no file to be missing: it is drawn into the flatten itself.
+            if not L["noise"] and not os.path.isfile(L["path"]):
                 raise HTTPException(404, detail=f"no layer at {L['path']}")
         if not layerlib.plan(stack):
             raise HTTPException(422, detail="a plate needs a layer that is not a matte")
@@ -969,25 +971,6 @@ def build_app() -> FastAPI:
                 height=max(0, min(4096, int(body.get("height", 0)))))
         except (RuntimeError, ValueError) as exc:
             raise HTTPException(422, detail=f"could not flatten the layers: {exc}") from None
-
-    @app.post("/api/layers/noise")
-    async def layers_noise(request: Request):
-        """Noise as a layer, of whichever kind. Cut to the size and length of whatever it is
-        going over, and named after that, so asking twice costs one stat()."""
-        from engine import noise as noiselib
-        body = await request.json()
-        try:
-            return await asyncio.to_thread(
-                noiselib.clip, INPUTS / "noise",
-                kind=str(body.get("kind") or "static"),
-                width=max(16, min(4096, int(body.get("width", 768)))),
-                height=max(16, min(4096, int(body.get("height", 768)))),
-                frames=max(1, min(4096, int(body.get("frames", 124)))),
-                fps=max(1.0, min(120.0, float(body.get("fps", 24)))),
-                grain=float(body.get("grain", 1.0)),
-                seed=int(body.get("seed", 0)))
-        except (RuntimeError, ValueError, TypeError) as exc:
-            raise HTTPException(422, detail=f"could not make the noise: {exc}") from None
 
     @app.get("/api/noise/patterns")
     def noise_patterns():

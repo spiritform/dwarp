@@ -4,6 +4,27 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-25
 
+- **A folder per day, and a delete that doesn't make you wait.** A thousand runs in one flat `renders/`
+  folder is not something you can look through, so runs now go in `renders/<YYYYMMDD>/<n>/`, a folder
+  per day. A run is still named by its number alone — the day folder is only where it sits — so
+  nothing that points at a run has to change, and runs made before this stay put and open exactly as
+  they did. `tools/tidy_runs.py` moves the old ones under their day when you want them tidied.
+  Deleting is the other half: a run is thousands of PNGs, so **All runs** used to sit there for
+  minutes while the disk chewed through a selection. Now the folders are moved aside in one rename
+  each — the cards go the instant you confirm — and a background thread empties the bin, picking up
+  again at the next start if DWARP was closed half way. **All runs** also opens straight away now,
+  with the runs it already knows, instead of showing you nothing until the disk has been read.
+
+- **Noise is generated, not rendered — and it has a size.** A noise layer used to be an mp4 drawn at
+  the render's size and length: ffmpeg over the whole clip before any of it could be seen, and a
+  frame extraction after it, every time the grain dial moved. For a layer whose entire content is
+  `random()`. It has no file under it now. It is generated at the moment it is composited — in the
+  canvas for the preview and the tile, in numpy for a local render, as a generated ffmpeg input for
+  the flatten — so adding one is instant and the dials move under your hand. Which leaves room for
+  the dial that was missing: **Cells**, **Clouds** and **Lines** each take a **size** as well as a
+  grain, from a coarse static up to slabs the warp drags about whole, and the size is a share of the
+  frame, so what you judge on the preview is what the render draws.
+
 - **A drawn layer can no longer leave a corpse behind.** A pulse, a noise layer and a drawn matte are
   all cached under a name made from their settings, and the check for "is it already drawn?" was
   whether a file of that name existed and was not empty. An mp4 keeps its index at the *end*, so a
