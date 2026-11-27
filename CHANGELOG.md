@@ -4,6 +4,46 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-27
 
+- **The Source tab shows a Text → Video stack that has become the picture.** The Layers card has
+  said *frame 1 · then over* since the covering-stack rule went in, and the render really did
+  start from that flatten — but the stage never heard about it. Its test for "a single picture is
+  the source" still meant a picture you had dropped in, so Source had nothing to show and kept
+  whatever was on it, usually the last run. It shows the flattened picture now. What goes over the
+  picture is not in it: a pulse on `screen` is composited onto each frame as it is painted, so it
+  belongs to Output, and putting it into the Source preview would show a frame that never exists.
+  A stack that stops covering drops back to the placeholder instead of holding a still of itself.
+
+- **Scale and boil, on the pulse patterns made of fractal noise.** Clouds, Smoke, Fall and Veins
+  were four fixed fields — the cell count and the rate they churned at were numbers in the
+  engine. They are two dials under the beat now: **scale** is how big the masses are, from a fine
+  froth to a handful of great billows, and **boil** is how fast the field moves under the hit, from
+  held still (the beat alone opens it) to twice what it was. Both sit in the middle, which is
+  exactly where the pattern was before it had dials — to the last bit, so every pulse clip
+  already drawn is still the right answer and nothing is redrawn until you move something. The
+  patterns that are not made of noise have neither dial, and are not asked. Double-clicking Drift
+  now redraws the clip as well, which it never did: it put the number back and left the picture
+  alone.
+
+- **The Shape presets are recipes now, with a speed and a density of their own.** Every preset in
+  the library was drawn once, at numbers written into the code: a spiral had 3.5 turns because that
+  is what the line said. Pick one and the card now carries what it was drawn from — **density**,
+  which is the pattern's own count (a spiral's turns, a sunburst's spokes, a halftone's dots, a
+  disc's size), and for a loop a **speed**. Move either and the mask is drawn again at those
+  numbers and kept, so coming back to one you liked costs a stat() rather than a draw. Speed is the
+  **length** of the loop and not the rate it is played at, which is the only way it can still meet
+  itself at the end: at 2 it is half the frames and comes round twice as often, and it is still
+  seamless. A preset at its defaults is the file the gallery is already showing, so the dials cost
+  nothing until they are touched — and a mask of your own is a file, with no recipe behind it
+  and no dials offered.
+
+- **Three fractal loops in the Shape library: clouds drifting, smoke rising, veins flowing.** The
+  same fields the pulse layers are made of, as seamless black-and-white masks. The pulse version
+  streams — it holds the two faces of noise it is between and draws a new one as it passes them
+  — which is right for something paced by a beat and wrong for a library loop, because a loop
+  has to meet itself. These wrap in time instead: each octave is a ring of faces sampled round and
+  round, so the last frame leads into the first by construction rather than by being faded into it.
+  Smoke climbs by a whole lattice cell over the loop, for the same reason.
+
 - **A Strength slider for embeddings.** Under the embedding picker, 0 to 1.5. There is nothing to
   turn down after an embedding has loaded — it is not a module hanging off the model, it is extra
   rows in CLIP's token table, and once they are in, its name is a word like any other — so the

@@ -22,6 +22,19 @@ from pathlib import Path
 
 import numpy as np
 
+# The patterns made of fractal noise all answer the same two questions, so they share one pair of
+# dials. Both are 0..1 and both sit at 0.5, which is where the pattern was before it had any -- so
+# an old layer looks the same and the dial has the same room either way. `_fractal` below turns
+# them into what the noise actually takes.
+FRACTAL_DIALS = {
+    "scale": {"label": "scale", "default": 0.5,
+              "note": "How big the masses are \u2014 a fine boil at the bottom of the dial, a "
+                      "handful of great billows at the top"},
+    "boil": {"label": "boil", "default": 0.5,
+             "note": "How fast the field churns under the beat \u2014 at the bottom it holds "
+                     "still and the hit alone opens it, at the top it rolls while it goes"},
+}
+
 # Each pattern is one idea of what a hit looks like. Data, so another one is an entry here and a
 # branch in _frame -- the panel draws whatever this list says.
 PATTERNS = [
@@ -47,19 +60,19 @@ PATTERNS = [
     {"id": "slabs", "label": "Slabs", "base": "black",
      "note": "Big hard rectangles thrown across the frame on every hit, holding a moment and "
              "going out \u2014 no two hits in the same place."},
-    {"id": "clouds", "label": "Clouds", "base": "black",
+    {"id": "clouds", "label": "Clouds", "base": "black", "dials": FRACTAL_DIALS,
      "note": "Fractal noise, coarse and slowly boiling: whole billows open out of nothing on the "
              "hit and close again."},
-    {"id": "smoke", "label": "Smoke", "base": "black",
+    {"id": "smoke", "label": "Smoke", "base": "black", "dials": FRACTAL_DIALS,
      "note": "Smoke billowing out of nothing on every hit until it has taken the whole frame, and "
              "drawing back again \u2014 climbing as it goes, each layer at its own speed."},
     {"id": "wipe", "label": "Wipe", "base": "black",
      "note": "A band of light falling down the frame on every hit \u2014 a straight gradient, no "
              "texture: white at its middle, black either side of it."},
-    {"id": "fall", "label": "Fall", "base": "black",
+    {"id": "fall", "label": "Fall", "base": "black", "dials": FRACTAL_DIALS,
      "note": "Smoke's own field, carried down the frame by a front instead of sitting still \u2014 "
              "it gathers at the ceiling and leaves by the floor."},
-    {"id": "veins", "label": "Veins", "base": "black",
+    {"id": "veins", "label": "Veins", "base": "black", "dials": FRACTAL_DIALS,
      "note": "Ridged fractal noise: thick marbled filaments that swell wide on the hit and close "
              "to nothing between."},
 ]
@@ -71,6 +84,39 @@ DRAW_VERSION = 5        # bump when _frame changes shape, so an old cache is not
 
 def spec(kind: str) -> dict:
     return BY_ID.get(str(kind or "").lower()) or PATTERNS[0]
+
+
+def dials(kind: str) -> dict:
+    """Which dials this pattern has, if any. The panel draws whatever this says, as with the
+    patterns themselves: a pattern that answers neither question is not asked."""
+    return spec(kind).get("dials") or {}
+
+
+def dial(kind: str, name: str, value=None) -> float:
+    """One dial as 0..1: what was asked for, held inside the dial, or its default."""
+    d = dials(kind).get(name) or {}
+    if value is None or value == "":
+        return float(d.get("default", 0.5))
+    return min(1.0, max(0.0, float(value)))
+
+
+SCALE_SPAN = 2.2        # how far the scale dial reaches either way, as a factor on the cell count
+BOIL_SPAN = 2.0         # the top of the boil dial, as a factor on the pattern's own rate
+
+
+def _fractal(scale: float, boil: float, cells: float, rate: float) -> tuple:
+    """A pattern's own coarseness and clock, moved by its two dials.
+
+    Both sit at 0.5, and the mapping is exact there -- 2.2 ** 0.0 and 2.0 * 0.5 are 1.0 to the last
+    bit -- so a pattern with its dials untouched draws the frames it drew before it had any. That
+    is what lets `clip` leave an untouched dial out of the cache key.
+
+    Scale runs backwards through the cell count, because a cell is a mass: fewer cells across the
+    frame is a bigger billow, so the dial reads the way the picture does and not the way the
+    lattice does. Boil is the clock the field is sampled on, and at 0 it stops -- the field holds
+    still and the beat alone opens it.
+    """
+    return cells * SCALE_SPAN ** (1.0 - 2.0 * scale), rate * BOIL_SPAN * boil
 
 
 def catalogue() -> dict:
@@ -282,7 +328,8 @@ def _cut(v: np.ndarray, cover: float, soft: float) -> np.ndarray:
     return np.clip((v - thr) / max(1e-3, soft) + 0.5, 0.0, 1.0).astype(np.float32)
 
 
-def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list) -> np.ndarray:
+def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
+           scale: float = 0.5, boil: float = 0.5) -> np.ndarray:
     """One frame as 0..1 greys, at the drawing size."""
     y, x = np.ogrid[0:h, 0:w]
     cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
@@ -438,7 +485,8 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         # Negative drift: _fbm slides each octave by -drift*z, so Smoke climbs and this falls. The
         # texture has to move with the front or the band looks like a window dragged over a field
         # that is going the other way.
-        v = _fbm(st, w, h, t * 0.05, rng, octaves=5, cells=3.0, drift=-1.1)
+        cells, rate = _fractal(scale, boil, 3.0, 0.05)
+        v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells, drift=-1.1)
         y01 = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]
         # Thicker behind the front than ahead of it, so it reads as weather arriving rather than a
         # ruled edge: the leading side is the short ramp, the trailing side the long one.
@@ -466,7 +514,8 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
         st = carry[0]
         st["t"] = t = st["t"] + 1.0
         if kind == "clouds":
-            v = _fbm(st, w, h, t * 0.055, rng, octaves=5, cells=3.0)
+            cells, rate = _fractal(scale, boil, 3.0, 0.055)
+            v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells)
             return _cut(v, 0.6 * k, 0.07)
         if kind == "smoke":
             # A pulse of it, filling the frame and drawing back. Clouds opens to 60% of the frame
@@ -478,12 +527,14 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
             # quite closed over -- the same thing that kept Circle at 88% grey.
             #
             # Stretched taller than it is wide, and drifting up: an even field reads as foam.
-            v = _fbm(st, w, h, t * 0.045, rng, octaves=5, cells=2.5, drift=1.2, tall=2.6)
+            cells, rate = _fractal(scale, boil, 2.5, 0.045)
+            v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells, drift=1.2, tall=2.6)
             # A wide soft edge, where Clouds takes a narrow one. The threshold IS the silhouette
             # here, so a sharp cut gives torn paper and a wide one gives something with air in it --
             # the difference between blobs and smoke, at the same coverage.
             return _cut(v, min(1.0, 1.2 * k), 0.13)
-        v = _fbm(st, w, h, t * 0.06, rng, octaves=4, cells=3.0, ridged=True)
+        cells, rate = _fractal(scale, boil, 3.0, 0.06)
+        v = _fbm(st, w, h, t * rate, rng, octaves=4, cells=cells, ridged=True)
         return _cut(v, 0.35 * k, 0.07)
     # rings: the same fronts, drawn as light rather than used as a window
     carry[:] = [c for c in ((pos + 0.03, lvl * 0.93) for pos, lvl in carry) if c[0] < 1.6 and c[1] > 0.02]
@@ -497,7 +548,7 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list)
 
 def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int = 768,
          frames: int = 124, fps: float = 24.0, env: list | None = None, amount: float = 1.0,
-         seed: int = 0, invert: bool = False, **sound) -> dict:
+         seed: int = 0, invert: bool = False, scale=None, boil=None, **sound) -> dict:
     """One pulse layer, written under a name that says what is in it.
 
     The envelope can be handed in -- the panel has already drawn it for you to look at -- or asked
@@ -513,8 +564,17 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
     signal = list(env) if env else envelope(frames, fps, seed=seed, **sound)
     signal = [float(v) for v in signal[:frames]] + [0.0] * max(0, frames - len(signal))
 
+    asked = {"scale": scale, "boil": boil}
+    vals = {n: dial(p["id"], n, asked.get(n)) for n in dials(p["id"])}
+    # Only a dial that has been moved goes into the name. A pattern at its defaults draws exactly
+    # the frames it drew before it had dials (see _fractal), so every clip already on disk is still
+    # the right answer to the question being asked -- and a cache is only worth having if asking
+    # the same thing twice finds it.
+    moved = "".join(f"|{n}{vals[n]:.3f}" for n in sorted(vals) if vals[n] != dial(p["id"], n))
+
     sig = hashlib.sha1(json.dumps([round(v, 3) for v in signal]).encode()).hexdigest()[:8]
-    key = f"{p['id']}|{width}x{height}|{frames}|{fps:.4f}|{amount:.3f}|{int(seed)}|{sig}|{int(invert)}|{DRAW_VERSION}"
+    key = (f"{p['id']}|{width}x{height}|{frames}|{fps:.4f}|{amount:.3f}|{int(seed)}|{sig}"
+           f"|{int(invert)}|{DRAW_VERSION}{moved}")
     out = dest_dir / f"pulse-{p['id']}-{hashlib.sha1(key.encode()).hexdigest()[:6]}.mp4"
     if not (out.is_file() and out.stat().st_size):
         dw, dh = _draw_size(width, height)
@@ -534,7 +594,7 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
         carry: list = []
         try:
             for i in range(frames):
-                g = _frame(p["id"], signal[i], dw, dh, amount, rng, carry)
+                g = _frame(p["id"], signal[i], dw, dh, amount, rng, carry, **vals)
                 # Upside down: what was light at the hit is dark, and what was nothing at rest is
                 # everything. Since a pattern drawn on black is its own alpha, inverting it inverts
                 # that too -- the layer is fully there between hits and is punched out on them. The
@@ -553,7 +613,8 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
     return {"path": str(out), "name": out.name, "pattern": p["id"], "label": p["label"],
             "base": ("white" if invert else p["base"]), "invert": bool(invert),
             "width": width, "height": height, "frames": frames,
-            "fps": round(fps, 3), "amount": round(amount, 3), "env": [round(v, 3) for v in signal]}
+            "fps": round(fps, 3), "amount": round(amount, 3), "env": [round(v, 3) for v in signal],
+            "dials": {n: round(v, 3) for n, v in vals.items()}}
 
 
 PREVIEW_W, PREVIEW_H, PREVIEW_FRAMES, PREVIEW_BPM = 256, 144, 48, 120.0

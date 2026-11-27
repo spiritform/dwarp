@@ -392,6 +392,17 @@ def build_app() -> FastAPI:
         """Presets (drawn on first use: ready is false until they're on disk) and the user's own masks."""
         return shapelib.listing()
 
+    @app.post("/api/shapes/draw")
+    async def shapes_draw(request: Request):
+        """One library preset at a speed and a density of your own. Named after what was asked for,
+        so going back to a setting you liked is a stat() rather than a draw."""
+        body = await request.json()
+        try:
+            return await asyncio.to_thread(shapelib.draw, str(body.get("preset") or ""),
+                                           speed=body.get("speed"), density=body.get("density"))
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail=f"could not draw that shape: {exc}") from None
+
     @app.post("/api/shapes/upload")
     async def shapes_upload(request: Request, filename: str = "mask.png"):
         suffix = Path(filename).suffix.lower()
@@ -1040,7 +1051,10 @@ def build_app() -> FastAPI:
                 bpm=float(body.get("bpm", 120.0)), division=float(body.get("division", 1.0)),
                 audio=str(body.get("audio") or ""), band=str(body.get("band") or "all"),
                 start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)),
-                drift=float(body.get("drift", 0.0)))
+                drift=float(body.get("drift", 0.0)),
+                # Left out = that pattern's own default, which is not the same number for all of
+                # them: pulse.dial decides, so this does not hold a second copy of it.
+                scale=body.get("scale"), boil=body.get("boil"))
         except (TypeError, ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail=f"could not make the pulse: {exc}") from None
 

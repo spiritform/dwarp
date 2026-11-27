@@ -635,7 +635,7 @@
   .embrow select.model { flex: 1; min-width: 0; }
   .embrow #embedVer { flex: none; width: 92px; }
   .embrow #embedVer[hidden] { display: none; }
-  #cnSel[hidden], #loraBox[hidden], #embedBox[hidden] { display: none; }
+  #cnSel[hidden], #loraBox[hidden], #embedBox[hidden], #shapeDials[hidden] { display: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -1420,6 +1420,7 @@
     <div class="card-head" title="A mask picture or video (white = the subject) that steers where things are and how they move, apart from the clip"><span class="title">Shape</span><span class="sum" id="sum_shape"></span><a id="shapeLibBtn" class="randlink" title="Shape library: ready-made black / white masks and loops to try (QR Code Monster loves them), and your own">library</a><span class="chev">▾</span></div>
     <div class="card-body">
     <div id="shapeSlot"></div>
+    <div id="shapeDials"></div>
     <input type="file" id="shapeFile" accept="image/*,video/*" hidden>
     <div id="shapeCtl">
       <div class="slider" style="margin-top:10px">
@@ -3190,11 +3191,24 @@ function pulseLoop(L, frames, fps) {
   }
   return frames;
 }
+// Which dials this pattern has, and where one of them is sitting. The engine's list says, the
+// same way it says which patterns there are at all: a pattern that is not made of fractal noise
+// has no scale and no boil, and is not asked about either.
+function pulseSpec(kind) {
+  return PULSE_PATTERNS.find(p => p.id === kind)
+      || { id: kind || '', label: kind || '', dials: null };
+}
+function pulseDials(L) { return (L && L.pulse && pulseSpec(L.pulse).dials) || null; }
+function pulseDial(L, k) {
+  const d = (pulseDials(L) || {})[k];
+  return L && L[k] != null ? L[k] : (d ? d.default : 0.5);
+}
 function pulseBody(L) {
   const b = maskBody(L.pulse);
   return { kind: L.pulse, width: b.width, height: b.height, frames: pulseLoop(L, b.frames, b.fps), fps: b.fps,
            amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
-           invert: !!L.pinvert, seed: L.seed || 0, drift: L.drift || 0 };
+           invert: !!L.pinvert, seed: L.seed || 0, drift: L.drift || 0,
+           scale: pulseDial(L, 'scale'), boil: pulseDial(L, 'boil') };
 }
 async function makePulse(kind, at = -1) {
   try {
@@ -3503,7 +3517,8 @@ $('layers').addEventListener('pointerdown', e => {
     L[k] = v;
     // The tile keeps up with the number under your hand; the clip itself is redrawn after.
     if (k === 'bpm') pulseRate(+which);
-    if (k === 'amount' || k === 'bpm' || k === 'drift') return needPulse(+which);   // a different picture, not a blend
+    if (k === 'amount' || k === 'bpm' || k === 'drift'
+        || (beats(L) && (k === 'scale' || k === 'boil'))) return needPulse(+which);   // a different picture, not a blend
     // Noise is generated under your hand: there is no file to redraw, so the tile and the stage
     // both move with the number instead of a third of a second behind it.
     if (k === 'grain' || k === 'scale' || k === 'level') { noiseTiles(); needPaint(); needPlate(); pushLayers(); return; }
@@ -3946,6 +3961,15 @@ function beatRow(i, L) {
         ways.map(([v, lbl, tip]) => `<button data-b="${v}"${at === v ? ' class="on"' : ''} title="${tip}">${lbl}</button>`).join('')}</div>
       <div class="bl">${line}</div></span>`;
 }
+// What the noise a pulse is made of looks like, for the patterns that are made of noise: how big
+// its masses are, and how fast it churns under the beat. Two halves of one row, because they are
+// the same question asked of space and of time.
+function pulseRow(i, L) {
+  const d = pulseDials(L);
+  if (!d) return '';
+  return `<span class="beat"><div class="bl">${
+    Object.keys(d).map(k => dial(i, k, d[k].label, pulseDial(L, k), d[k].note, '', 's2')).join('')}</div></span>`;
+}
 function renderLayers() {
   $('layersBox').hidden = !layersOn();
   if (!layersOn()) return;
@@ -3977,7 +4001,7 @@ function renderLayers() {
       ? (L.noise ? noiseRow(i, L) : '')
       : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
             title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
-      : beatRow(i, L);
+      : beatRow(i, L) + pulseRow(i, L);
     const bottom = own + (L.matte && !L.mask
       ? `<span class="beat"><div class="bl">${levels(i, L)}</div></span>` : '');
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
@@ -4053,7 +4077,15 @@ function needPlate(now) {
   // Text -> Video has nothing to flatten the stack onto. The frame it is laid over is the one
   // being painted, so the composite belongs to the engine and happens frame by frame; there is no
   // plate to make and nothing on the stage for one to be. The layer's own tile plays the beat.
-  if (state.t2v && !stillBase() && !t2vPicture()) { PLATE = null; PLATE_WANT = ''; return; }
+  if (state.t2v && !stillBase() && !t2vPicture()) {
+    const had = !!PLATE;
+    PLATE = null; PLATE_WANT = '';
+    // It was the picture a moment ago and the stage was showing it. With nothing to start from
+    // there is nothing for the Source tab to be, so it goes back to the placeholder rather than
+    // holding a still of a stack that is an overlay again.
+    if (had && !viewRun && view === 'src') clearStage();
+    return;
+  }
   const want = plateKey();
   if (want === PLATE_WANT) return;
   PLATE_WANT = want;
@@ -4417,7 +4449,15 @@ $('layers').addEventListener('dblclick', e => {
     if (num.dataset.k === 'secs') { picSecs = NUM_DEFAULT.secs; paintNum(num, picSecs); return commitSecs(); }
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
-    if (num.dataset.k === 'amount' || num.dataset.k === 'bpm') return needPulse(+num.dataset.lv, true);
+    if (num.dataset.k === 'amount' || num.dataset.k === 'bpm' || num.dataset.k === 'drift') {
+      return needPulse(+num.dataset.lv, true);
+    }
+    // A pulse's own dials rest where its pattern rests, as a noise layer's do below.
+    if (beats(L) && (num.dataset.k === 'scale' || num.dataset.k === 'boil')) {
+      L[num.dataset.k] = pulseDial({ pulse: L.pulse }, num.dataset.k);
+      paintNum(num, L[num.dataset.k]);
+      return needPulse(+num.dataset.lv, true);
+    }
     // Scale has no one default: each kind rests where that kind looks like itself.
     if (num.dataset.k === 'scale') { L.scale = noiseScale({ nkind: L.nkind }); paintNum(num, L.scale); }
     if (num.dataset.k === 'level') { L.level = noiseLevel({ nkind: L.nkind }); paintNum(num, L.level); }
@@ -4812,6 +4852,47 @@ function styleRefJob(mode = state.mode) {    // the job's style-ref fields (empt
 // frame to frame. The engine also has a depth-hint pull and a follow-the-blob move, off here. Text mode
 // also starts every frame black outside the mask (the engine's Nudge at full), so the subject stays contained
 var SHAPE_SLIDERS = ['shapeRepaint', 'shapeBlur', 'shapeOpacity', 'shapeIllu'];
+// A library preset is a recipe, not a picture: it can be drawn again at another speed or another
+// density. A mask of your own is a file and has neither, so the row is not there for it. What the
+// dials are called and how far they go comes from the engine with the listing, the same way the
+// patterns themselves do -- a spiral has turns, a sunburst has spokes, and a gradient has nothing
+// to count.
+function shapeDials() { return (state.shape && state.shape.preset && state.shape.dials) || null; }
+function shapeDialAt(k) {
+  const d = (shapeDials() || {})[k];
+  return state.shape[k] != null ? +state.shape[k] : (d ? d.default : 1);
+}
+// The number as it reads: a count is a count, and only the ones that move in fractions show them.
+function shapeDialText(v) { return (+v % 1 ? (+v).toFixed(2).replace(/0$/, '') : String(+v)); }
+function shapeDialRow(k, d) {
+  const v = shapeDialAt(k);
+  return `<div class="slider"><div class="slider-head"><b title="${d.note}">${
+      d.label.charAt(0).toUpperCase() + d.label.slice(1)}</b><span data-sdv="${k}">${
+      shapeDialText(v)}</span></div>
+    <input type="range" data-sd="${k}" min="${d.min}" max="${d.max}" step="${d.step || 0.5}" value="${v}"></div>`;
+}
+// Moving one draws the file again, so it waits for your hand to come off the slider rather than
+// running ffmpeg on every pixel of the drag.
+var shapeDrawAt = 0;
+async function redrawShape() {
+  const sh = state.shape, d = shapeDials();
+  if (!sh || !d) return;
+  const want = ++shapeDrawAt;
+  try {
+    setStatus('drawing the shape…', 'live');
+    const r = await api('/api/shapes/draw', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ preset: sh.preset, speed: sh.speed, density: sh.density }) });
+    if (state.shape !== sh || want !== shapeDrawAt) return;    // the shape moved on while it drew
+    Object.assign(sh, { path: r.path, name: r.name, frames: r.frames, fps: r.fps,
+                        speed: r.speed, density: r.density, dials: r.dials || sh.dials });
+    // A new length means the in / out is about frames that may not be there any more.
+    state.shapeRange = [0, 1]; shapeFrame = 0;
+    renderShape(); paintSums(); save(); shapeChanged();
+    setStatus(`${r.name} · ${r.video ? r.frames + ' frames' : 'still'}`, 'done');
+  } catch (e) {
+    setStatus('could not draw that shape: ' + e.message, 'bad');
+  }
+}
 function renderShape() {
   const sh = state.shape, box = $('shapeSlot');
   const thumb = (f = 0) => sh.video ? `/api/video/thumbnail?${qs({ path: sh.path, frame: f })}` : `/api/image/file?${qs({ path: sh.path })}`;
@@ -4825,6 +4906,9 @@ function renderShape() {
          ${Array.from({ length: 8 }, (_, i) => `<img class="fx" src="${thumb(Math.floor((i + .5) / 8 * (n - 1)))}" alt="">`).join('')}
          <div class="shade l" style="left:0"></div><div class="sel"><div class="h l"></div><div class="h r"></div></div><div class="shade r" style="right:0"></div></div>` : ''}</div>`
     : `<div class="clip-empty" title="A mask: white where the subject goes (a colour video works too: its brightness is the mask). A video animates it: mask frame N steers render frame N. Click, or drop one here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>upload mask · image or video</div>`;
+  const dl = shapeDials();
+  $('shapeDials').hidden = !dl;
+  $('shapeDials').innerHTML = dl ? Object.keys(dl).map(k => shapeDialRow(k, dl[k])).join('') : '';
   $('shapeCtl').hidden = !sh;
   $('shapeBgBox').hidden = !state.t2v;                     // Video: the background is the clip
   const il = modeCfg().illusion;                             // QR Code Monster: SD 1.5 / SDXL, when its file is there
@@ -4917,8 +5001,14 @@ $('shapeSlot').onclick = e => {
   if (e.target.closest('.clip-thumb, .clip-empty')) $('shapeFile').click();
 };
 async function setShape(res, video) {
-  const sh = { path: res.path, name: res.name, video, frames: 1, fps: 24 };
-  if (video) {
+  const sh = { path: res.path, name: res.name, video, frames: res.frames || 1, fps: res.fps || 24 };
+  // A library preset carries the recipe it was drawn from, so the card can draw it again at
+  // another speed or density. Its length comes with it too, which saves the probe below.
+  if (res.preset) {
+    Object.assign(sh, { preset: res.preset, dials: res.dials || null,
+                        speed: res.speed, density: res.density });
+  }
+  if (video && !res.frames) {
     try { const pr = await api(`/api/video/probe?${qs({ path: res.path })}`); sh.frames = pr.source.frames || 1; sh.fps = pr.source.fps || 24; } catch {}
   }
   state.shape = sh; state.shapeRange = [0, 1]; shapeFrame = 0; renderShape(); save(); setStatus('shape set');
@@ -4968,6 +5058,13 @@ function uploadShape(file) {
     .then(res => setShape(res, !res.image))
     .catch(e => setStatus('shape upload failed: ' + e.message, 'bad'));
 }
+$('shapeDials').addEventListener('input', e => {
+  const k = e.target.dataset.sd; if (!k || !state.shape) return;
+  state.shape[k] = +e.target.value;
+  const read = $('shapeDials').querySelector(`[data-sdv="${k}"]`);
+  if (read) read.textContent = shapeDialText(+e.target.value);
+});
+$('shapeDials').addEventListener('change', e => { if (e.target.dataset.sd) { save(); redrawShape(); } });
 $('shapeFile').onchange = e => { uploadShape(e.target.files[0]); e.target.value = ''; };
 $('shapeSlot').addEventListener('dragover', e => e.preventDefault());
 $('shapeSlot').addEventListener('drop', e => {
@@ -5054,7 +5151,10 @@ function paintSums() {
        layers().some(L => L.matte) && 'matted',
        drawnLayers().filter(L => L.mode && L.mode !== 'normal').map(L => L.mode)[0]]
       .filter(Boolean).join(' · '));
-  set('shape', state.shape ? `${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
+  const shd = shapeDials() || {};
+  const shDial = Object.keys(shd).filter(k => shapeDialAt(k) !== shd[k].default)
+    .map(k => `${shd[k].label} ${shapeDialText(shapeDialAt(k))}`).join(' · ');
+  set('shape', state.shape ? `${shDial ? shDial + ' · ' : ''}${state.shapeLoop && state.shape.video ? 'loop · ' : ''}${state.shapeInvert ? '◐ · ' : ''}${state.shapeFit && state.shapeFit !== 'stretch' ? state.shapeFit + ' · ' : ''}repaint ${(+(state.shapeRepaint ?? 1)).toFixed(2)}${shapeBg() ? ' · background' : ''}${state.shapeBlur ? ` · blur ${state.shapeBlur}` : ''}${(state.shapeOpacity ?? 1) < 1 ? ` · ${Math.round(state.shapeOpacity * 100)}%` : ''}${state.shapeIllu > 0 && (modeCfg().illusion?.have || modeCfg().illusion?.fetch) ? ` · QR ${(+state.shapeIllu).toFixed(2)}` : ''}` : '');
   set('render', adOn() ? `${(+state.style).toFixed(2)} · Motion ${adProfile().label}${motionLora() ? ' · ' + loraName(MOTION.loras.find(m => m.path === motionLora())?.name || '') : ''}` :
     (+state.style).toFixed(2) + (rampOn() ? ` → ${(+state.styleEnd).toFixed(2)}` : '') + (state.edgePad ? ' · padded' : '') + (state.t2v ? ` · lock ${(+state.frameLock).toFixed(2)}` : state.fresh ? ' · Boil' : ` · lock ${(+state.frameLock).toFixed(2)} · Warp · mix ${(+state.srcMix).toFixed(2)}`));
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
@@ -5946,8 +6046,14 @@ function renderSize() {
 // Source and Diff are about the input: they scrub the whole clip, run or no run. Output / Split /
 // Depth / Edge are about a run and scrub its frames.
 function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view === 'src' || view === 'mask'); }
-// Image -> Video with no run on show: the picture is the source (Source / live Diff), at render size
-function picMode() { return state.t2v && state.i2v && !!state.image && !viewRun; }
+// A single picture is the source, with no clip under it and no run on show: the Source tab and the
+// live Diff both read it at render size. There are two ways to have one, and they are the same
+// thing to everything downstream -- a picture dropped into Image -> Video, or a Text -> Video stack
+// that covers the frame and so is the picture in its own right. The second only counts once its
+// flatten has landed, because until then there is no file for the stage to show.
+function picMode() {
+  return state.t2v && !viewRun && ((state.i2v && !!state.image) || (t2vPicture() && !!PLATE));
+}
 // The picture the render starts from: the plate when there is a stack over it, the picture itself
 // when there is not. One place, so the stage, the live Diff and the job cannot disagree.
 function picSource() {
@@ -8300,7 +8406,11 @@ $('shapeLib').addEventListener('click', async e => {
   }
   const video = !!card.dataset.video;
   if (video && SL.tab === 'presets') state.shapeLoop = true;   // the preset loops are made to loop
-  await setShape({ path, name: card.dataset.name }, video);
+  // The entry, not just the card: a preset's recipe and its dials came with the listing and are
+  // too much to hang off a data attribute.
+  const ent = (SL.data.presets || []).find(x => x.path === path) || {};
+  await setShape({ path, name: card.dataset.name, preset: ent.preset, dials: ent.dials,
+                   frames: ent.frames, fps: ent.fps }, video);
   setStatus(`shape: ${card.dataset.name}`, 'done');
   toggleShapeLib(false);
 });
