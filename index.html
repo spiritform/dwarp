@@ -550,14 +550,13 @@
   #layers .lay.off .tile, #layers .lay.off .dials, #layers .lay.off select,
   #layers .lay.off .ctl, #layers .lay.off .beat, #layers .lay.off .nm { opacity: .38; }
   #layerAdds { display: flex; gap: 6px; margin-bottom: 12px; }
-  #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 10px; font-size: 11px; background: #25242b;
-    display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px;
+  #layerAdds .clip-empty { flex: 1; min-width: 0; padding: 8px 6px; font-size: 11px; background: #25242b;
+    display: flex; align-items: center; justify-content: center;
     border-radius: var(--radius); color: var(--dim); cursor: pointer; white-space: nowrap; }
   #layerAdds .clip-empty:hover { background: #2d2c33; color: var(--text); }
   /* An explicit display beats the browser's own [hidden] rule, so hiding one of these has to say
      so here: "add audio" is taken away over a still source, and used to stay anyway. */
   #layerAdds .clip-empty[hidden] { display: none; }
-  #layerAdds .clip-empty svg { width: 13px; height: 13px; }
   body.runDrag #layers, body.dragging #layers { background: rgba(255,106,61,.14); border-radius: var(--radius); }
   .cloudnote { color: var(--faint); font-size: 11px; margin: 10px 0 0; line-height: 1.5; }
   .cloudnote b { color: #c9c7cf; font-weight: 500; }
@@ -590,11 +589,6 @@
   #layers .beat .bl .s3 { grid-column: span 3; }
   #layers .beat .bl .s4 { grid-column: 1 / -1; }
   #layers .beat .bl select { margin-top: 0; }
-  /* The metronome: it ticks, so it is square and sits at the end of the line it paces. */
-  #layers .beat .bl .metro { display: flex; align-items: center; justify-content: center;
-                             padding: 0; }
-  #layers .beat .bl .metro svg { width: 15px; height: 15px; }
-  #layers .beat .bl .metro.on { color: var(--accent); }
   #layers .beat .bl .snd { display: flex; align-items: center;
                            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The levels bar is the one thing that wants the whole width: three numbers on one track. */
@@ -1336,10 +1330,11 @@
     <div class="card-head" title="Stack the sources into one picture before any of it is uploaded: a blend mode, an opacity, and a black and white layer that can act as a luma matte for the layer below it"><span class="title">Layers</span><span class="sum" id="sum_layers"></span><span class="chev">▾</span></div>
     <div class="card-body">
     <div id="layerAdds">
-      <div class="clip-empty slim" data-add="video" title="Another source on the stack: a video or a picture — click, drop a file, or drag a run in off the strip. A picture holds still under everything that moves over it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>add media</div>
-      <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>add matte</div>
-      <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h2M9 7h3M15 7h5M4 12h4M11 12h2M16 12h4M4 17h3M10 17h6M19 17h1"/></svg>add noise</div>
-      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer drawn to sound — paced by the clip, by a speed you set, or by a track you load. Some of its patterns hit on the beat and some drift with it. It lands on the stack like any other clip, so the blend mode decides how it reads."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>add audio</div>
+      <div class="clip-empty slim" data-add="video" title="Another source on the stack: a video or a picture — click, drop a file, or drag a run in off the strip. A picture holds still under everything that moves over it">Media</div>
+      <div class="clip-empty slim" data-add="solid" title="One flat level, the whole frame — black, white, or any grey between. Nothing to load and nothing drawn to a file: it is filled in as each frame is composited. The thing to put at the bottom when there is no clip to stand on, so noise or a pulse has something to be over.">Solid</div>
+      <div class="clip-empty slim" data-add="matte" title="A black and white pattern, drawn here at this render's size and length, to matte the layer below it">Matte</div>
+      <div class="clip-empty slim" data-add="noise" title="Monochrome static, made here at this render's size and length. Not the same lever as Denoise: this changes the pixels the model is looking at, and the warp carries the grain forward into the next frame. Use the layer's blur to turn static into clouds.">Noise</div>
+      <div class="clip-empty slim" id="addPulse" data-add="pulse" title="A layer drawn to sound — paced by the clip, by a speed you set, or by a track you load. Some of its patterns hit on the beat and some drift with it. It lands on the stack like any other clip, so the blend mode decides how it reads.">Audio</div>
     </div>
     <div id="layers"></div>
     </div></div>
@@ -3143,7 +3138,7 @@ function paintNoiseLib() {
         <b>soft light</b> leave the picture alone until the layer's <b>grain</b> opens it either
         side of that; the kinds made of something bigger than a pixel take a <b>size</b> too.</div>
       <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
-    </div><div class="sl-grid">${NOISE_PATTERNS.map(card).join('')}</div>`;
+    </div><div class="sl-grid">${NOISE_PATTERNS.filter(p => !p.level).map(card).join('')}</div>`;
   playTiles($('maskLib'));
   $('mlClose').onclick = () => toggleMaskLib(false);
 }
@@ -3171,6 +3166,14 @@ function beatAudio(L) {
 // fronts travelling from earlier hits; Clouds, Smoke, Veins and Fall run a clock of their own and
 // would visibly repeat. Drift is excluded by definition -- making each hit different is its job.
 const LOOP_OK = ['flash', 'bloom', 'blocks', 'circle', 'wipe'];
+// The same split, for the same reason, asked the other way round: the seed is only read where
+// something is drawn from it -- Grain's static and Burst's, which cells of the Grid light, where
+// the Slabs fall, and the fractal fields under Clouds, Smoke, Fall and Veins. Flash, Bloom,
+// Blocks, Circle, Wipe and Rings are the same picture at every seed, because the shape IS the
+// envelope; offering a die there is a button that does nothing. Drift is the exception that puts
+// it back: it picks where each hit lands out of this seed, whatever is being drawn.
+const SEEDED = ['grain', 'burst', 'grid', 'slabs', 'clouds', 'smoke', 'fall', 'veins'];
+function seedUsed(L) { return SEEDED.includes(L.pulse) || (beatAt(L) === 'bpm' && (L.drift || 0) > 0); }
 function pulseLoop(L, frames, fps) {
   if (!LOOP_OK.includes(L.pulse) || L.drift > 0 || beatAt(L) !== 'bpm') return frames;
   const step = 60 / Math.max(1, L.bpm || 120) / Math.max(0.125, L.division || 1);
@@ -3323,8 +3326,10 @@ function layerDefaults(L) {
   if (d.noise) {
     d.path = '';
     if (d.scale == null) d.scale = noiseScale(d);
+    if (d.level == null) d.level = noiseLevel(d);
     if (!d.name || /\.(mp4|mov|webm)$/i.test(d.name)) {
-      d.name = 'noise \u00b7 ' + ((noiseSpec(d.nkind) || {}).label || 'static');
+      d.name = noiseFlat(d) ? ((noiseSpec(d.nkind) || {}).label || 'solid').toLowerCase()
+                            : 'noise \u00b7 ' + ((noiseSpec(d.nkind) || {}).label || 'static');
     }
   }
   return d;
@@ -3373,18 +3378,63 @@ function stillLen() {
 // A pulse is a pulse whether it is drawn or used as a matte: making it a matte changes what
 // the picture is FOR, not what the picture does. It still beats, so it still has a beat.
 function beats(L) { return !!(L && L.pulse); }
+// A layer that is `normal` at full opacity with nothing matting it COVERS the frame: nothing
+// below it, and nothing it is laid over, can show through. That is only a statement about
+// compositing until you ask what it is laid over -- and in Text -> Video that is the painting so
+// far. So a layer like this does not sit on the render, it throws the render away and puts itself
+// there instead, every frame, and the paint never gets to build. Which is the proof that it was
+// never an overlay: it is the picture.
+function coversFrame(L) {
+  return !L.hidden && !L.matte && L.mode === 'normal' && (L.opacity ?? 1) >= 1;
+}
+// The stack cut in two where it stops being an overlay: [the picture, what goes over it].
+//
+// Everything from the bottom up to and including the TOPMOST covering layer is the picture. It is
+// flattened once into frame 1 and the render carries on from it, the way Image -> Video starts
+// from a still -- which is what that stack was always describing. Only what sits above the
+// coverer stays a stack, composited onto every frame as it is painted, so a pulse over an opaque
+// picture still beats on every frame instead of being baked into the first one.
+//
+// Not a mode and not a switch, because it is a tautology: if it covers, there is nothing for it to
+// be over. Take a point off its opacity, give it any blend but normal, or matte it, and it goes
+// back to being an overlay -- the paint shows through again, so there is something to be over.
+// Nowhere else: in Video mode the clip is the bottom of the stack and the picture is never in
+// question, and Image -> Video already has a still to flatten onto.
+function t2vSplit() {
+  const st = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L)).filter(L => !L.hidden);
+  if (!state.t2v || isH3() || stillBase()) return [[], st];
+  for (let i = 0; i < st.length; i++) {
+    // The panel is topmost-first and a matte belongs to the layer directly below it, so a matte at
+    // i - 1 punches holes in this one and it does not cover after all. Scanned from the top down,
+    // the first one that survives both tests is the one with nothing above it that matters.
+    if (st[i].matte || !coversFrame(st[i]) || (i > 0 && st[i - 1].matte)) continue;
+    return [st.slice(i), st.slice(0, i)];
+  }
+  return [[], st];
+}
+// Is the stack in Text -> Video a picture rather than an overlay? The one question the rest of the
+// page asks of the split.
+function t2vPicture() { return t2vSplit()[0].length > 0; }
+// What the RENDER composites, frame by frame: the whole stack, or -- once the stack has become a
+// picture -- only what is left over the top of it.
 function layerJob() {
   const b = baseLayer(), plain = b.opacity === 1 && !b.blur;
   if (!layersOn()) return [];
   // An eye that is off takes the layer out of the job, which is the only list anything reads:
   // the live preview, the server's plate and the render all come through here.
-  const stack = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L)).filter(L => !L.hidden);
+  const stack = t2vSplit()[1];
   if (!stack.length && plain) return [];   // all of them hidden is the clip on its own, not a flatten
   const src = baseSrc();
   if (src) stack.push({ path: src.path, mode: 'normal', matte: false,
                         opacity: b.opacity, blur: b.blur });
   const drawn = stack.filter(L => !L.matte);
   return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
+}
+// What gets FLATTENED: the picture half in Text -> Video, and everywhere else the same list the
+// render reads, because there the plate and the stack are the same thing.
+function plateJob() {
+  const pic = t2vSplit()[0];
+  return pic.length ? pic : layerJob();
 }
 // The grey handle sits where it does because of what it means: an input at that point comes out
 // half way, which is exactly the gamma the engine's lut is built from. So its position is
@@ -3411,7 +3461,7 @@ function paintNum(el, v) {
 // A length while the picture has none: there is no still to keep it on until it has one.
 var picSecs = 0;
 function secsNow() { return stillClip() ? stillSecs() : picSecs; }
-const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, grain: 1, bpm: 120, drift: 0, secs: STILL_SECS };
+const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount: 1, grain: 1, level: 0, bpm: 120, drift: 0, secs: STILL_SECS };
 // Most of these are 0..1 shown as a percentage. Two are not: a count in beats per minute, and a
 // length in seconds whose floor is "none at all", which is what a picture being animated looks
 // like. One table, so a box only has to say which of them it is.
@@ -3452,7 +3502,7 @@ $('layers').addEventListener('pointerdown', e => {
     if (k === 'amount' || k === 'bpm' || k === 'drift') return needPulse(+which);   // a different picture, not a blend
     // Noise is generated under your hand: there is no file to redraw, so the tile and the stage
     // both move with the number instead of a third of a second behind it.
-    if (k === 'grain' || k === 'scale') { noiseTiles(); needPaint(); needPlate(); pushLayers(); return; }
+    if (k === 'grain' || k === 'scale' || k === 'level') { noiseTiles(); needPaint(); needPlate(); pushLayers(); return; }
     if (k === 'blur' || k === 'opacity') paintTileFx();            // the tile softens as you drag
     needPaint(); needPlate(); pushLayers();
   };
@@ -3463,6 +3513,10 @@ $('layers').addEventListener('pointerdown', e => {
     el.removeEventListener('pointercancel', up);
     try { el.releasePointerCapture(e.pointerId); } catch {}
     if (moved && k === 'secs') return commitSecs();
+    // Drift is the one dial that decides whether another control is there at all: on a pattern
+    // that draws nothing from the seed, the die is only worth offering once the hits are loose.
+    // Redrawn on release rather than under the hand, so the box being dragged stays put.
+    if (moved && k === 'drift' && !SEEDED.includes(L.pulse)) renderLayers();
     if (moved) { paintSums(); save(); }
   };
   el.setPointerCapture(e.pointerId);
@@ -3498,8 +3552,6 @@ $('layers').addEventListener('click', e => {
     renderLayers(); save(); needPulse(i, true);
     return;
   }
-  const met = e.target.closest('[data-metro]');
-  if (met) { const i = +met.dataset.metro; METRO.at === i ? metroStop() : metroStart(i, met); }
 });
 // Which pulse layer asked for a sound, remembered until the picker answers.
 var PULSE_AT = -1;
@@ -3654,6 +3706,13 @@ function noiseSpec(kind) {
   return NOISE_PATTERNS.find(p => p.id === (kind || 'static'))
       || (NOISE_PATTERNS.length ? NOISE_PATTERNS[0] : { id: kind || 'static', label: kind || 'static', scale: null });
 }
+// How light a flat layer is. Black: a solid is the floor of a stack far more often than the
+// ceiling, and white over nothing is the one that looks like something has gone wrong.
+function noiseLevel(L) {
+  const p = noiseSpec(L.nkind);
+  return L.level != null ? L.level : (p && p.level ? p.level.default : 0);
+}
+function noiseFlat(L) { return !!(noiseSpec(L.nkind) || {}).level; }
 // Each kind rests where that kind looks like itself: cells at blocks, lines at hairlines.
 function noiseScale(L) {
   const p = noiseSpec(L.nkind);
@@ -3748,14 +3807,21 @@ function noiseFrame(L, n, w, h) {
   if (w < 2 || h < 2) return null;
   const kind = (noiseSpec(L.nkind) || { id: 'static' }).id;
   const grain = L.grain == null ? 1 : L.grain, scale = noiseScale(L), seed = L.seed | 0;
-  const at = Math.max(0, n | 0);
-  const key = [kind, grain, scale, seed, at, w, h].join('|');
+  const flat = noiseFlat(L), level = noiseLevel(L);
+  // A flat layer is the same frame every frame, so it is not keyed by which one: one draw serves
+  // the whole clip instead of filling the cache with copies of itself.
+  const at = flat ? 0 : Math.max(0, n | 0);
+  const key = [kind, grain, scale, seed, at, w, h, flat ? level : 0].join('|');
   const got = noiseCache.get(key);
   if (got) return got;
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   cv.src = key;                      // matteAlpha keys its cache off .src, as it does for an <img>
-  if (kind === 'clouds') {
+  if (flat) {
+    const v = Math.round(Math.min(1, Math.max(0, level)) * 255), x = cv.getContext('2d');
+    x.fillStyle = `rgb(${v},${v},${v})`;
+    x.fillRect(0, 0, w, h);
+  } else if (kind === 'clouds') {
     noiseClouds(cv, L, at, w, h);
   } else if (kind === 'static') {
     noiseLattice(seed, at, w, h, grain, cv);     // per-pixel: the lattice is the frame
@@ -3796,6 +3862,11 @@ function noiseTiles() {
 // which of those it has, so the panel only asks what this kind can answer.
 function noiseRow(i, L) {
   const p = noiseSpec(L.nkind), sc = p && p.scale;
+  // A solid has no grain to swing and nothing it is made of: how light it is, and that is all.
+  if (p && p.level) {
+    return `<span class="beat"><div class="bl">${
+      dial(i, 'level', p.level.label, noiseLevel(L), p.level.note, '', 'wide')}</div></span>`;
+  }
   return `<span class="beat"><div class="bl">${
     dial(i, 'grain', 'grain', L.grain == null ? 1 : L.grain,
       'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static',
@@ -3833,47 +3904,6 @@ function dial(i, k, label, v, title, unit = '', cls = '') {
 // about. Two of them read their timing out of a track; the third is a number you set. A source
 // with no track in it cannot be one of them, which the probe below settles.
 function clipAudio() { return !!(state.clip && state.clip.source && state.clip.source.audio); }
-// A number is not a tempo until you can hear it, so the speed can be tapped out loud: a click at
-// the rate the layer is set to, scheduled on the audio clock rather than on a timer, so it does
-// not drift while the page is busy drawing. Nothing is loaded for it -- the click is an
-// oscillator with a very short envelope, which is all a metronome has ever been.
-var METRO = { at: -1, timer: null, ctx: null, next: 0, hit: 0, until: 0 };
-function metroTick(C, when, strong) {
-  const o = C.createOscillator(), g = C.createGain();
-  o.frequency.value = strong ? 1760 : 1180;
-  g.gain.setValueAtTime(0.0001, when);
-  g.gain.exponentialRampToValueAtTime(strong ? 0.5 : 0.28, when + 0.002);
-  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
-  o.connect(g).connect(C.destination);
-  o.start(when); o.stop(when + 0.07);
-}
-function metroStop() {
-  clearInterval(METRO.timer);
-  METRO.timer = null; METRO.at = -1;
-  $('layers').querySelectorAll('.metro.on').forEach(b => b.classList.remove('on'));
-}
-function metroStart(i, btn) {
-  metroStop();
-  const C = METRO.ctx || (METRO.ctx = new (window.AudioContext || window.webkitAudioContext)());
-  if (C.state === 'suspended') C.resume();
-  METRO.at = i; METRO.hit = 0;
-  METRO.next = C.currentTime + 0.08;
-  METRO.until = C.currentTime + 120;          // it is a cue, not a backing track
-  if (btn) btn.classList.add('on');
-  // Scheduled a tenth of a second ahead on each wake-up: the clock is the audio card's, and the
-  // rate is read fresh every time, so dragging the bpm box speeds the clicking up as you drag.
-  METRO.timer = setInterval(() => {
-    const L = layers()[METRO.at];
-    if (!beats(L) || (L.beat || (clipAudio() ? 'clip' : 'bpm')) !== 'bpm') return metroStop();
-    if (document.hidden || C.currentTime > METRO.until) return metroStop();
-    const step = 60 / Math.max(1, (L.bpm || 120) * (L.division || 1));
-    if (METRO.next < C.currentTime) { METRO.next = C.currentTime + 0.02; METRO.hit = 0; }
-    while (METRO.next < C.currentTime + 0.12) {
-      metroTick(C, METRO.next, METRO.hit % 4 === 0);
-      METRO.next += step; METRO.hit++;
-    }
-  }, 40);
-}
 function beatRow(i, L) {
   // The clip paces the pulse unless you say otherwise: what you are stylising is usually cut to
   // something already, and taking the timing from it is how the layer moves with the edit rather
@@ -3884,22 +3914,21 @@ function beatRow(i, L) {
   // Speed is the row; this is depth. How far each hit carries the layer, not how often one comes.
   const swing = dial(i, 'amount', 'swing', L.amount ?? 1,
     'How far a hit swings this layer — at 0 it sits at rest and nothing happens, at 100 every hit goes the whole way');
-  // The die leads and the metronome trails: one row, read left to right, with the two buttons at
-  // the ends of it rather than wrapped onto a line of their own. The die comes first because it
-  // decides every value after it; the metronome last because it only makes sense once there is a
-  // speed to tick.
-  const die = `<button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>`;
+  // The die leads, wherever the beat is coming from, so the row starts the same way on all three
+  // tabs instead of the first box moving when you switch between them. Read left to right it is
+  // which take, how fast, how hard, how loose. One line, four boxes, the card's own four columns.
+  const die = !seedUsed(L) ? '' : `<button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>`;
   // Drift belongs to the count and nowhere else: a sound has no grid to come off.
   const drift = dial(i, 'drift', 'drift', L.drift || 0,
     'How far each hit may wander off the count — at 0 it is a metronome, turned up they land early or late, with different weight, and now and then not at all');
+  // What is left of the four columns once the die has had its own, so the name of a track fills
+  // the line instead of trailing off into a gap.
+  const rest = die ? 3 : 4;
   const line = at === 'bpm'
-    ? `${die}${swing}${drift}
-       ${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'How fast it pulses, in beats per minute — drag it, double-click for 120', '', 's2')}
-       <button class="chip metro${METRO.at === i ? ' on' : ''}" data-metro="${i}"
-         title="Tick it out loud — the speed you have set, as a click, so you can judge the cue without rendering anything"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l4 18H5L9 3Z"/><path d="m12 18 5-11"/></svg></button>`
+    ? `${die}${numBox(i, 'bpm', 'bpm', L.bpm || 120, 'How fast it pulses, in beats per minute — drag it, double-click for 120')}${swing}${drift}`
     : at === 'clip'
-      ? `${die}${swing}<span class="snd s3">${state.clip.name}</span>`
-      : `${die}${swing}<span class="snd s2">${L.audioName || 'nothing loaded'}</span>
+      ? `${die}${swing}<span class="snd s${rest - 1}">${state.clip.name}</span>`
+      : `${die}${swing}<span class="snd s${rest - 2}">${L.audioName || 'nothing loaded'}</span>
          <button class="chip" data-snd="${i}" title="${L.audio ? 'Pace it by a different track' : 'Choose a track to pace it by — a sound file, or a video with sound in it'}">${
            L.audio ? 'change' : 'choose…'}</button>`;
   // Not "BPM": that is the name of the box underneath, and a tab and the value under it should
@@ -3933,7 +3962,7 @@ function renderLayers() {
     const L = layerDefaults(raw);
     // What is about the whole layer goes under the rule: a matte's levels, a pulse's beat.
     // A beat over a single frame is one frame of it. With the picture at no length the stack is
-    // flattened into frame 1 and stays there, so the speed, the swing and the metronome are all
+    // flattened into frame 1 and stays there, so the speed and the swing are both
     // controls for something that cannot happen -- and leaving them there to be tuned is the panel
     // lying. The row says what is true instead, and points at the one thing that changes it.
     // What the layer makes, and then what is done with it. These used to be one choice, so turning
@@ -4011,14 +4040,16 @@ function renderLayers() {
 // asks on every change and gets the same file back unless something actually moved.
 var PLATE = null, PLATE_WANT = '', plateTimer = null;
 function plateKey() {
-  const st = layerJob();
-  return st.length ? JSON.stringify(st) : '';
+  const st = plateJob();
+  // The picture half and the render half flatten through different endpoints at different sizes,
+  // so which half this is belongs in the key: a stack that stops covering is a different plate.
+  return st.length ? JSON.stringify([t2vPicture(), st]) : '';
 }
 function needPlate(now) {
   // Text -> Video has nothing to flatten the stack onto. The frame it is laid over is the one
   // being painted, so the composite belongs to the engine and happens frame by frame; there is no
   // plate to make and nothing on the stage for one to be. The layer's own tile plays the beat.
-  if (state.t2v && !stillBase()) { PLATE = null; PLATE_WANT = ''; return; }
+  if (state.t2v && !stillBase() && !t2vPicture()) { PLATE = null; PLATE_WANT = ''; return; }
   const want = plateKey();
   if (want === PLATE_WANT) return;
   PLATE_WANT = want;
@@ -4027,16 +4058,20 @@ function needPlate(now) {
   plateTimer = setTimeout(() => {
     const asked = want;
     setStatus('compositing the layers\u2026', 'live');
-    api(stillBase() ? '/api/layers/still' : '/api/layers/plate',
+    // A picture has no length, so both of the cases that make one go through the same endpoint:
+    // a still dropped into Image -> Video with the stack over it, and a stack in Text -> Video
+    // that turned out to be a picture in its own right.
+    const asPic = stillBase() || t2vPicture();
+    api(asPic ? '/api/layers/still' : '/api/layers/plate',
         { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(stillBase()
-            ? { layers: layerJob(), width: t2vDims(state.size)[0], height: t2vDims(state.size)[1] }
+          body: JSON.stringify(asPic
+            ? { layers: plateJob(), width: t2vDims(state.size)[0], height: t2vDims(state.size)[1] }
             // A picture at the bottom is one frame, so the flatten cannot read the length off it:
             // the length is the one the picture was given, and it has to be said out loud.
             : stillClip()
-              ? { layers: layerJob(), width: state.clip.source.width, height: state.clip.source.height,
+              ? { layers: plateJob(), width: state.clip.source.width, height: state.clip.source.height,
                   frames: stillFrames(), fps: STILL_FPS }
-              : { layers: layerJob() }) })
+              : { layers: plateJob() }) })
       .then(r => {
         if (asked !== PLATE_WANT) return;            // something moved while it was compositing
         PLATE = r; setStatus(`plate \u00b7 ${r.layers} layers \u00b7 ${r.width}\u00d7${r.height}`, 'done');
@@ -4276,9 +4311,13 @@ function paintPlate(soft) {
   if (playing === 'live') return;
   $('imgOut').src = cv.toDataURL('image/jpeg', 0.92);
 }
-function addLayer(res, opts) {
+// The panel is topmost-first, so a new layer goes on at the front. `under` puts it on the end
+// instead: the bottom of the stack, which is where a solid belongs -- added on top at full
+// opacity it would simply be a black card over everything you already had.
+function addLayer(res, opts, under) {
   if (layers().length >= LAYER_MAX) return setStatus(`a stack takes ${LAYER_MAX} layers`, 'bad');
-  layers().unshift(layerDefaults(Object.assign({ path: res.path, name: res.name }, opts || {})));
+  const row = layerDefaults(Object.assign({ path: res.path, name: res.name }, opts || {}));
+  layers()[under ? 'push' : 'unshift'](row);
   renderLayers(); paintSums(); save(); stageSource();
   setStatus(`${res.name} added to the stack`);
 }
@@ -4325,6 +4364,7 @@ $('layerAdds').onclick = e => {
   const add = e.target.closest('[data-add]');
   if (!add) return;
   if (add.dataset.add === 'matte') return toggleMaskLib(true, -1);
+  if (add.dataset.add === 'solid') return makeNoise('solid');
   if (add.dataset.add === 'noise') return toggleMaskLib(true, -1, 'noise');
   if (add.dataset.add === 'pulse') return toggleMaskLib(true, -1, 'pulse');
   $('layerFile').click();
@@ -4338,8 +4378,11 @@ function makeNoise(kind, at = -1) {
   const p = noiseSpec(kind) || { id: kind, label: kind };
   const was = at >= 0 ? layers()[at] : null;
   const held = was && was.noise;
-  const row = { path: '', name: 'noise \u00b7 ' + (p.label || p.id), noise: true, nkind: p.id,
+  const flat = !!(p.level);
+  const row = { path: '', name: flat ? (p.label || p.id).toLowerCase() : 'noise \u00b7 ' + (p.label || p.id),
+                noise: true, nkind: p.id,
                 grain: held ? (was.grain == null ? 1 : was.grain) : 1,
+                level: held && was.level != null ? was.level : noiseLevel({ nkind: p.id }),
                 // The size carries over between kinds that both have one; otherwise the new kind
                 // rests where it looks like itself.
                 scale: held && was.nkind === p.id ? noiseScale(was) : noiseScale({ nkind: p.id }),
@@ -4349,7 +4392,12 @@ function makeNoise(kind, at = -1) {
     Object.assign(was, row);
     renderLayers(); paintSums(); save(); stageSource(); needPaint(); needPlate(); pushLayers();
   } else {
-    addLayer({ path: '', name: row.name }, Object.assign({}, row, { mode: 'overlay', opacity: 0.25 }));
+    // Noise arrives as a treatment -- overlay at a quarter, which is what it is nearly always
+    // for. A solid arrives as a surface: normal, opaque, at the bottom, because the only reason
+    // to put one in is to have something for the rest of the stack to sit on.
+    addLayer({ path: '', name: row.name },
+             Object.assign({}, row, flat ? { mode: 'normal', opacity: 1 } : { mode: 'overlay', opacity: 0.25 }),
+             flat);
   }
   setStatus(`${p.label || p.id} \u00b7 generated as it is composited`, 'done');
 }
@@ -4368,7 +4416,8 @@ $('layers').addEventListener('dblclick', e => {
     if (num.dataset.k === 'amount' || num.dataset.k === 'bpm') return needPulse(+num.dataset.lv, true);
     // Scale has no one default: each kind rests where that kind looks like itself.
     if (num.dataset.k === 'scale') { L.scale = noiseScale({ nkind: L.nkind }); paintNum(num, L.scale); }
-    if (num.dataset.k === 'grain' || num.dataset.k === 'scale') noiseTiles();
+    if (num.dataset.k === 'level') { L.level = noiseLevel({ nkind: L.nkind }); paintNum(num, L.level); }
+    if (num.dataset.k === 'grain' || num.dataset.k === 'scale' || num.dataset.k === 'level') noiseTiles();
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
@@ -4993,6 +5042,9 @@ function paintSums() {
   const lay = drawnLayers().length;
   set('layers', !layersOn() || !layers().length ? ''
     : [`${lay + (state.clip ? 1 : 0)} layer${lay + (state.clip ? 1 : 0) === 1 ? '' : 's'}`,
+       // Worth a word, because it changes what the stack IS rather than how it looks: the panel
+       // should not quietly mean two different things depending on one layer's opacity.
+       t2vPicture() && (t2vSplit()[1].length ? 'frame 1 \u00b7 then over' : 'frame 1'),
        layers().some(L => L.matte) && 'matted',
        drawnLayers().filter(L => L.mode && L.mode !== 'normal').map(L => L.mode)[0]]
       .filter(Boolean).join(' · '));
@@ -5889,7 +5941,9 @@ function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view ===
 function picMode() { return state.t2v && state.i2v && !!state.image && !viewRun; }
 // The picture the render starts from: the plate when there is a stack over it, the picture itself
 // when there is not. One place, so the stage, the live Diff and the job cannot disagree.
-function picSource() { return (PLATE && stillBase() && PLATE.path) || (state.image || {}).path || ''; }
+function picSource() {
+  return (PLATE && (stillBase() || t2vPicture()) && PLATE.path) || (state.image || {}).path || '';
+}
 function picFrameUrl(kind) {
   return `/api/diff/base?${qs({ path: picSource(), frame: 0, width: t2vDims(state.size)[0], height: t2vDims(state.size)[1], kind, ...depthQ(kind) })}`;
 }
@@ -6180,7 +6234,7 @@ async function buildConfig(kind) {
     diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
-    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v ? picSource() : '', ...camJob() }
+    ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v || t2vPicture() ? picSource() : '', ...camJob() }
             : camOn() ? { camera: true, ...camJob() } : {}),
     ...shapeJob(kind),
   };
@@ -6847,8 +6901,9 @@ var TOUR = [
     `Optional extras for the look: a <b>LoRA</b>, an <b>Embedding</b>, a <b>Style ref</b> picture to borrow colours and strokes from,
      and a <b>Look</b> preset that adds its style words to your prompt.` },
   { at: () => [$('layersBox')], title: 'Layers', text: () =>
-    `What each frame is actually painted from: the source at the bottom, and anything stacked on it — <b>add media</b> for a video
-     or a picture, <b>add matte</b>, <b>add noise</b> (static, cells, clouds or lines, generated live), <b>add audio</b>.
+    `What each frame is actually painted from: the source at the bottom, and anything stacked on it — <b>Media</b> for a video
+     or a picture, <b>Solid</b> for one flat level to stand the rest on, <b>Matte</b>, <b>Noise</b> (static, cells, clouds or
+     lines, generated live), <b>Audio</b> for a pulse.
      Each layer has a blend mode, an <b>opacity</b> and a
      <b>blur</b>, and a black-and-white layer can act as a matte for the one below it. The stack is flattened before a frame is
      painted or anything is uploaded, and the stage shows it as you build it.

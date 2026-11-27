@@ -241,17 +241,38 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
         chain = "[s0m]"
     for n, (drawn, matte) in enumerate(pairs[1:], start=1):
         op = drawn["opacity"]
+        # Which way round ffmpeg's `blend` wants its two inputs is NOT the same for every mode, and
+        # it is not what the documentation leads you to expect. Measured against the numpy
+        # compositor over all 256x256 pairs of values, at opacity 1:
+        #
+        #   normal                      wrong as [under][over], exact as [over][under]
+        #   overlay, hardlight          exact as [under][over], wrong the other way round
+        #   softlight                   [under][over] (ffmpeg's own formula, off by ~29/255)
+        #   multiply, screen, lighten,  symmetric: identical either way
+        #   darken, difference,
+        #   exclusion, addition
+        #
+        # So only `normal` is swapped, and its opacity goes with it -- ffmpeg reads that number as
+        # how much of its FIRST input survives. Handed [under][over] it was running backwards: a
+        # normal layer at 100% disappeared entirely and the same layer at 0% replaced everything
+        # under it. The per-frame numpy compositor was always right, which is why a render looked
+        # correct while the plate behind it -- the Source tab, the cloud upload, and the picture
+        # Image -> Video starts from -- quietly dropped every opaque layer.
+        over_first = drawn["mode"] == "normal"
+        def mix(under: str, src: str = f"[s{n}]") -> str:
+            pair = f"{src}{under}" if over_first else f"{under}{src}"
+            return f"{pair}blend=all_mode={drawn['mode']}:all_opacity={op:.4f}[b{n}]"
         # The matte decides *where*, the blend decides *how*, and opacity rides on the blend so a
         # matted layer at 50% is half-strength inside the matte rather than a half-faded matte.
         if matte:
             # What is underneath is needed twice -- once blended, once as what shows outside the
             # matte -- and a filter output can only be consumed once, so it is split first.
             steps.append(f"{chain}split[u{n}a][u{n}b]")
-            steps.append(f"[u{n}a][s{n}]blend=all_mode={drawn['mode']}:all_opacity={op:.4f}[b{n}]")
+            steps.append(mix(f"[u{n}a]"))
             steps.append(f"[u{n}b][b{n}][m{n}]maskedmerge[c{n}]")
             chain = f"[c{n}]"
         else:
-            steps.append(f"{chain}[s{n}]blend=all_mode={drawn['mode']}:all_opacity={op:.4f}[b{n}]")
+            steps.append(mix(chain))
             chain = f"[b{n}]"
 
     # A picture asks for the same graph and a different tail: Image -> Video starts from one frame,
@@ -321,7 +342,7 @@ def flatten_like_base(layers, dest: Path) -> Path:
     if base["noise"]:
         # Generated layers have no size of their own -- they are drawn at the size of what they are
         # going over. With nothing underneath there is nothing to take that from.
-        raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
+        raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
     w, h, frames, fps = probe(base["path"])
     return flatten(layers, dest, width=w, height=h, frames=frames, fps=fps)
 
@@ -352,7 +373,7 @@ def plate(dest_dir: Path, layers, *, width: int = 0, height: int = 0, frames: in
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height and frames and fps):
         if pairs[0][0]["noise"]:
-            raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
+            raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
         bw, bh, bn, bf = probe(pairs[0][0]["path"])
         width, height, frames, fps = width or bw, height or bh, frames or bn, fps or bf
     dest_dir = Path(dest_dir)
@@ -377,7 +398,7 @@ def plate_still(dest_dir: Path, layers, *, width: int = 0, height: int = 0) -> d
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height):
         if pairs[0][0]["noise"]:
-            raise ValueError("the bottom of the stack has to be a clip or a picture, not noise")
+            raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
         bw, bh, _, _ = probe(pairs[0][0]["path"])
         width, height = width or bw, height or bh
     dest_dir = Path(dest_dir)
@@ -439,9 +460,10 @@ class FrameStack:
     still has one frame, so trimming to 84 selected nothing out of it and ffmpeg failed the render.
     """
 
-    def __init__(self, job, out: Path, extract, log=lambda s: None, over: bool = False):
+    def __init__(self, job, out: Path, extract, log=lambda s: None, over: bool = False,
+                 layers=None):
         from copy import copy
-        self.stack = clean(getattr(job, "layers", None) or [])
+        self.stack = clean(layers if layers is not None else (getattr(job, "layers", None) or []))
         self.pairs = pair_index(self.stack)
         if not self.pairs:
             raise ValueError("a plate needs at least one layer that is not a matte")
@@ -493,9 +515,9 @@ class FrameStack:
         self.paths = [] if self.over else [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
         self.done: dict[int, str] = {}
 
-    def _frame(self, k: int, i: int, size=None, gen=None):
+    def _frame(self, k, i: int, size=None, gen=None):
         from PIL import Image
-        got = self.frames[k]
+        got = None if k is None else self.frames[k]
         if got is None:                        # generated: drawn at the size of what it is over
             from engine import noise
             w, h = size or (512, 512)
@@ -503,24 +525,60 @@ class FrameStack:
             return Image.fromarray((g * 255.0).astype("uint8"), "L").convert("RGB")
         return Image.open(got[(self.off[k] + i) % len(got)]).convert("RGB")
 
-    def _live(self, stack=None) -> list:
-        """The settings to composite with: a live edit if one has come down, else the ones we started
-        with. A live edit moves settings; it cannot add or remove a layer, because the frames for
-        one were never extracted. A stack of a different shape is simply not this stack."""
-        live = clean(stack) if stack else self.stack
-        return self.stack if len(live) != len(self.stack) else live
+    def _live(self, stack=None) -> tuple:
+        """The stack to composite with, and where each of its layers’ frames come from.
+
+        A live edit usually just moves a dial. It can also ADD or DROP a generated layer -- noise, a
+        solid -- because there is nothing on disk behind one: it is drawn at the moment it is
+        composited, so a layer that did not exist when the render started can still be drawn now.
+        That is the whole point of generating them, and a stack you cannot add to while you are
+        watching it is a stack you have to stop the render to change.
+
+        A layer that is a FILE cannot arrive this way. Its frames were extracted up front, at this
+        render’s size and every-nth, and one that turned up since has none -- so a live stack is
+        taken only if every file in it is a file we already pulled frames for. Otherwise the stack
+        we started with stands, which is what used to happen to every edit that changed the count.
+
+        Returns (stack, src), where src[j] is the position layer j’s frames were extracted at, or
+        None for a generated one.
+        """
+        keep = (self.stack, list(range(len(self.stack))))
+        if not stack:
+            return keep
+        live = clean(stack)
+        pairs = pair_index(live)
+        if not pairs or (not self.over and live[pairs[0][0]]["noise"]):
+            # Nothing to draw, or a generated layer has become the base. Out here the base is where
+            # the size and the length come from, and a generated layer has neither.
+            return keep
+        have: dict = {}
+        for k, L in enumerate(self.stack):
+            if not L["noise"]:
+                have.setdefault(L["path"], []).append(k)
+        src, used = [], {}
+        for L in live:
+            if L["noise"]:
+                src.append(None)
+                continue
+            pool, at = have.get(L["path"]) or [], used.get(L["path"], 0)
+            if at >= len(pool):
+                return keep                    # a file nobody extracted: this is not this stack
+            src.append(pool[at])
+            used[L["path"]] = at + 1
+        return live, src
 
     def write(self, i: int, stack=None) -> Path:
         """Composite frame `i` with the settings as they stand, unless that is already on disk."""
         import numpy as np
         from PIL import Image
-        live = self._live(stack)
-        # A live edit changes settings, never which files are in the stack, so the frames already
-        # extracted still line up. The signature is every setting but the paths.
-        want = repr([{k: v for k, v in L.items() if k != "path"} for L in live])
+        live, src = self._live(stack)
+        # The frames already extracted still line up, because a live edit can only move settings or
+        # bring a generated layer that has no frames at all. The signature is every setting but the
+        # paths, plus where each layer reads from, so one arriving redraws what is already on disk.
+        want = repr([{k: v for k, v in L.items() if k != "path"} for L in live]) + repr(src)
         if self.done.get(i) == want and self.paths[i].is_file():
             return self.paths[i]
-        acc = self._compose(i, live)
+        acc = self._compose(i, live, src)
         Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)
         self.done[i] = want
         return self.paths[i]
@@ -533,19 +591,24 @@ class FrameStack:
         every time, and a dial moved mid-render lands on the next one like every other dial.
         """
         import numpy as np
-        acc = self._compose(i, self._live(stack), under)
+        live, src = self._live(stack)
+        acc = self._compose(i, live, src, under)
         return (np.clip(acc, 0, 1) * 255).astype("uint8")
 
-    def _compose(self, i: int, live: list, under=None):
+    def _compose(self, i: int, live: list, src: list, under=None):
         """The composite as floats in 0..1. `under` is the frame the stack goes over when the stack
-        has no base of its own; without one the bottom layer of the stack is that frame."""
+        has no base of its own; without one the bottom layer of the stack is that frame.
+
+        The pairing is read off the live stack rather than off the one we started with: a generated
+        layer can be added or dropped while this runs, and where a matte sits moves when it is.
+        """
         import numpy as np
         from PIL import Image, ImageFilter
         soft = lambda im, b, w, h: im.filter(ImageFilter.GaussianBlur(blur_sigma(b, w, h))) if b > 0 else im
-        pairs = self.pairs                     # positions never change, only the settings do
+        pairs = pair_index(live)
         if under is None:
             base_L = live[pairs[0][0]]
-            img = self._frame(pairs[0][0], i)
+            img = self._frame(src[pairs[0][0]], i)
             w, h = img.size
         else:
             arr = np.asarray(under)
@@ -554,7 +617,7 @@ class FrameStack:
         # The matte's alpha: luma, levels, invert, then the feather -- in that order, so a hard
         # pattern can be given a soft edge without the levels clipping the softness back off.
         def alpha(mk, M):
-            m = np.asarray(soft(self._frame(mk, i, (w, h), M["noise"]), 0.0, w, h).convert("RGB"),
+            m = np.asarray(soft(self._frame(src[mk], i, (w, h), M["noise"]), 0.0, w, h).convert("RGB"),
                            np.float32) / 255.0
             lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
             b, wt = M["black"], M["white"]
@@ -582,7 +645,7 @@ class FrameStack:
         for n in range(first, len(pairs)):
             a, mk = pairs[n]
             L, M = live[a], (live[mk] if mk is not None else None)
-            top = np.asarray(soft(self._frame(a, i, (w, h), L["noise"]), L["blur"], w, h),
+            top = np.asarray(soft(self._frame(src[a], i, (w, h), L["noise"]), L["blur"], w, h),
                              np.float32) / 255.0
             mixed = np.clip(_blend(acc, top, L["mode"]), 0.0, 1.0)
             mixed = acc + (mixed - acc) * L["opacity"]

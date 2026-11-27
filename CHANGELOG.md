@@ -2,6 +2,61 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-27
+
+- **A stack that covers the frame is a picture, not an overlay — so Text → Video paints from it.**
+  A layer set to `normal` at `100%` with nothing matting it covers everything beneath it. In Text →
+  Video the thing beneath it is *the painting so far*, so such a layer was not sitting on the render,
+  it was throwing the render away and putting itself there, every frame — which is why a single
+  Frame looked right and a sequence came out as the raw layer. It was never an overlay: it is the
+  picture. The stack from the bottom up to and including the **topmost covering layer** is now
+  flattened once into frame 1, and the render carries on from it the way Image → Video starts from
+  a still. Only what sits above the coverer stays a stack, composited onto every frame — so a pulse
+  over an opaque picture still beats on each one instead of being baked into the first. There is no
+  switch for this, because it is a tautology: if it covers, there is nothing for it to be over. Take
+  a point off its opacity, give it any blend but normal, or matte it, and it is an overlay again.
+  The Layers card says which it is.
+
+- **ffmpeg was compositing every `normal` layer backwards, and nobody could see it.** The flatten
+  wrote `[under][over]blend=all_mode=normal:all_opacity=X`, which reads as *how much of the layer
+  underneath survives*: a `normal` layer at 100% vanished completely and the same layer at 0%
+  replaced everything below it. The per-frame numpy compositor was always right, so renders looked
+  correct while the plate behind them — the Source tab, the cloud upload, and the picture Image →
+  Video starts from — quietly dropped every opaque layer. Measured across all 256×256 pairs of
+  values, ffmpeg's `blend` does **not** take its inputs the same way round for every mode: `normal`
+  wants the layer first, while `overlay` and `hardlight` want it second and were already correct.
+  Only `normal` is swapped now, and `tools/blend_test.py` checks every mode against numpy, with and
+  without a matte, so this cannot come back. (Soft light still differs by ~30/255 — ffmpeg's own
+  formula, as before.)
+
+- **A solid layer, so a stack can stand on something you made rather than on footage.** **Solid** is
+  one flat level over the whole frame — black by default, white at the top of its dial, every grey
+  between — and like noise it is never written to a file: the page fills it into a canvas, the local
+  render into the numpy stack, and the flatten hands ffmpeg a `color` source, so moving the dial
+  costs nothing. It goes on at the *bottom* of the stack rather than the top, because the only
+  reason to add one is to give the rest of the stack a floor: noise over black, a pulse over white.
+  It is not in the noise picker — a frame of one colour is not an answer to "what kind of grain".
+
+- **Layers can now be added while a render is running, as long as nothing has to be loaded for
+  them.** A live edit used to be thrown away whole if it changed how many layers there were, so
+  adding noise to a running render looked like noise that did not work. A generated layer — noise,
+  a solid — has nothing behind it on disk: it is drawn at the moment it is composited, so one can
+  simply begin to exist mid-render, and dropping one puts the picture back exactly. In Text → Video
+  the stack can start from nothing at all this way. A layer with a *file* behind it still cannot:
+  its frames are pulled at the render's size before the first one is painted, and one that turned
+  up since has none — the log now says so instead of going quiet. A matte that arrives live mattes
+  the layer under it, because the pairing is read off the stack as it stands rather than as it was.
+
+- **One line for a pulse's beat, and no die where the seed does nothing.** The speed now leads the
+  row — bpm, take, swing, drift, four boxes across the four columns the card is already built on —
+  instead of the count wrapping onto a line of its own with the metronome beside it. The metronome
+  is gone: it clicked out a number you can already hear in the tile. And the die only appears where
+  the seed is actually read. Grain and Burst draw their static from it, Grid picks which cells
+  light, Slabs where the rectangles fall, and Clouds, Smoke, Fall and Veins their fractal fields —
+  but Flash, Bloom, Blocks, Circle, Wipe and Rings are the same picture at every seed, because the
+  shape *is* the envelope. Turn **drift** up and the die comes back whatever the pattern, because
+  where a loose hit lands is chosen out of that seed too.
+
 ## 2026-11-26
 
 - **Layers in Text → Video, so a pulse can beat over a thing that isn't there yet.** The stack

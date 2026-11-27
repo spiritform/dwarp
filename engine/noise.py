@@ -56,6 +56,16 @@ PATTERNS = [
                        "dropout at the top"},
      "note": "Whole rows at a time, the way a tape drops out. Horizontal structure the warp drags "
              "sideways."},
+    # Not noise, and in here anyway: a solid is drawn the same way every one of these is -- no file,
+    # no pre-pass, generated at the size of whatever it is going over by whichever compositor is
+    # doing the compositing. That machinery is this module, so a second copy of it next door to say
+    # "fill it in" would be the larger lie. `flat` is what keeps it out of the noise picker, where
+    # a frame of one colour is not an answer to the question being asked.
+    {"id": "solid", "label": "Solid", "base": "black", "scale": None, "flat": True,
+     "level": {"label": "level", "default": 0.0,
+               "note": "Black at the bottom of the dial, white at the top, every grey between"},
+     "note": "One flat level, the whole frame. The thing to put underneath a stack that has "
+             "nothing of its own to stand on \u2014 noise over black, a pulse over white."},
 ]
 BY_ID = {p["id"]: p for p in PATTERNS}
 
@@ -82,14 +92,24 @@ def scale_default(kind: str) -> float:
     return float(s["default"]) if s else 0.0
 
 
+def level_default(kind: str) -> float:
+    """How light a flat layer rests at. Black: it is the floor of a stack far more often than the
+    ceiling, and white over nothing is the one that looks like a bug."""
+    lv = spec(kind).get("level")
+    return float(lv["default"]) if lv else 0.0
+
+
 def settings(row) -> dict:
     """A layer row as the generators read it. One place decides what a missing field means."""
     row = row if isinstance(row, dict) else {}
     kind = spec(row.get("nkind") or row.get("kind"))["id"]
-    grain, scale = row.get("grain"), row.get("scale")
+    grain, scale, level = row.get("grain"), row.get("scale"), row.get("level")
     return {"kind": kind,
             "grain": min(1.0, max(0.0, 1.0 if grain is None else float(grain))),
             "scale": scale_default(kind) if scale is None else min(1.0, max(0.0, float(scale))),
+            # Only a solid reads this, and only a solid is asked for it: the dial a kind does not
+            # have is not drawn, so it has no value of its own to carry either.
+            "level": level_default(kind) if level is None else min(1.0, max(0.0, float(level))),
             "seed": int(row.get("seed") or 0) & 0x7FFFFFFF}
 
 
@@ -142,12 +162,17 @@ def _clouds(width: int, height: int, cells: float, z: float, seed: int) -> np.nd
 
 
 def draw(kind: str, width: int, height: int, *, i: int = 0, grain: float = 1.0,
-         scale: float = -1.0, seed: int = 0) -> np.ndarray:
+         scale: float = -1.0, seed: int = 0, level: float = 0.0) -> np.ndarray:
     """Frame `i` as 0..1 greys, mid grey at rest, drawn from nothing but these arguments."""
     kind = spec(kind)["id"]
     if scale < 0:
         scale = scale_default(kind)
     i = max(0, int(i))
+    if kind == "solid":
+        # One level, every pixel, every frame. Grain says nothing here: there is nothing to swing,
+        # and what a solid is for is to be the thing underneath. Its opacity is how much of it
+        # there is and its level is how light it is, which is the whole of it.
+        return np.full((height, width), min(1.0, max(0.0, float(level))), dtype=np.float32)
     if kind == "clouds":
         # The lattice is counted off the finest detail rather than set outright: `cells` is how many
         # of the first octave fit across the frame, and four octaves ride on top of it -- so the
@@ -183,12 +208,15 @@ def _expand(gain: float) -> str:
 
 
 def lavfi(kind: str, width: int, height: int, fps: float, *, grain: float = 1.0,
-          scale: float = -1.0, seed: int = 0) -> str:
+          scale: float = -1.0, seed: int = 0, level: float = 0.0) -> str:
     """This layer as a generated ffmpeg input, ready to hand to `-f lavfi -i`."""
     kind = spec(kind)["id"]
     if scale < 0:
         scale = scale_default(kind)
     fps = max(1.0, float(fps))
+    if kind == "solid":
+        v = int(round(min(1.0, max(0.0, float(level))) * 255.0))
+        return (f"color=c=0x{v:02x}{v:02x}{v:02x}:s={width}x{height}:r={fps:.6f},format=gray")
     seed = int(seed) & 0x7FFFFFFF
     gain = (127.0 / NOISE_SWING) * min(1.0, max(0.0, float(grain)))
     src = f"noise=alls=100:allf=t+u:all_seed={seed}"

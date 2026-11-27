@@ -1249,13 +1249,29 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
             log(f"live from frame {i + 1}: denoise {job.style}, next {style_next}, "
                 f"source mix {1 - job.flow_blend:.2f}")
-        if upd and upd.get("layers") is not None and stack:
+        if upd and upd.get("layers") is not None:
             live_stack = layerlib.clean(upd.pop("layers"))
-            edits.append({"from_frame": i, "layers": live_stack})
-            (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
-            drawn = layerlib.plan(live_stack)
-            log(f"live layers from frame {i + 1}: "       # t2v: no base among them, so all of them
-                + ", ".join(f"{L['mode']} {L['opacity'] * 100:.0f}%" for L, _ in (drawn if t2v else drawn[1:])))
+            # Nothing was stacked when this started, and now something is. Every layer of it has to
+            # be generated -- noise, a solid -- because a file would need its frames pulled at this
+            # render's size first, and stopping mid-render to decode a clip is not a live edit. But
+            # a generated layer is drawn as it is composited, so there is nothing to wait for and
+            # the stack can simply begin to exist. Text -> Video only: elsewhere the bottom of the
+            # stack is the clip, and that one was never missing.
+            if stack is None and t2v and live_stack and layerlib.pair_index(live_stack) \
+                    and all(L["noise"] for L in live_stack):
+                stack = layerlib.FrameStack(job, out, extract_frames, log, over=True,
+                                            layers=live_stack)
+            if stack is None:
+                live_stack = None
+                log(f"live layers from frame {i + 1}: ignored — nothing was stacked when this "
+                    f"render started, and a layer with a file behind it cannot be brought in now")
+                upd.pop("layers", None)
+            else:
+                edits.append({"from_frame": i, "layers": live_stack})
+                (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
+                drawn = layerlib.plan(live_stack)
+                log(f"live layers from frame {i + 1}: "   # t2v: no base among them, so all of them
+                    + ", ".join(f"{L['mode']} {L['opacity'] * 100:.0f}%" for L, _ in (drawn if t2v else drawn[1:])))
         if upd and upd.get("camera"):             # Live camera: new targets; the 3D switch flips at once
             cam = {k: v for k, v in upd.pop("camera").items() if k in CAM_KEYS}
             cam_target.update(cam)
