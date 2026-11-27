@@ -635,7 +635,7 @@
   .embrow select.model { flex: 1; min-width: 0; }
   .embrow #embedVer { flex: none; width: 92px; }
   .embrow #embedVer[hidden] { display: none; }
-  #cnSel[hidden], #loraBox[hidden] { display: none; }
+  #cnSel[hidden], #loraBox[hidden], #embedBox[hidden] { display: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .slider-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .slider-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -1299,6 +1299,10 @@
     <div class="embrow">
       <select class="model" id="embed" title="A textual-inversion embedding (SD 1.5 / 2.1, trained for that family): its name is added to every prompt — or to the negative, for negative embeddings"></select>
       <select class="model" id="embedVer" title="Which training step of this embedding" hidden></select>
+    </div>
+    <div class="slider" id="embedBox" style="margin-top:10px">
+      <div class="slider-head"><b title="How loudly the embedding speaks. Not a LoRA weight — under 1 reads as less of it, over about 1.3 it starts shouting over the rest of the prompt">Strength</b><span id="embedWV"></span></div>
+      <input type="range" id="embedW" min="0" max="1.5" step="0.05">
     </div>
     <div class="sublabel" id="styleRefLabel">Style ref</div>
     <div id="styleRef"></div>
@@ -5036,8 +5040,10 @@ function paintSums() {
        wf().strength && wf().tracks && state.tracks && `pull ${(+comfyPull()).toFixed(2)}`]
       .filter(Boolean).join(' · ')
     : `${modeCfg().label} · ${shortName(checkpointPath())}`);
-  const lo = LORAS.find(l => l.path === loraOn());
-  set('style', [currentPreset().name, embedOn(), lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
+  const lo = LORAS.find(l => l.path === loraOn()), emb = embedOn();
+  set('style', [currentPreset().name,
+                 emb && (+state.embedW === 1 ? emb : `${emb} ${(+state.embedW).toFixed(2)}`),
+                 lo && `${lo.name} ${(+state.loraW).toFixed(2)}`,
                  state.styleRef && modeCfg().style_ref && `ref ${(+state.styleRefW).toFixed(2)}`].filter(Boolean).join(' · '));
   const lay = drawnLayers().length;
   set('layers', !layersOn() || !layers().length ? ''
@@ -5664,6 +5670,8 @@ function renderEmbed() {
   $('embedVer').hidden = !sd15 || vers.length < 2;
   $('embedVer').innerHTML = vers.map(e => `<option value="${e.name}">${embedStep(e.name) ? `step ${embedStep(e.name)}` : 'final'}</option>`).join('');
   $('embedVer').value = cur;
+  $('embedBox').hidden = !cur;
+  $('embedW').value = state.embedW; $('embedWV').textContent = (+state.embedW).toFixed(2);
 }
 $('embed').onchange = e => {
   const base = e.target.value, list = EMBEDS.filter(x => x.family === state.mode && embedBase(x.name) === base);
@@ -5674,6 +5682,7 @@ $('embed').onchange = e => {
 $('lora').onchange = e => { state.lora = e.target.value; renderLora(); save(); };
 $('loraW').oninput = e => { state.loraW = +e.target.value; $('loraWV').textContent = state.loraW.toFixed(2); save(); };
 $('embedVer').onchange = e => { state.embed = e.target.value; renderControls(); save(); };
+$('embedW').oninput = e => { state.embedW = +e.target.value; $('embedWV').textContent = state.embedW.toFixed(2); save(); };
 // ---- Motion (AnimateDiff, SD 1.5): the third way frames connect. Two choices per source, each a tested motion
 // module + sampler settings. Video: TemporalDiff paints the style and follows the clip; AnimateLCM is ~2.5x faster,
 // the style weaker. Image: the v2 module + a motion LoRA moves the picture (TemporalDiff holds it too still);
@@ -6224,7 +6233,7 @@ async function buildConfig(kind) {
     hold,                                    // Frames 2s / 3s: the mp4 holds each drawing (nth is above)
     steps: state.steps, cfg: state.cfg,
     sampler: SAMPLERS[state.sampler] ? state.sampler : 'dpmpp_2m', schedule: state.schedule,
-    lora: loraOn(), lora_weight: state.loraW, ...styleRefJob(),
+    lora: loraOn(), lora_weight: state.loraW, embed_weight: state.embedW, ...styleRefJob(),
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
     controlnets: t2v && !state.i2v ? [] : adOn() && adI2V() ? [] : controlnets,     // Text -> Video: nothing to follow; Motion on a still: the module moves it
@@ -6389,6 +6398,11 @@ const HELP = {
        above Style — and which training step, if you kept several — and its name is added to every prompt, keyframes
        included. Negative embeddings (a name with "neg", like EasyNegative) go into the negative prompt instead. Typing
        an embedding's name straight into a prompt works too.</p>
+    <p><b>Strength</b> scales the trained vectors as they go in. It is not a LoRA weight: an embedding becomes a word
+       in the prompt, and every other word in the model's vocabulary is about the same size, so turning this up makes
+       that one word shout rather than adding more of the style. Under <b>1</b> it reads honestly as less of it, and
+       past about <b>1.3</b> it starts drowning the rest of the prompt — so it earns its keep mostly on an embedding
+       that is too strong at <b>1</b>. Writing <code>(name:1.2)</code> in the prompt does nothing; this is the knob.</p>
     <h4>Sampler and Schedule</h4>
     <p>The <b>sampler</b> is how each step moves toward the image; <b>DPM++ 2M</b> with <b>Karras</b> is a sharp, steady
        default. <b>Euler a</b> and <b>DPM++ 2M SDE</b> add fresh noise every step — looser and more textured, and they
@@ -8154,7 +8168,7 @@ $('loadRun').onclick = async () => {
     if (!made) { setStatus('this run has no saved DWARP settings', 'bad'); return; }
     return useEnhanceRun(viewRun, ui, made, '');
   }
-  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'styleEnd', 'fresh', 'frameLock', 'onN', 'embed', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
+  for (const k of ['preset', 'prompt', 'style', 'hold', 'range', 'mode', 'steps', 'cfg', 'cn', 'dd', 'keys', 'blend', 'negative', 'srcMix', 'styleEnd', 'fresh', 'frameLock', 'onN', 'embed', 'embedW', 'lora', 'loraW', 'styleRef', 'styleRefW', 'styleOnly', 'sampler', 'schedule', 't2v', 'i2v', 'image', 't2vLen', 't2vAspect', 'cam', 'edgePad',
                    'shape', 'shapeFit', 'shapeRange', 'shapeLv', 'shapeInvert', 'shapeLoop', 'shapeBlur', 'shapeOpacity', 'shapeIllu', 'shapeBg', 'shapeRepaint', 'ad']) if (k in ui) state[k] = ui[k];
   if (!('shape' in ui)) state.shape = null;       // older runs had no Shape: none now either
   // A run that held Denoise still has no ramp, and taking its settings has to turn yours off --
@@ -8967,7 +8981,7 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   state.frameLock ??= state.styleNext != null ? lockShare(state.styleNext, state.style) : 0.35;
   delete state.styleNext;
   state.onN ??= 1;
-  state.embed ??= ''; state.lora ??= ''; state.loraW ??= 0.8;
+  state.embed ??= ''; state.embedW ??= 1; state.lora ??= ''; state.loraW ??= 0.8;
   state.styleRef ??= null; state.styleRefW ??= 0.6; state.styleOnly ??= true;
   state.mute ??= false;        // saved before the stage had a sound switch: it was on
   state.negative ??= ''; state.negOpen ??= false;

@@ -4,6 +4,17 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-27
 
+- **A Strength slider for embeddings.** Under the embedding picker, 0 to 1.5. There is nothing to
+  turn down after an embedding has loaded — it is not a module hanging off the model, it is extra
+  rows in CLIP's token table, and once they are in, its name is a word like any other — so the
+  slider scales the trained vectors on the way in instead, and changing it reads the file again
+  rather than rescaling what is already there. It is **not** a LoRA weight: every real word in the
+  model's vocabulary is about the same size, so turning this up makes that one word shout over the
+  rest of the prompt rather than adding more of the style. Below **1** it reads honestly as less of
+  it, past about **1.3** it starts drowning everything else, so it earns its keep mostly on an
+  embedding that is too strong at **1**. (Writing `(name:1.2)` in a prompt still does nothing —
+  DWARP has no prompt weighting; this is the knob.)
+
 - **A stack that covers the frame is a picture, not an overlay — so Text → Video paints from it.**
   A layer set to `normal` at `100%` with nothing matting it covers everything beneath it. In Text →
   Video the thing beneath it is *the painting so far*, so such a layer was not sitting on the render,

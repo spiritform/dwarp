@@ -76,6 +76,8 @@ class RenderJob:
     image_encoder_repo: str = ""
     embeddings_dir: list = field(default_factory=list)   # folders of textual-inversion embeddings (SD 1.5):
                                          # a file's name typed in a prompt loads it, as in A1111 / ComfyUI
+    embed_weight: float = 1.0            # how loudly those embeddings speak. Not a LoRA weight: see
+                                         # load_embeddings below for what the number actually does
     # Text -> Video: no clip. Frame 1 comes from the prompt alone, every later one from the previous
     # result moved by a camera (per clip frame; on twos a drawing moves `nth` frames' worth) and
     # repainted at `style`. 0 = video -> video.
@@ -899,7 +901,18 @@ def apply_lora(pipe, job: RenderJob, log) -> None:
 
 def load_embeddings(pipe, job: RenderJob, texts, log) -> None:
     """Load the embeddings named in these prompts into the pipeline's text encoder (once per loaded
-    pipeline). A name matches as a whole word: `charcoalstyle-1000`, not `charcoalstyle-100` inside it."""
+    pipeline, per strength). A name matches as a whole word: `charcoalstyle-1000`, not
+    `charcoalstyle-100` inside it.
+
+    `job.embed_weight` scales the trained vectors on the way in. There is nothing to turn down after
+    the fact: an embedding is not a module hanging off the model, it is extra rows in CLIP's
+    token-embedding table, and once they are in, the token is a word like any other. So the knob has
+    to act here, before the word exists.
+
+    It is NOT a LoRA weight. Every real token in that table has roughly the same length, so a scaled
+    embedding is not "more of the style", it is a token shouting -- which is why below 1 reads
+    honestly as less, while much above 1 drowns the rest of the prompt instead of strengthening it.
+    """
     files = embedding_files(job.embeddings_dir)    # a small folder: rescanned, so new ones show up
     if not files:
         return
@@ -910,16 +923,35 @@ def load_embeddings(pipe, job: RenderJob, texts, log) -> None:
     if job.family == "sdxl":
         log(f"embeddings {named} are for SD 1.5 / SD 2.x — ignored with SDXL")
         return
-    done = pipe.__dict__.setdefault("_dwarp_embeddings", set())
+    weight = max(0.0, min(2.0, float(getattr(job, "embed_weight", 1.0) or 0.0)))
+    done = pipe.__dict__.setdefault("_dwarp_embeddings", {})
+    if any(w != weight for w in done.values()):
+        # The strength changed, and scaled rows cannot be rescaled -- the old number is baked into
+        # them. Everything goes out (tokens and rows both) and the named ones come back at the new
+        # one; the files are a few hundred KB, so this costs nothing worth measuring.
+        try:
+            pipe.unload_textual_inversion()
+            done.clear()
+        except Exception as e:
+            log(f"embedding strength {weight:.2f} not applied: {str(e).splitlines()[0][:120]}")
     for n in named:
         if n in done:
             continue
         try:
+            # Which rows arrived is read off the tokenizer rather than the file: one embedding may be
+            # several vectors (diffusers names them `n`, `n_1`, `n_2`...), and this way every file
+            # layout diffusers accepts is handled without this knowing one from another.
+            first = len(pipe.tokenizer)
             pipe.load_textual_inversion(str(files[n]), token=n)
-            done.add(n)
-            log(f"embedding {n} loaded")
+            added = list(range(first, len(pipe.tokenizer)))
+            if weight != 1.0 and added:
+                table = pipe.text_encoder.get_input_embeddings().weight   # after the resize, not before
+                with torch.no_grad():
+                    table[added] *= weight
+            done[n] = weight
+            log(f"embedding {n} loaded" + (f" at {weight:.2f}" if weight != 1.0 else ""))
         except Exception as e:                  # an SDXL / broken file: say so, keep rendering
-            done.add(n)
+            done[n] = weight
             log(f"embedding {n} skipped: {str(e).splitlines()[0][:120]}")
 
 
