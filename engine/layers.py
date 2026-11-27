@@ -439,7 +439,7 @@ class FrameStack:
     still has one frame, so trimming to 84 selected nothing out of it and ffmpeg failed the render.
     """
 
-    def __init__(self, job, out: Path, extract, log=lambda s: None):
+    def __init__(self, job, out: Path, extract, log=lambda s: None, over: bool = False):
         from copy import copy
         self.stack = clean(getattr(job, "layers", None) or [])
         self.pairs = pair_index(self.stack)
@@ -448,7 +448,12 @@ class FrameStack:
         self.dir = Path(out) / "src"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.frames: dict[int, list] = {}
-        base_k = self.pairs[0][0]
+        # Text -> Video has no clip at the bottom of the stack and nothing on disk to put there:
+        # the frame it is laid over is the one being painted, handed in a frame at a time. So every
+        # layer here is an overlay -- none of them is the base -- and none of them is trimmed,
+        # because there is no trim to be an offset into.
+        self.over = bool(over)
+        base_k = None if self.over else self.pairs[0][0]
         self.off: dict[int, int] = {}
         # A picture given a length is the one base that cannot be trimmed: it has a single frame, so
         # any frame_start selects nothing out of it and ffmpeg fails the render. On that base the
@@ -474,16 +479,18 @@ class FrameStack:
                 one.frame_start, one.frame_end = 0, -1   # read whole; the trim is the clip's, not its
             elif still_base:
                 one.frame_start, one.frame_end = 0, -1   # the one frame there is
-            self.off[k] = 0 if k == base_k else max(0, job.frame_start)
+            self.off[k] = 0 if self.over or k == base_k else max(0, job.frame_start)
             self.frames[k] = extract(one, Path(out) / "layers" / f"{k}")
             log(f"  {Path(L['path']).name} \u00b7 {len(self.frames[k])} frames"
                 + (" \u00b7 matte" if L["matte"] else f" \u00b7 {L['mode']} {L['opacity'] * 100:.0f}%"))
         # How long the stack runs. The base usually says -- it is the clip -- but a picture at the
         # bottom is one frame and still has a length, the one that was asked for. Every layer is
         # looked up by frame number and loops, so a one-frame base simply repeats under the rest.
-        base = self.frames[self.pairs[0][0]] or []
+        # With nothing at the bottom the length is not the stack's to decide: the render says how
+        # many frames there are, and nothing here is ever written to disk.
+        base = [] if self.over else (self.frames[self.pairs[0][0]] or [])
         n = int(getattr(job, "source_frames", 0) or 0) if len(base) == 1 else 0
-        self.paths = [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
+        self.paths = [] if self.over else [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
         self.done: dict[int, str] = {}
 
     def _frame(self, k: int, i: int, size=None, gen=None):
@@ -496,25 +503,54 @@ class FrameStack:
             return Image.fromarray((g * 255.0).astype("uint8"), "L").convert("RGB")
         return Image.open(got[(self.off[k] + i) % len(got)]).convert("RGB")
 
+    def _live(self, stack=None) -> list:
+        """The settings to composite with: a live edit if one has come down, else the ones we started
+        with. A live edit moves settings; it cannot add or remove a layer, because the frames for
+        one were never extracted. A stack of a different shape is simply not this stack."""
+        live = clean(stack) if stack else self.stack
+        return self.stack if len(live) != len(self.stack) else live
+
     def write(self, i: int, stack=None) -> Path:
         """Composite frame `i` with the settings as they stand, unless that is already on disk."""
         import numpy as np
-        from PIL import Image, ImageFilter
-        live = clean(stack) if stack else self.stack
-        # A live edit moves settings; it cannot add or remove a layer, because the frames for one
-        # were never extracted. A stack of a different shape is simply not this stack.
-        if len(live) != len(self.stack):
-            live = self.stack
+        from PIL import Image
+        live = self._live(stack)
         # A live edit changes settings, never which files are in the stack, so the frames already
         # extracted still line up. The signature is every setting but the paths.
         want = repr([{k: v for k, v in L.items() if k != "path"} for L in live])
         if self.done.get(i) == want and self.paths[i].is_file():
             return self.paths[i]
+        acc = self._compose(i, live)
+        Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)
+        self.done[i] = want
+        return self.paths[i]
+
+    def lay(self, i: int, under, stack=None):
+        """The stack over a frame that was never on disk, as an RGB uint8 array.
+
+        Text -> Video paints out of its own previous frame, so the thing the stack belongs on top of
+        only exists for the moment it is being painted. Nothing is cached: that frame is different
+        every time, and a dial moved mid-render lands on the next one like every other dial.
+        """
+        import numpy as np
+        acc = self._compose(i, self._live(stack), under)
+        return (np.clip(acc, 0, 1) * 255).astype("uint8")
+
+    def _compose(self, i: int, live: list, under=None):
+        """The composite as floats in 0..1. `under` is the frame the stack goes over when the stack
+        has no base of its own; without one the bottom layer of the stack is that frame."""
+        import numpy as np
+        from PIL import Image, ImageFilter
         soft = lambda im, b, w, h: im.filter(ImageFilter.GaussianBlur(blur_sigma(b, w, h))) if b > 0 else im
         pairs = self.pairs                     # positions never change, only the settings do
-        base_L = live[pairs[0][0]]
-        img = self._frame(pairs[0][0], i)
-        w, h = img.size
+        if under is None:
+            base_L = live[pairs[0][0]]
+            img = self._frame(pairs[0][0], i)
+            w, h = img.size
+        else:
+            arr = np.asarray(under)
+            under = arr.astype(np.float32) / (255.0 if arr.dtype == np.uint8 else 1.0)
+            h, w = under.shape[0], under.shape[1]
         # The matte's alpha: luma, levels, invert, then the feather -- in that order, so a hard
         # pattern can be given a soft edge without the levels clipping the softness back off.
         def alpha(mk, M):
@@ -532,11 +568,18 @@ class FrameStack:
                     ImageFilter.GaussianBlur(blur_sigma(M["blur"], w, h))), np.float32) / 255.0
             return lum[..., None]
 
-        acc = np.asarray(soft(img, base_L["blur"], w, h), dtype=np.float32) / 255.0
-        acc *= base_L["opacity"]                     # nothing under the base: it fades to black
-        if pairs[0][1] is not None:                  # a matte on the base: the same black, as a shape
-            acc *= alpha(pairs[0][1], live[pairs[0][1]])
-        for n in range(1, len(pairs)):
+        if under is None:
+            acc = np.asarray(soft(img, base_L["blur"], w, h), dtype=np.float32) / 255.0
+            acc *= base_L["opacity"]                 # nothing under the base: it fades to black
+            if pairs[0][1] is not None:              # a matte on the base: the same black, as a shape
+                acc *= alpha(pairs[0][1], live[pairs[0][1]])
+            first = 1
+        else:
+            # The frame handed in is the bottom. Every layer of the stack is over it, the one at the
+            # bottom of the panel included -- so that one keeps its blend mode and its matte here,
+            # where as a base it would have had neither.
+            acc, first = under, 0
+        for n in range(first, len(pairs)):
             a, mk = pairs[n]
             L, M = live[a], (live[mk] if mk is not None else None)
             top = np.asarray(soft(self._frame(a, i, (w, h), L["noise"]), L["blur"], w, h),
@@ -546,9 +589,7 @@ class FrameStack:
             if M:
                 mixed = acc + (mixed - acc) * alpha(mk, M)
             acc = mixed
-        Image.fromarray((np.clip(acc, 0, 1) * 255).astype("uint8")).save(self.paths[i], quality=95)
-        self.done[i] = want
-        return self.paths[i]
+        return acc
 
 
 # ------------------------------------------------------------------ a generated layer

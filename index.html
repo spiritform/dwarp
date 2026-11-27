@@ -1866,7 +1866,10 @@ function renderT2V() {
 </div>
   </div>`;
   $('t2vLen').oninput = e => { state.t2vLen = +e.target.value; paintT2V(); save(); };
-  $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); };
+  // Redrawn when the drag ends, not on every step of it: a drawn layer is cut to the render's
+  // length, and recutting it per pixel of slider is ffmpeg forty times for one decision.
+  $('t2vLen').onchange = () => freshenLayers();
+  $('t2vAspect').onclick = e => { const a = e.target.dataset.a; if (!a) return; state.t2vAspect = a; paintT2V(); save(); freshenLayers(); };
   $('onN').onclick = e => { const n = +e.target.dataset.n; if (!n) return; state.onN = n; paintT2V(); save(); };
   ($('pick') || $('swap'))?.addEventListener('click', () => $('fileInput').click());
   $('imgDel')?.addEventListener('click', () => {   // nothing loaded is the prompt on its own
@@ -3008,6 +3011,13 @@ function maskBody(pattern) {
     const [width, height] = t2vDims(state.size);
     return { pattern, width, height, frames: 1, fps: 1 };
   }
+  // Text -> Video: no clip to take a shape from, so the frame is the render's own, at the length
+  // on the Duration slider and the rate it plays at. Every-nth is not in it: the stack is read in
+  // clip time, the way it is over a clip, and the extraction takes every nth frame of it.
+  if (!isH3() && state.t2v) {
+    const [width, height] = t2vDims(state.size);
+    return { pattern, width, height, frames: laneFrames(), fps: T2V_FPS };
+  }
   const [width, height] = comfySize();
   return { pattern, width, height, frames: h3Frames(h3Seconds()), fps: wf().fps || 24 };
 }
@@ -3137,9 +3147,16 @@ function paintNoiseLib() {
   playTiles($('maskLib'));
   $('mlClose').onclick = () => toggleMaskLib(false);
 }
+// What is actually pacing this layer. The clip leads when it has sound in it, and is also what a
+// layer falls back FROM: set to the clip's beat and then moved to Text -> Video, there is no clip
+// to take a beat off, so it reads as a count rather than as a file that is not there.
+function beatAt(L) {
+  return L.beat === 'clip' && !clipAudio() ? 'bpm' : (L.beat || (clipAudio() ? 'clip' : 'bpm'));
+}
 // Everything a pulse layer needs to be drawn: the frame it is going over, and the beat it is on.
 function beatAudio(L) {
-  return L.beat === 'clip' ? (state.clip?.path || '') : (L.beat === 'file' ? (L.audio || '') : '');
+  const at = beatAt(L);
+  return at === 'clip' ? (state.clip?.path || '') : (at === 'file' ? (L.audio || '') : '');
 }
 // On a count, some of these do the identical thing on every beat: nothing in them carries over
 // from the beat before and nothing in them is random. So the clip only has to BE one beat. Both
@@ -3259,7 +3276,11 @@ function layerStale(L) {
   const kind = L.pulse || L.mask || '';
   if (!kind || !L.path) return false;
   const b = maskBody(kind), m = L.made;
-  return !m || m.width !== b.width || m.height !== b.height || m.frames !== b.frames;
+  // A pulse that repeats exactly is drawn one beat long and tiled by both compositors. Measuring
+  // it against the render's whole length would call it stale forever and redraw it, every time,
+  // into precisely what it already is.
+  const frames = L.pulse ? pulseLoop(L, b.frames, b.fps) : b.frames;
+  return !m || m.width !== b.width || m.height !== b.height || m.frames !== frames;
 }
 async function freshenLayers() {
   for (const [i, L] of layers().entries()) {
@@ -3313,9 +3334,12 @@ function layerDefaults(L) {
 function matteFor(i) { const a = layers()[i - 1]; return a && a.matte ? a : null; }
 function drawnLayers() { return layers().filter(L => !L.matte && !L.hidden); }
 // The stack goes over whatever this mode's source is: the clip, or the picture Image -> Video
-// starts from. Text -> Video has no source to stand on, and the cloud takes a clip rather than a
-// plate of its own, so neither gets the card.
-function layersOn() { return !state.t2v || !!baseSrc(); }
+// starts from. Text -> Video has no source to stand on -- so what the stack goes over there is the
+// frame being painted: grey at the start, then the previous painting carried on by the camera. The
+// engine composites it at the moment each frame is painted, which is why a pulse can beat over
+// something that does not exist until it is drawn. The cloud is the one mode with no card: it
+// takes a clip rather than a plate of its own.
+function layersOn() { return !state.t2v || !!baseSrc() || !isH3(); }
 // The bottom of the stack, in the only two forms it comes in.
 function baseSrc() {
   if (!state.t2v) return state.clip
@@ -3606,7 +3630,7 @@ function pulseRate(i) {
   if (!L || !L.pulse) return;
   const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
   if (!v) return;
-  const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
+  const at = beatAt(L);
   const want = at === 'bpm' && !L.pinvert ? (L.bpm || 120) * (L.division || 1) / PREVIEW_BPM : 1;
   // defaultPlaybackRate too: a tile that lost its source and reloads comes back at this speed
   // rather than at 1, and the loop you are watching does not quietly change tempo.
@@ -3854,7 +3878,7 @@ function beatRow(i, L) {
   // The clip paces the pulse unless you say otherwise: what you are stylising is usually cut to
   // something already, and taking the timing from it is how the layer moves with the edit rather
   // than across it. A count you set, or a track you bring, are the two ways of saying otherwise.
-  const at = L.beat === 'clip' && !clipAudio() ? 'bpm' : (L.beat || (clipAudio() ? 'clip' : 'bpm'));
+  const at = beatAt(L);
   // How far a hit swings this layer belongs to the beat, not to the picture: it means nothing
   // without one. So it leads the bottom row rather than sitting among blur and opacity.
   // Speed is the row; this is depth. How far each hit carries the layer, not how often one comes.
@@ -3991,6 +4015,10 @@ function plateKey() {
   return st.length ? JSON.stringify(st) : '';
 }
 function needPlate(now) {
+  // Text -> Video has nothing to flatten the stack onto. The frame it is laid over is the one
+  // being painted, so the composite belongs to the engine and happens frame by frame; there is no
+  // plate to make and nothing on the stage for one to be. The layer's own tile plays the beat.
+  if (state.t2v && !stillBase()) { PLATE = null; PLATE_WANT = ''; return; }
   const want = plateKey();
   if (want === PLATE_WANT) return;
   PLATE_WANT = want;
@@ -6017,7 +6045,9 @@ $('size').onmouseover = e => {
     ? [c.width, c.height].map(v => Math.max(8, Math.round(v * size / Math.max(c.width, c.height) / 8) * 8)) : [size, size];
   btn.title = `${w}×${h}`;
 };
-$('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); paintT2V(); save(); };
+// freshenLayers: in Text -> Video the frame's shape IS the render's, so a drawn layer that was cut
+// to the old one has to be cut again. Over a clip nothing is stale and it does nothing.
+$('size').onclick = e => { if (!e.target.dataset.s) return; state.size = +e.target.dataset.s; renderControls(); paintT2V(); save(); freshenLayers(); };
 
 function fmtDur(s) { return s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`; }
 function spf(size) {
@@ -6821,7 +6851,10 @@ var TOUR = [
      or a picture, <b>add matte</b>, <b>add noise</b> (static, cells, clouds or lines, generated live), <b>add audio</b>.
      Each layer has a blend mode, an <b>opacity</b> and a
      <b>blur</b>, and a black-and-white layer can act as a matte for the one below it. The stack is flattened before a frame is
-     painted or anything is uploaded, and the stage shows it as you build it.` },
+     painted or anything is uploaded, and the stage shows it as you build it.
+     ${state.t2v && !stillBase() ? `In <b>Text → Video</b> there is no source under the stack: what it goes over is the frame being
+     painted — grey to begin with, then the picture so far, carried on by the camera. So a pulse lands on the paint every frame
+     instead of being dragged along by it. Nothing to show on the stage until it renders; the layer's own tile plays the beat.` : ''}` },
   { at: () => [$('guideBox')], title: 'Guidance', text: () =>
     `How much of the source's structure survives. <b>ControlNet</b> holds shapes (<b>depth</b> the 3-D layout, <b>edge</b> the
      outlines) and <b>Hold</b> sets how tightly. <b>DepthDiff</b> is DWARP's own: the source's brightness or depth decides

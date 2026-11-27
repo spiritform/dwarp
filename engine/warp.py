@@ -1134,6 +1134,14 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         log(f"{'image' if job.init_image else 'text'} -> video: {total} frames at {job.width}x{job.height}, {'3D ' if job.cam_3d else ''}camera zoom {job.cam_zoom} rotate "
             f"{job.cam_rotate} pan {job.cam_x}/{job.cam_y}" + (f" turn {job.cam_yaw} tilt {job.cam_pitch}" if job.cam_3d else "")
             + " per frame" + (f", on {job.nth}s" if job.nth > 1 else ""))
+        # A stack here has nothing under it on disk: the frame it goes over is the one being
+        # painted -- grey at the start, then the previous painting carried on by the camera. So it
+        # is composited at the moment that frame exists (`lay` below) rather than extracted into a
+        # source of its own, which is also what lets a pulse beat over a thing that does not exist
+        # until it is drawn.
+        if getattr(job, "layers", None) and layerlib.plan(layerlib.clean(job.layers)):
+            progress("extracting", 0, 0, "extracting the layers")
+            stack = layerlib.FrameStack(job, out, extract_frames, log, over=True)
     else:
         progress("extracting", 0, 0, "extracting frames")
         # A layer stack is not flattened up front here. Every layer is kept as frames and the one
@@ -1213,7 +1221,7 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
         log(f"denoise {job.style} on frame 0, {style_next} after{' (untrusted pixels: full style)' if job.diff else ''}; "
             f"colour match {job.color_match}")
     for i, sp in enumerate(src_paths):
-        if stack:
+        if stack and not t2v:                   # t2v composites later, over the frame it has painted
             stack.write(i, live_stack)          # the stack as it stands, not as it was at the start
         if job.style_end >= 0:                  # a ramp: this frame's Denoise, and its Frame Lock
             style_now = denoise_at(i, len(src_paths) or 1)
@@ -1246,8 +1254,8 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             edits.append({"from_frame": i, "layers": live_stack})
             (out / "job.json").write_text(json.dumps(asdict(job) | {"live_edits": edits}, indent=2), encoding="utf-8")
             drawn = layerlib.plan(live_stack)
-            log(f"live layers from frame {i + 1}: "
-                + ", ".join(f"{L['mode']} {L['opacity'] * 100:.0f}%" for L, _ in drawn[1:]))
+            log(f"live layers from frame {i + 1}: "       # t2v: no base among them, so all of them
+                + ", ".join(f"{L['mode']} {L['opacity'] * 100:.0f}%" for L, _ in (drawn if t2v else drawn[1:])))
         if upd and upd.get("camera"):             # Live camera: new targets; the 3D switch flips at once
             cam = {k: v for k, v in upd.pop("camera").items() if k in CAM_KEYS}
             cam_target.update(cam)
@@ -1317,6 +1325,11 @@ def render(job: RenderJob, progress: Progress = lambda *a: None, cancelled: Call
             if prev_out is not None and prev_smask is not None and job.shape_follow > 0:   # it travels with the shape
                 src = shape_follow(src, prev_smask, smask, job.shape_follow)
             src_np = (src[0].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+            if stack:
+                # The stack lands on the frame rather than being dragged along by the camera: a
+                # pulse hits where it is drawn, every frame, and the paint is the thing that travels.
+                src_np = stack.lay(i, src_np, live_stack)
+                src = to_tensor(src_np, device)
             Image.fromarray(src_np).save(out / "src" / f"{i:06d}.jpg", quality=90)   # the viewer's Source layer
         else:
             src_np = load_rgb(sp)

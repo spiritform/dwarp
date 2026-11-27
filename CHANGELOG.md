@@ -2,6 +2,25 @@
 
 What changed in DWARP, newest first. Small styling tweaks are left out; the commit history has everything.
 
+## 2026-11-26
+
+- **Layers in Text → Video, so a pulse can beat over a thing that isn't there yet.** The stack
+  needed a source to stand on — a clip, or the picture Image → Video starts from — and Text → Video
+  has neither, so the whole card was hidden there and **add audio** with it. But Text → Video does
+  have something each frame is painted *from*: grey to begin with, then the picture so far, carried
+  on by the camera. That is what the stack goes over now. The engine composites it at the moment
+  each frame exists rather than flattening anything up front, so a pulse lands on the paint every
+  frame instead of being dragged along by the move — and every layer in the stack is an overlay,
+  the bottom one included, which means it keeps its blend mode and its matte. Drawn layers are cut
+  to the render's own size and length and recut when you change either. There is nothing to show on
+  the stage until it renders; the layer's own tile plays the beat.
+
+- **A pulse set to a count stops being redrawn for nothing.** A pattern that repeats exactly is
+  drawn one beat long and tiled, but it was being measured against the render's whole length — so
+  it counted as stale every time and was redrawn, identically, whenever anything changed around it.
+  Fixed, along with a beat that could not be drawn at all: picking flash, bloom, blocks, circle or
+  wipe on a count failed with "could not draw that pulse".
+
 ## 2026-11-25
 
 - **Sound on a run that is still rendering, and a speaker that covers it.** Playing a live run was
