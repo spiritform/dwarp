@@ -495,6 +495,25 @@
   /* matte as a mark rather than a word: the name next to it is the thing you read */
   #layers .chip.ico { display: inline-flex; align-items: center; justify-content: center; }
   #layers .chip.ico svg { width: 12px; height: 12px; }
+  /* A solid's thumbnail is the colour and is also the control: it says what it is by being it,
+     and there is nothing else about a solid to show. */
+  #layers .tile.pick { cursor: pointer; }
+  /* The picker. Twenty-four squares and the eyedropper is the OS's problem: a flat grid is the one
+     shape of colour picker you can hit without aiming, and a solid under a stack is picked by eye
+     off the stage anyway. */
+  #swatchPop { position: fixed; z-index: 90; display: none; padding: 7px; gap: 4px;
+               grid-template-columns: repeat(6, 22px); background: var(--panel);
+               border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+  #swatchPop.on { display: grid; }
+  #swatchPop b { width: 22px; height: 22px; border-radius: 3px; cursor: pointer; display: block;
+                 background: var(--c); transition: transform .08s; }
+  #swatchPop b:hover { transform: scale(1.14); }
+  #swatchPop b.on { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
+  /* "no colour": the solid goes back to being whatever Level says. */
+  #swatchPop b.none { background:
+    linear-gradient(135deg, #3a3942 44%, #9a98a3 44%, #9a98a3 56%, #3a3942 56%); }
+  /* and the way out to any colour at all, when none of the twenty-four is the one */
+  #swatchPop b.any { background: conic-gradient(#f44, #fd4, #4f6, #4df, #46f, #d4f, #f44); }
   #layers .lay.drag { opacity: .35; }
   #layers .lay.over { background: #34333b; }
   /* the one under the pointer, so you can see which row a slider belongs to without it shouting */
@@ -1320,7 +1339,7 @@
     <div id="colourRef"></div>
     <input type="file" id="colourFile" accept="image/*" hidden>
     <div class="slider">
-      <div class="slider-head"><b title="How hard each painted frame is pulled back to the colour reference. It moves the colour only \u2014 never the picture \u2014 so unlike Source mix it costs nothing when the camera is moving">match</b><span id="colourMatchV"></span></div>
+      <div class="slider-head"><b title="How hard each painted frame is pulled back to the colour reference. It moves the colour only — never the picture — so unlike Source mix it costs nothing when the camera is moving">match</b><span id="colourMatchV"></span></div>
       <input type="range" id="colourMatch" min="0" max="1" step="0.05">
     </div>
     <div class="sublabel">Look</div>
@@ -1344,6 +1363,7 @@
     </div></div>
     <input type="file" id="layerFile" accept="video/*,image/*" hidden>
     <input type="file" id="pulseFile" accept="audio/*,video/*" hidden>
+    <input type="color" id="solidColour" hidden>
   </section>
 
   <section id="guideBox">
@@ -1590,6 +1610,7 @@
 </footer>
 
 <script src="/vendor/anime.min.js"></script>
+<div id="swatchPop"></div>
 <script>
 // ---------------------------------------------------------------- page intro
 // Basic reveals, once per load, in the logo's render rhythm: its letters light up one after another, buttons
@@ -1719,6 +1740,9 @@ let job = null;                // active job snapshot
 let viewRun = null;            // run id shown on the stage
 let frames = [];               // output frame numbers of viewRun
 let frameIdx = 0, playing = null, runsCache = [];
+// Where the playhead sits on the Text -> Video timeline: there is no clip to count frames of, so
+// the stack's preview counts them itself. var, not let: paintPlate can be called before this line.
+var t2vFrame = 0;
 
 function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {} }
 function load() {
@@ -1885,6 +1909,8 @@ function paintT2V() {
   $('t2vLenV').textContent = `${state.size}px · ${(+state.t2vLen).toFixed(1)}s · ${Math.floor((frames - 1) / on) + 1} frames`;
   [...$('t2vAspect').children].forEach(b => b.classList.toggle('on', b.dataset.a === (state.t2vAspect || '1:1')));
   [...$('onN').children].forEach(b => { const n = +b.dataset.n; b.textContent = +(T2V_FPS / n).toFixed(1); b.classList.toggle('on', n === on); });
+  // The track under the stack preview is this length, and the canvas is this size: both just moved.
+  if (stackMode() && $('cvPlate')) { setupTransport(); paintPlate(); }
   renderRamp();
   paintKeys(); updateEst();
 }
@@ -1987,7 +2013,7 @@ function renderColourRef() {
   const r = state.colourRef, box = $('colourRef');
   box.innerHTML = r
     ? `<div class="ref"><img src="/api/image/file?${qs({ path: r.path })}" alt="" title="Replace the picture"><span title="${r.path}">${r.name}</span><button title="Back to the render's own first frame">\u2715</button></div>`
-    : `<div class="clip-empty" title="A picture to take the colour from \u2014 click, or drop one here. With none, every frame is pulled back to this render's first frame, which is what it has always done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>frame 1 \u2014 or drop a picture</div>`;
+    : `<div class="clip-empty" title="A picture to take the colour from — click, or drop one here. With none, every frame is pulled back to this render's first frame, which is what it has always done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>frame 1 — or drop a picture</div>`;
   $('colourMatch').value = state.colourMatch;
   $('colourMatchV').textContent = (+state.colourMatch).toFixed(2);
 }
@@ -2159,8 +2185,8 @@ function renderH3() {
   if (w.tracks) {
     $('tkPaths').innerHTML = TRACK_PTS.map(n =>
       `<button data-n="${n}" class="${n === trackPts() ? 'on' : ''}" title="${
-        n <= 8 ? 'a few broad vectors \u2014 reads as camera drift'
-        : n >= 48 ? 'a dense field \u2014 the whole surface churns' : ''}">${n}</button>`).join('');
+        n <= 8 ? 'a few broad vectors — reads as camera drift'
+        : n >= 48 ? 'a dense field — the whole surface churns' : ''}">${n}</button>`).join('');
     const sp = w.strength;
     $('tkPullRow').hidden = !sp;
     if (sp) {
@@ -2174,7 +2200,7 @@ function renderH3() {
   if (w.speed) {
     const kids = [...$('h3Speed').children];
     kids[0].title = w.speed.note || 'The full model';
-    kids[1].title = w.speed.fast_note || 'Fewer steps, a distilled model \u2014 quicker and a little softer';
+    kids[1].title = w.speed.fast_note || 'Fewer steps, a distilled model — quicker and a little softer';
     kids.forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === comfyFast()));
   }
   $('h3SoundLabel').hidden = $('h3Sound').hidden = !w.sound;
@@ -2264,7 +2290,7 @@ function renderTracks() {
   } else if (way === 'field' && (drawKind() || (t && t.field))) {
     // Drawn, so there are no frames of its own to draw it on: it animates over the picture it is about
     // to move instead, live, which is also how the dials below get their feedback. The Draw kind uses
-    // the same canvas as its paper \u2014 the backdrop you are drawing over is the picture you are moving,
+    // the same canvas as its paper — the backdrop you are drawing over is the picture you are moving,
     // which is the whole reason to draw the lines here rather than anywhere else.
     const dr = drawKind(), has = !!(t && t.field);
     $('trackSlot').innerHTML = `<div class="tk"><canvas id="tkCanvas" class="${dr ? 'draw' : ''}"
@@ -2275,7 +2301,7 @@ function renderTracks() {
         ? `${t.label || 'Field'} \u00b7 ${t.paths} path${t.paths === 1 ? '' : 's'} \u00b7 ${t.frames} frames`
         : 'drag to draw a path \u00b7 click to pin'}</b>
       ${dr && has ? '<a id="tkUndo" title="Take back the last line you drew">undo</a>' : ''}
-      ${has ? '<a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>' : ''}
+      ${has ? '<a id="tkCopy" title="Copy the path JSON — for pasting into ComfyUI by hand. The render does not need this.">copy</a>' : ''}
       <button id="tkDel" title="Remove">\u2715</button></div></div>`;
     const ref = h3Refs()[0];
     if ((ref?.path || '') !== (fieldBg?.path || ''))     // the backdrop, when there is a reference
@@ -2309,7 +2335,7 @@ function renderTracks() {
       <video src="/api/video/file?${qs({ path: t.preview })}" autoplay muted loop playsinline
              title="What was measured, drawn on the frames it came off. Click to pause."></video>
       <div class="meta"><b title="${t.source || ''}">${t.paths} paths \u00b7 ${t.frames} frames \u00b7 ${t.width}\u00d7${t.height}</b>
-      <a id="tkCopy" title="Copy the path JSON \u2014 for pasting into ComfyUI by hand. The render does not need this.">copy</a>
+      <a id="tkCopy" title="Copy the path JSON — for pasting into ComfyUI by hand. The render does not need this.">copy</a>
       <button id="tkDel" title="Remove">\u2715</button></div></div>`;
     $('trackSlot').querySelector('video').onclick = e =>
       e.target.paused ? e.target.play() : e.target.pause();
@@ -2317,17 +2343,17 @@ function renderTracks() {
     $('tkDel').onclick = () => { state.tracks = null; renderTracks(); save(); };
   } else if (way === 'field') {
     stopField();                                // only reached if a draw failed, or after \u2715
-    $('trackSlot').innerHTML = `<div class="clip-empty" title="Draw the paths from a formula \u2014 no clip needed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>draw a field</div>`;
+    $('trackSlot').innerHTML = `<div class="clip-empty" title="Draw the paths from a formula — no clip needed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>draw a field</div>`;
   } else {
     stopField();
-    $('trackSlot').innerHTML = `<div class="clip-empty" title="Measure a video's motion as path data \u2014 click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>a video to track \u2014 yours, or a run</div>`;
+    $('trackSlot').innerHTML = `<div class="clip-empty" title="Measure a video's motion as path data — click, drop a file, or drag a run in off the strip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 14 7 18-2"/><circle cx="3" cy="17" r="1.6"/><circle cx="21" cy="15" r="1.6"/></svg>a video to track — yours, or a run</div>`;
   }
   // A path carries one point per frame, so tracks measured against one Length do not fit another:
   // switching from H3's 124 to WanMove's 81 would hand the model the wrong shape, and you would only
   // find out after paying for it. Say so here instead.
   const want = h3Frames(h3Seconds()), box = comfySize();
   // A measurement whose chase was saved can be fitted to a new Length, box or path count out of the
-  // array \u2014 arithmetic, no GPU \u2014 so it follows the panel the way a drawn field does. Only a
+  // array — arithmetic, no GPU — so it follows the panel the way a drawn field does. Only a
   // measurement from before that was saved (or one whose refit failed) still asks to be redone.
   if (t && !t.field && t.chase && wf().tracks && !refitBusy && !refitFits() && refitKey() !== refitWant) {
     refitTracks(); return;
@@ -2344,13 +2370,13 @@ function renderTracks() {
             : (t.width !== box[0] || t.height !== box[1])
               ? `measured for ${t.width}\u00d7${t.height}, but this renders at ${box[0]}\u00d7${box[1]}` : '';
   $('trackNote').innerHTML = busy ? 'this holds the GPU, like an enhance'
-    : refitBusy ? 'fitting the measurement to this render \u2014 no GPU, no tracking again'
-    : why ? `<span class="bad">${why}</span> \u2014 <a id="tkRedo" class="randlink">measure again</a>`
-    : t && t.field ? `drawn, not measured \u2014 ${wf().label} follows ${drawnBits(t)}`
-    : t ? `these go up with the render \u2014 ${wf().label} follows them`
-    : way === 'field' ? (drawKind() ? 'drag on the picture above \u2014 one drag is one path'
-                                    : 'paths from a formula \u2014 click to draw them')
-        : `optical flow, measured off the clip you drop here \u2014 or <a id="tkDraw" class="randlink">draw the motion yourself</a>`;
+    : refitBusy ? 'fitting the measurement to this render — no GPU, no tracking again'
+    : why ? `<span class="bad">${why}</span> — <a id="tkRedo" class="randlink">measure again</a>`
+    : t && t.field ? `drawn, not measured — ${wf().label} follows ${drawnBits(t)}`
+    : t ? `these go up with the render — ${wf().label} follows them`
+    : way === 'field' ? (drawKind() ? 'drag on the picture above — one drag is one path'
+                                    : 'paths from a formula — click to draw them')
+        : `optical flow, measured off the clip you drop here — or <a id="tkDraw" class="randlink">draw the motion yourself</a>`;
   // the link is only in the note when the note is showing it: a refit in flight replaces that line
   if ($('tkRedo')) $('tkRedo').onclick = () => startTracks(state.tracks.source, '', state.tracks.trim);
   if ($('tkDraw')) $('tkDraw').onclick = () => {        // straight to the canvas, kind and all
@@ -2362,7 +2388,7 @@ async function copyTracks() {
   try {
     const res = await fetch(`/api/tracks/file?${qs({ path: state.tracks.path })}`);
     await navigator.clipboard.writeText(await res.text());
-    setStatus('tracks copied \u2014 paste into track_coords', 'done');
+    setStatus('tracks copied — paste into track_coords', 'done');
   } catch (e) { setStatus('could not copy: ' + e.message, 'bad'); }
 }
 async function startTracks(path, name, trim) {
@@ -2413,7 +2439,7 @@ function watchTracks() {
   }, 1000);
 }
 // ---- Refit: the same measurement, fitted to what the panel now asks for
-// All of tracking's cost is the chase \u2014 RAFT, both ways, over every frame. Length, output box and
+// All of tracking's cost is the chase — RAFT, both ways, over every frame. Length, output box and
 // even how many paths to keep are decided out of that array afterwards, so engine/tracks.py saves it
 // and those three stop being reasons to measure again. Only a different clip or trim is a new chase.
 var refitWant = '', refitBusy = false;                // var: read by renderTracks above
@@ -2502,7 +2528,7 @@ function fieldMatches() {
 async function drawField(fresh) {
   if (!FIELD_KINDS.length) {
     fieldWant = fieldKey();                    // said once, not once per repaint
-    return setStatus('drawn motion needs the new server \u2014 restart run.bat', 'bad');
+    return setStatus('drawn motion needs the new server — restart run.bat', 'bad');
   }
   const body = fieldKey();
   if (!fresh && body === fieldWant && isField()) return;
@@ -2608,7 +2634,7 @@ function paintField() {
 }
 // ---- Drawing: a drag is a path
 // The line is kept as the shape it was drawn as and nothing else. How fast it was dragged is not part
-// of it \u2014 the engine resamples by arc length \u2014 because a hand slowing down to aim is not an
+// of it — the engine resamples by arc length — because a hand slowing down to aim is not an
 // instruction to the picture to slow down there.
 var drawPts = [];                              // var: paintField above reads it
 function armDrawing(cv) {
@@ -2643,13 +2669,13 @@ function armDrawing(cv) {
     strokes().push((anchor ? [line[0]] : line).map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]));
     if (!moving()) {                           // anchors alone ask for no motion: nothing to send yet
       renderH3(); paintSums(); save();
-      return setStatus('pinned \u2014 now drag a line for what should move', 'done');
+      return setStatus('pinned — now drag a line for what should move', 'done');
     }
     drawField(true);
   };
 }
 // Measure or draw: one switch under the slot, and the one you are not using is kept rather than
-// thrown away \u2014 measuring costs GPU time, so going back to it should not mean doing it again.
+// thrown away — measuring costs GPU time, so going back to it should not mean doing it again.
 function motionWay() {
   return state.motionWay === 'field' || state.motionWay === 'measure' ? state.motionWay
        : isField() ? 'field' : 'measure';
@@ -2702,7 +2728,7 @@ $('tkPaths').onclick = e => {
   state.trackPts = n; renderH3(); save();
   if (isField()) drawField();                  // drawn: it just redraws with that many
   else if (measured()?.chase) refitTracks();   // measured: re-picked out of the saved chase, no GPU
-  else if (state.tracks) setStatus(`${n} paths next time \u2014 measure again to use it`, 'done');
+  else if (state.tracks) setStatus(`${n} paths next time — measure again to use it`, 'done');
 };
 $('tkPull').oninput = e => {
   (state.comfyPull ||= {})[wf().id] = +e.target.value;
@@ -3022,7 +3048,7 @@ function maskBody(pattern) {
   return { pattern, width, height, frames: h3Frames(h3Seconds()), fps: wf().fps || 24 };
 }
 async function makeMask(pattern, at) {
-  if (!MASK_PATTERNS.length) return setStatus('colour masks need the new server \u2014 restart run.bat', 'bad');
+  if (!MASK_PATTERNS.length) return setStatus('colour masks need the new server — restart run.bat', 'bad');
   const body = maskBody(pattern);
   try {
     const r = await api('/api/masks', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -3063,7 +3089,7 @@ function paintMaskLib() {
     // Before boot's /api/masks lands the list is empty for a moment, and that is not the same thing
     // as a server too old to draw them. Telling you to restart over a race is worse than saying wait.
     $('maskLib').innerHTML = `<div class="rs-head"><h3>Colour masks</h3><div class="rs-info">${
-      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the patterns\u2026'
+      MASK_READY ? 'This needs the new server — restart run.bat.' : 'looking for the patterns\u2026'
     }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
     $('mlClose').onclick = () => toggleMaskLib(false);
     return;
@@ -3096,7 +3122,7 @@ $('maskLib').addEventListener('click', e => {
 function paintPulseLib() {
   if (!PULSE_PATTERNS.length) {
     $('maskLib').innerHTML = `<div class="rs-head"><h3>Pulse</h3><div class="rs-info">${
-      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the patterns\u2026'
+      MASK_READY ? 'This needs the new server — restart run.bat.' : 'looking for the patterns\u2026'
     }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
     $('mlClose').onclick = () => toggleMaskLib(false);
     return;
@@ -3109,7 +3135,7 @@ function paintPulseLib() {
       <b>${p.label}</b><span class="note">${p.note}</span></div>`;
   $('maskLib').innerHTML = `<div class="rs-head stack">
       <h3>Pulse</h3>
-      <div class="rs-info">A layer drawn at this render's size and length that moves on a beat \u2014
+      <div class="rs-info">A layer drawn at this render's size and length that moves on a beat —
         from a BPM you type, from the clip's own sound, or from a track you load. It is an ordinary
         layer after that, and under Warp the paint from one hit carries on into the frames after it.</div>
       <button class="logbtn close" id="mlClose" title="Close (Esc)">\u2715</button>
@@ -3122,7 +3148,7 @@ function paintPulseLib() {
 function paintNoiseLib() {
   if (!NOISE_PATTERNS.length) {
     $('maskLib').innerHTML = `<div class="rs-head stack"><h3>Noise</h3><div class="rs-info">${
-      MASK_READY ? 'This needs the new server \u2014 restart run.bat.' : 'looking for the kinds\u2026'
+      MASK_READY ? 'This needs the new server — restart run.bat.' : 'looking for the kinds\u2026'
     }</div><button class="logbtn close" id="mlClose">\u2715</button></div>`;
     $('mlClose').onclick = () => toggleMaskLib(false);
     return;
@@ -3136,9 +3162,9 @@ function paintNoiseLib() {
   $('maskLib').innerHTML = `<div class="rs-head stack">
       <h3>Noise</h3>
       <div class="rs-info">Monochrome grain, generated as each frame is composited rather than
-        written to a file \u2014 so there is nothing to wait for, and the dials move under your
+        written to a file — so there is nothing to wait for, and the dials move under your
         hand. It is a different lever from Denoise: that asks the model to invent more, this
-        changes the pixels it is looking at \u2014 and under Warp the grain is carried into the
+        changes the pixels it is looking at — and under Warp the grain is carried into the
         next frame, where it becomes structure. Every kind rests at mid grey, so <b>overlay</b> and
         <b>soft light</b> leave the picture alone until the layer's <b>grain</b> opens it either
         side of that; the kinds made of something bigger than a pixel take a <b>size</b> too.</div>
@@ -3203,55 +3229,78 @@ function pulseDial(L, k) {
   const d = (pulseDials(L) || {})[k];
   return L && L[k] != null ? L[k] : (d ? d.default : 0.5);
 }
-function pulseBody(L) {
-  const b = maskBody(L.pulse);
-  return { kind: L.pulse, width: b.width, height: b.height, frames: pulseLoop(L, b.frames, b.fps), fps: b.fps,
-           amount: L.amount ?? 1, bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
-           invert: !!L.pinvert, seed: L.seed || 0, drift: L.drift || 0,
-           scale: pulseDial(L, 'scale'), boil: pulseDial(L, 'boil') };
+// What a dial means, in the numbers the pattern is actually drawn from. engine/pulse.py
+// _fractal is the other copy: the middle of each dial is exactly the pattern's own default.
+const PULSE_SCALE_SPAN = 2.2, PULSE_BOIL_SPAN = 2.0;
+function pulseFractal(scale, boil, cells, rate) {
+  return [cells * Math.pow(PULSE_SCALE_SPAN, 1 - 2 * scale), rate * PULSE_BOIL_SPAN * boil];
 }
+// Everything the engine needs to work out the beat, and nothing about the picture.
+function beatBody(L) {
+  const b = maskBody(L.pulse);
+  return { frames: pulseLoop(L, b.frames, b.fps), fps: b.fps,
+           bpm: L.bpm || 120, division: L.division || 1, audio: beatAudio(L),
+           seed: L.seed || 0, drift: L.drift || 0 };
+}
+// A beat is the same beat whatever the picture is doing, so the answer is kept under what it was
+// asked for: changing the pattern, the scale or the seed of the noise does not re-ask.
+function beatKey(L) { const b = beatBody(L); return [b.frames, b.fps, b.bpm, b.division, b.audio, b.seed, b.drift].join('|'); }
 async function makePulse(kind, at = -1) {
   try {
-    setStatus('drawing the pulse\u2026', 'live');
     const was = at >= 0 ? layers()[at] : null;
     // The layer's look rides along -- blend, opacity, blur, swing, speed -- because you are changing
     // the picture, not starting the layer again. A loaded track does not: it was brought in for the
     // pulse you are replacing, and leaving it attached means the Import tab still names a file you
     // chose for something else. So picking a pattern lands on Pulse, its own speed, every time.
-    const L = Object.assign({ pulse: kind, bpm: 120, division: 1, amount: 1 }, was || {},
+    const L = Object.assign({ pulse: kind, bpm: 120, division: 1, amount: 1,
+                              seed: 1 + Math.floor(Math.random() * 2147483646) }, was || {},
                             { pulse: kind, beat: 'bpm', audio: '', audioName: '' });
-    const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
-                                               body: JSON.stringify(pulseBody(L)) });
-    Object.assign(L, { path: r.path, name: `${r.label.toLowerCase()} pulse`, base: r.base }); madeAt(L, r);
+    const p = pulseSpec(kind);
+    // No file and no server: the pattern is a formula and the only thing that has to be fetched is
+    // the beat. It is drawn the moment it is on the stack.
+    Object.assign(L, { path: '', name: `${(p.label || kind).toLowerCase()} pulse`,
+                       base: L.pinvert ? 'white' : (p.base || 'black') });
+    const i = was ? at : 0;
     if (was) Object.assign(was, L);
     else layers().unshift(layerDefaults(Object.assign(L, { mode: 'screen', opacity: 0.7 })));
     renderLayers(); paintSums(); save(); stageSource();
-    setStatus(`${r.label} \u00b7 ${r.frames} frames at ${r.width}\u00d7${r.height}`, 'done');
+    setStatus(`${p.label || kind} pulse`, 'done');
+    await needBeat(i, true);
   } catch (e) {
-    setStatus('could not draw that pulse: ' + e.message, 'bad');
+    setStatus('could not add that pulse: ' + e.message, 'bad');
   }
 }
-// Redrawn when the beat changes, which means ffmpeg: debounced, and only the file under the layer
-// moves -- the row is not rebuilt, so the box you are typing in keeps the cursor.
+// The picture is drawn here, so nothing below is about the picture: this is the beat, which is
+// the one thing the engine has to answer for (a track has to be analysed, and page and engine must
+// not each have their own idea of where the hits are). Debounced, and the row is not rebuilt, so
+// the box you are typing in keeps the cursor.
 var pulseTimers = {};
-function needPulse(i, now) {
+function needBeat(i, now) {
   const L = layers()[i];
-  if (!L || !L.pulse) return;
+  if (!L || !L.pulse) return Promise.resolve();
   clearTimeout(pulseTimers[i]);
-  pulseTimers[i] = setTimeout(() => drawPulse(i), now ? 0 : 350);
+  if (now) return drawBeat(i);
+  pulseTimers[i] = setTimeout(() => drawBeat(i), 250);
+  return Promise.resolve();
 }
-async function drawPulse(i) {
+// Anything that only moves the PICTURE: redraw it here and now, at the frame rate, and tell a
+// render in progress. No file, no round trip, nothing on disk.
+function pulseMoved(i) {
+  genTiles(); needPaint(); needPlate(); pushLayers();
+}
+async function drawBeat(i) {
   const L = layers()[i];
   if (!L || !L.pulse) return;
+  const want = beatKey(L);
+  if (L.envKey === want) return;                 // the same beat: the picture is already right
   try {
-    const r = await api('/api/layers/pulse', { method: 'POST', headers: { 'content-type': 'application/json' },
-                                               body: JSON.stringify(pulseBody(L)) });
-    if (layers()[i] !== L) return;               // the stack moved while it was drawing
-    L.path = r.path; L.name = `${r.label.toLowerCase()} pulse`; madeAt(L, r);
-    pulseTile(i);                                // on a track, the tile is this clip: show the new one
-    needPaint(); needPlate(); pushLayers(); save();
+    const r = await api('/api/layers/beat', { method: 'POST', headers: { 'content-type': 'application/json' },
+                                               body: JSON.stringify(beatBody(L)) });
+    if (layers()[i] !== L) return;               // the stack moved while it was being read
+    L.env = r.env; L.envKey = want; L.path = '';
+    pulseMoved(i); save();
   } catch (e) {
-    setStatus('could not draw that pulse: ' + e.message, 'bad');
+    setStatus('could not read that beat: ' + e.message, 'bad');
   }
 }
 // A drawn pattern as a layer that mattes the one below it. Same generator as before; it draws in
@@ -3294,19 +3343,19 @@ async function freshenMasks() {
 // is never touched; a noise layer has no file at all, so it is never the wrong shape either.
 function madeAt(L, r) { L.made = { width: r.width, height: r.height, frames: r.frames }; }
 function layerStale(L) {
-  const kind = L.pulse || L.mask || '';
-  if (!kind || !L.path) return false;
-  const b = maskBody(kind), m = L.made;
-  // A pulse that repeats exactly is drawn one beat long and tiled by both compositors. Measuring
-  // it against the render's whole length would call it stale forever and redraw it, every time,
-  // into precisely what it already is.
-  const frames = L.pulse ? pulseLoop(L, b.frames, b.fps) : b.frames;
-  return !m || m.width !== b.width || m.height !== b.height || m.frames !== frames;
+  // A pulse has no file to be the wrong shape -- it is drawn at the size of whatever it is going
+  // over. What can go stale is its BEAT: the envelope is one number per frame, so a clip that got
+  // longer needs more of them. (A pulse that repeats exactly is kept one beat long and tiled by
+  // every compositor, which is why this asks pulseLoop rather than the render's whole length.)
+  if (L.pulse) return L.envKey !== beatKey(L);
+  if (!L.mask || !L.path) return false;
+  const b = maskBody(L.mask), m = L.made;
+  return !m || m.width !== b.width || m.height !== b.height || m.frames !== b.frames;
 }
 async function freshenLayers() {
   for (const [i, L] of layers().entries()) {
     if (!layerStale(L)) continue;
-    if (L.pulse) await drawPulse(i);
+    if (L.pulse) await drawBeat(i);
     else await makeMatte(L.mask, i);
   }
 }
@@ -3341,6 +3390,16 @@ function layerDefaults(L) {
   // A noise layer from an older save still points at the mp4 that was drawn for it, under that
   // file's name. It is generated now, from the settings on the row itself, so the path goes and
   // the row is called what it is made of.
+  // A pulse layer from an older save still points at the mp4 that was drawn for it. It is
+  // generated now, from the pattern, the envelope and the seed that are all on the row already,
+  // so the path goes -- the same thing that happened to noise when it stopped being a file.
+  if (d.pulse) {
+    d.path = '';
+    if (d.seed == null) d.seed = 1 + Math.floor(Math.random() * 2147483646);
+    if (!d.name || /\.(mp4|mov|webm)$/i.test(d.name)) {
+      d.name = `${(pulseSpec(d.pulse).label || d.pulse).toLowerCase()} pulse`;
+    }
+  }
   if (d.noise) {
     d.path = '';
     if (d.scale == null) d.scale = noiseScale(d);
@@ -3445,6 +3504,8 @@ function layerJob() {
   const src = baseSrc();
   if (src) stack.push({ path: src.path, mode: 'normal', matte: false,
                         opacity: b.opacity, blur: b.blur });
+  // A pulse row goes over with its envelope on it. One float per frame is small next to a clip,
+  // and it is the only part of a pulse the engine cannot work out for itself.
   const drawn = stack.filter(L => !L.matte);
   return drawn.length ? stack : [];      // a stack of nothing but mattes is not a plate
 }
@@ -3473,7 +3534,8 @@ function paintLvl(bar, L) {
 // setting it is one place rather than three.
 function paintNum(el, v) {
   const sp = numSpec(el);
-  el.style.setProperty('--f', Math.round(((v || 0) - sp.min) / (sp.max - sp.min) * 100) + '%');
+  el.style.setProperty('--f', (sp.fill != null ? sp.fill
+    : Math.round(((v || 0) - sp.min) / (sp.max - sp.min) * 100)) + '%');
   el.querySelector('i').textContent = sp.text(v || 0);
 }
 // A length while the picture has none: there is no still to keep it on until it has one.
@@ -3485,6 +3547,9 @@ const NUM_DEFAULT = { opacity: 1, blur: 0, black: 0, mid: 0.5, white: 1, amount:
 // like. One table, so a box only has to say which of them it is.
 const NUM_SPEC = {
   bpm:  { min: 40, max: 240, step: 1, text: v => Math.round(v) },
+  // A seed is a name and not a quantity: there is nothing for a bar to be full of, and a drag
+  // steps one at a time, because the take next door is as likely to be the one as any other.
+  seed: { min: 0, max: 2147483646, step: 1, fill: 0, text: v => String(Math.round(v) || 0) },
   secs: { min: 0, max: 30, step: 1, text: v => v >= 0.2 ? String(Math.max(1, Math.round(v))) : '—' },
 };
 function numSpec(el) {
@@ -3515,13 +3580,18 @@ $('layers').addEventListener('pointerdown', e => {
     // animated into painted, and that rebuilds the panel out from under the pointer.
     if (k === 'secs') { picSecs = v; return; }
     L[k] = v;
-    // The tile keeps up with the number under your hand; the clip itself is redrawn after.
-    if (k === 'bpm') pulseRate(+which);
-    if (k === 'amount' || k === 'bpm' || k === 'drift'
-        || (beats(L) && (k === 'scale' || k === 'boil'))) return needPulse(+which);   // a different picture, not a blend
+    // A pulse is generated under your hand too, now. Swing, Scale, Boil and the seed are the
+    // picture and land at once; the count and the drift are the BEAT, which the engine answers,
+    // so those also kick off a fetch -- but the picture still moves immediately, off the envelope
+    // that is already here.
+    if (beats(L)) {
+      pulseMoved(+which);
+      if (k === 'bpm' || k === 'drift' || k === 'seed') needBeat(+which);
+      return;
+    }
     // Noise is generated under your hand: there is no file to redraw, so the tile and the stage
     // both move with the number instead of a third of a second behind it.
-    if (k === 'grain' || k === 'scale' || k === 'level') { noiseTiles(); needPaint(); needPlate(); pushLayers(); return; }
+    if (k === 'grain' || k === 'scale' || k === 'level') { genTiles(); needPaint(); needPlate(); pushLayers(); return; }
     if (k === 'blur' || k === 'opacity') paintTileFx();            // the tile softens as you drag
     needPaint(); needPlate(); pushLayers();
   };
@@ -3549,18 +3619,19 @@ $('layers').addEventListener('click', e => {
     const i = +seg.dataset.beat, L = layers()[i];
     if (!L || L.beat === btn.dataset.b) return;
     L.beat = btn.dataset.b;
-    renderLayers(); save(); pulseRates();
+    renderLayers(); save();
     // Nothing to read yet is not an error: pick the file first and the layer is redrawn then.
-    if (L.beat !== 'file' || L.audio) needPulse(i, true);
+    if (L.beat !== 'file' || L.audio) needBeat(i, true);
     else { PULSE_AT = i; $('pulseFile').click(); }   // Import with nothing in it: ask for it now
     return;
   }
   const snd = e.target.closest('[data-snd]');
   if (snd) { PULSE_AT = +snd.dataset.snd; $('pulseFile').click(); }
-  const die = e.target.closest('[data-pseed]');
-  if (die) {
-    const i = +die.dataset.pseed, L = layers()[i];
-    if (L) { L.seed = 1 + Math.floor(Math.random() * 2147483646); save(); needPulse(i, true); }
+  // The thumbnail of a solid is the colour, so it is also the way to change it.
+  const sw = e.target.closest('.tile[data-swap]');
+  if (sw && sw.dataset.swap !== 'base' && noiseColours(layers()[+sw.dataset.swap] || {})) {
+    const open = $('swatchPop').classList.contains('on') && SOLID_AT === +sw.dataset.swap;
+    open ? closeSwatches() : openSwatches(+sw.dataset.swap, sw);
     return;
   }
   const pin = e.target.closest('[data-pinv]');
@@ -3568,10 +3639,74 @@ $('layers').addEventListener('click', e => {
     const i = +pin.dataset.pinv, L = layers()[i];
     if (!L) return;
     L.pinvert = !L.pinvert;
-    renderLayers(); save(); needPulse(i, true);
+    L.base = L.pinvert ? 'white' : (pulseSpec(L.pulse).base || 'black');
+    renderLayers(); save(); pulseMoved(i);
     return;
   }
 });
+// Which solid is being coloured, remembered until the picker answers.
+var SOLID_AT = -1;
+const greyHex = v => { const n = Math.round(Math.min(1, Math.max(0, v || 0)) * 255).toString(16).padStart(2, '0'); return `#${n}${n}${n}`; };
+// Four rows of six. Neutrals first, because a solid is the floor of a stack more often than it is
+// the subject of one; then warm, cool and the far end of the wheel, each row running dark to light
+// so a row is a ramp and not an assortment.
+const SWATCHES = [
+  '#000000', '#2b2b30', '#555560', '#8c8c96', '#c6c6cd', '#ffffff',
+  '#4a1118', '#8e2420', '#d1452a', '#ef8b2c', '#f6c95a', '#fbe9b0',
+  '#0d2436', '#17496f', '#2f86b4', '#13694f', '#3faa63', '#9fd17a',
+  '#2a1140', '#5c2a86', '#9a53c4', '#d1468c', '#ef87ae', '#f6cfdc',
+];
+function paintSwatches() {
+  const L = layers()[SOLID_AT] || {}, col = noiseColour(L);
+  $('swatchPop').innerHTML =
+    `<b class="none${col ? '' : ' on'}" data-col="" title="No colour — the Level dial decides"></b>`
+    + SWATCHES.map(c => `<b class="${c === col ? 'on' : ''}" style="--c:${c}" data-col="${c}" title="${c}"></b>`).join('')
+    + `<b class="any" data-col="?" title="Any colour — opens the system picker"></b>`;
+}
+function openSwatches(i, from) {
+  const L = layers()[i];
+  if (!L) return;
+  SOLID_AT = i;
+  const pop = $('swatchPop');
+  paintSwatches();
+  pop.classList.add('on');
+  // Under the swatch it belongs to, and nudged back inside the window rather than off the edge of
+  // it -- the panel scrolls, so a row near the bottom would otherwise open into nothing.
+  const r = from.getBoundingClientRect(), box = pop.getBoundingClientRect();
+  pop.style.left = Math.max(6, Math.min(innerWidth - box.width - 6, r.left)) + 'px';
+  pop.style.top = (r.bottom + 6 + box.height > innerHeight ? r.top - box.height - 6 : r.bottom + 6) + 'px';
+}
+function closeSwatches() { $('swatchPop').classList.remove('on'); }
+// Live: the layer takes the colour as you move over the grid, so what you are choosing against is
+// the stage and not a square the size of a fingernail.
+function setSolidColour(c, keep) {
+  const L = layers()[SOLID_AT];
+  if (!L) return;
+  L.colour = c;
+  genTiles(); needPaint(); needPlate(); pushLayers();
+  if (keep) { renderLayers(); paintSums(); save(); }
+}
+$('swatchPop').addEventListener('click', e => {
+  const b = e.target.closest('[data-col]');
+  if (!b) return;
+  if (b.dataset.col === '?') {              // none of the twenty-four: hand it to the system picker
+    const c = $('solidColour');
+    c.value = noiseColour(layers()[SOLID_AT] || {}) || greyHex(noiseLevel(layers()[SOLID_AT] || {}));
+    closeSwatches();
+    c.click();
+    return;
+  }
+  setSolidColour(b.dataset.col, true);
+  closeSwatches();
+});
+$('solidColour').addEventListener('input', () => setSolidColour($('solidColour').value, false));
+$('solidColour').addEventListener('change', () => setSolidColour($('solidColour').value, true));
+addEventListener('pointerdown', e => {
+  if (!$('swatchPop').classList.contains('on')) return;
+  if (e.target.closest('#swatchPop, .tile[data-swap]')) return;
+  closeSwatches();
+}, true);
+addEventListener('keydown', e => { if (e.code === 'Escape') closeSwatches(); });
 // Which pulse layer asked for a sound, remembered until the picker answers.
 var PULSE_AT = -1;
 $('pulseFile').onchange = async e => {
@@ -3583,7 +3718,7 @@ $('pulseFile').onchange = async e => {
     setStatus('loading the sound\u2026', 'live');
     const r = await api(`/api/upload?filename=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
     L.audio = r.path; L.audioName = f.name; L.beat = 'file';
-    renderLayers(); save(); needPulse(PULSE_AT, true);
+    renderLayers(); save(); needBeat(PULSE_AT, true);
   } catch (err) {
     setStatus('could not load that sound: ' + err.message, 'bad');
   }
@@ -3653,28 +3788,9 @@ $('layers').addEventListener('pointerdown', e => {
 const PREVIEW_BPM = 120;
 // Two different true answers. On a count, the tile is the pattern's own loop played at bpm/120:
 // instant, and the number is the whole of the timing. On a track -- the clip's or one you loaded
-// -- the timing is the track's, and no speed stands for it, so the tile plays the pulse that was
-// actually drawn from that sound: the real hits, in the real places, at the real length.
-function pulseTileSrc(L) {
-  const at = L.beat || (clipAudio() ? 'clip' : 'bpm');
-  const [pw, ph] = maskPreviewSize();
-  return (at !== 'bpm' || L.pinvert) && L.path ? `/api/video/file?${qs({ path: L.path })}`
-                                : `/api/pulse/preview?${qs({ kind: L.pulse, width: pw, height: ph, v: PULSE_DRAW })}`;
-}
-// One row's tile brought up to date without rebuilding the panel -- half the time this is called
-// there is a pointer down on a value box, and a rebuild would pull it out from under it.
-function pulseTile(i) {
-  const L = layers()[i];
-  if (!L || !L.pulse) return;
-  const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
-  if (!v) return;
-  const want = pulseTileSrc(L);
-  if (v.getAttribute('src') !== want) {
-    v.setAttribute('src', want); v.load();
-    const p = v.play(); if (p) p.catch(() => {});
-  }
-  pulseRate(i);
-}
+// -- the timing is the track's, and no speed stands for it. None of that is a question any more:
+// the tile is a canvas drawn from the layer's own envelope, so it beats at whatever the layer
+// beats at, from a count or from a track, with nothing to play at a rate.
 // What the dials are doing to a layer, shown on its own tile. The blur is the compositor's own
 // number put through the compositor's own curve -- blurPx() again -- only measured against the
 // tile instead of the frame, so 47 on a 128px tile is the same amount of softening as 47 on a
@@ -3696,18 +3812,334 @@ function paintTileFx() {
     el.style.opacity = L.opacity ?? 1;
   });
 }
-function pulseRate(i) {
-  const L = layers()[i];
-  if (!L || !L.pulse) return;
-  const v = $('layers').querySelector(`.lay[data-i="${i}"] .tile video`);
-  if (!v) return;
-  const at = beatAt(L);
-  const want = at === 'bpm' && !L.pinvert ? (L.bpm || 120) * (L.division || 1) / PREVIEW_BPM : 1;
-  // defaultPlaybackRate too: a tile that lost its source and reloads comes back at this speed
-  // rather than at 1, and the loop you are watching does not quietly change tempo.
-  v.playbackRate = v.defaultPlaybackRate = Math.min(4, Math.max(0.25, want));
+
+// ---- Pulse: the patterns engine/pulse.py draws, drawn again here
+// The same story as noise above, and for the same reason. A pulse layer used to be an mp4 drawn at
+// the render's size and length, so a nudge of the scale dial was five octaves of fractal noise over
+// the whole clip, an x264 encode, and a few hundred kilobytes left on disk -- for a layer whose
+// entire content is a formula and a beat. engine/pulse.py draw() makes frame i out of nothing but
+// its arguments; this is that, in the browser, so the dials move under your hand.
+//
+// Pixel for pixel the two do not agree and cannot: the random in them is random, and two languages'
+// generators do not produce the same stream. What they do agree about is everything you are
+// dialling -- which pattern, how big the masses are, how fast the field boils, and above all WHEN,
+// because the envelope is one array, computed once by the engine and read by both.
+//
+// The soft patterns are drawn small and scaled up. They are made of masses, not pixels, so 320 on
+// the long side is the same picture at a sixth of the arithmetic; the two that really are made of
+// pixels draw at full size, where scaling would be a lie about what the grain is.
+const PULSE_SOFT_MAX = 320;
+const PULSE_PERPIXEL = ['grain', 'burst'];
+function pulseDrawSize(kind, w, h) {
+  if (PULSE_PERPIXEL.includes(kind)) return [w, h];
+  const k = Math.max(1, Math.max(w, h) / PULSE_SOFT_MAX);
+  return [Math.max(2, Math.round(w / k)), Math.max(2, Math.round(h / k))];
 }
-function pulseRates() { layers().forEach((L, i) => { if (L.pulse) pulseRate(i); }); }
+// The envelope through Swing, frame by frame. A short one loops, the way a short layer does: the
+// length belongs to the render, not to whatever the beat happened to be drawn for.
+function pulseKs(L, n) {
+  const env = L.env || [], m = env.length, out = new Float32Array(n);
+  if (!m) return out;
+  const a = Math.min(1.5, Math.max(0, L.amount == null ? 1 : +L.amount));
+  for (let j = 0; j < n; j++) out[j] = Math.max(0, Math.min(1, +env[j % m])) * a;
+  return out;
+}
+// One lattice stretched over the frame, smoothstepped between its cells and wrapping round.
+function pUp(lat, gw, gh, w, h, oy) {
+  const out = new Float32Array(w * h);
+  const xi = new Int32Array(w), xj = new Int32Array(w), tx = new Float32Array(w);
+  for (let i = 0; i < w; i++) {
+    const fx = (i + 0.5) * gw / w - 0.5, x0 = Math.floor(fx);
+    let t = fx - x0;
+    tx[i] = t * t * (3 - 2 * t);                        // cells, not facets
+    xi[i] = ((x0 % gw) + gw) % gw;
+    xj[i] = (xi[i] + 1) % gw;
+  }
+  for (let j = 0; j < h; j++) {
+    const fy = (j + 0.5) * gh / h - 0.5 + (oy || 0), y0 = Math.floor(fy);
+    let ty = fy - y0;
+    ty = ty * ty * (3 - 2 * ty);
+    const ra = (((y0 % gh) + gh) % gh) * gw, rb = ((((y0 % gh) + gh) % gh + 1) % gh) * gw, o = j * w;
+    for (let i = 0; i < w; i++) {
+      const t = tx[i], a = xi[i], b = xj[i];
+      const top = lat[ra + a] * (1 - t) + lat[ra + b] * t;
+      const bot = lat[rb + a] * (1 - t) + lat[rb + b] * t;
+      out[o + i] = top * (1 - ty) + bot * ty;
+    }
+  }
+  return out;
+}
+// One octave's lattice at one step of its own clock, drawn from the seed and the step rather than
+// carried forward from the frame before -- which is what lets any frame be drawn on its own.
+function pFace(seed, o, i, gw, gh) {
+  const r = noiseRng(seed, o + 101, Math.max(0, i)), a = new Float32Array(gw * gh);
+  for (let k = 0; k < a.length; k++) a[k] = r();
+  return a;
+}
+function pFbm(w, h, z, seed, oct, cells, drift, ridged, tall) {
+  const out = new Float32Array(w * h);
+  let amp = 1, tot = 0, g = cells;
+  for (let o = 0; o < oct; o++) {
+    const gw = Math.max(2, Math.round(g));
+    const gh = Math.max(2, Math.round(g * h / Math.max(1, w) / Math.max(0.1, tall || 1)));
+    const zo = z * (1 + 0.35 * o), i0 = Math.floor(zo);
+    let f = zo - i0;
+    f = f * f * (3 - 2 * f);
+    const A = pFace(seed, o, i0, gw, gh), B = pFace(seed, o, i0 + 1, gw, gh);
+    const lat = new Float32Array(gw * gh);
+    for (let k = 0; k < lat.length; k++) lat[k] = A[k] * (1 - f) + B[k] * f;
+    const v = pUp(lat, gw, gh, w, h, -(drift || 0) * z * (o + 1));
+    for (let k = 0; k < out.length; k++) out[k] += amp * (ridged ? 1 - Math.abs(v[k] * 2 - 1) : v[k]);
+    tot += amp; amp *= 0.5; g *= 2;
+  }
+  for (let k = 0; k < out.length; k++) out[k] /= Math.max(1e-6, tot);
+  return out;
+}
+// The brightest `cover` of a field, with a soft edge. A cut at a fixed level would do if the field
+// held still; a lattice three cells across does not, and its own mean wandering frame to frame is a
+// flicker between hits that are meant to match. Asking for a SHARE pins the picture to the beat.
+// The quantile is read off every second pixel, as the engine reads it.
+function pCut(v, w, h, cover, soft) {
+  const out = new Float32Array(v.length);
+  if (cover <= 0.002) return out;
+  const pick = [];
+  for (let j = 0; j < h; j += 2) for (let i = 0; i < w; i += 2) pick.push(v[j * w + i]);
+  pick.sort((a, b) => a - b);
+  const q = (pick.length - 1) * (1 - Math.min(1, cover)), lo = Math.floor(q);
+  const thr = pick[lo] + (pick[Math.min(pick.length - 1, lo + 1)] - pick[lo]) * (q - lo);
+  const k1 = 1 / Math.max(1e-3, soft);
+  for (let k = 0; k < v.length; k++) out[k] = Math.min(1, Math.max(0, (v[k] - thr) * k1 + 0.5));
+  return out;
+}
+// ---- what each pattern remembers between frames, replayed from frame 0
+// These are the scans engine/pulse.py runs for the same reason: a recurrence you can replay is a
+// frame you can scrub to, and a stream is a file you have to render.
+function pFronts(ks, step, decay, gap) {
+  let out = [];
+  for (let n = 0; n < ks.length; n++) {
+    out = out.map(c => [c[0] + step, c[1] * decay]).filter(c => c[0] < 1.6 && c[1] > 0.02);
+    if (ks[n] > 0.25 && (!out.length || out[out.length - 1][0] > gap)) out.push([0, ks[n]]);
+  }
+  return out;
+}
+function pDisc(ks, soft) {
+  let size = -1, way = -1, prev = 0;
+  for (let n = 0; n < ks.length; n++) {
+    const k = ks[n];
+    if (k > 0.25 && prev <= 0.25) { size = 0.03; way = 1; }      // the EDGE of a hit, not every frame
+    else if (way > 0) { size += 0.11; if (size > 1 + soft) way = -1; }
+    else size -= 0.30;                                           // closing is nearly three times quicker
+    prev = k;
+  }
+  return size;
+}
+function pTravel(ks, from) {
+  let pos = 9, prev = 0;
+  for (let n = 0; n < ks.length; n++) {
+    pos = (ks[n] > 0.25 && prev <= 0.25) ? from : pos + 0.16;
+    prev = ks[n];
+  }
+  return pos;
+}
+function pCells(ks, n, rng) {
+  const lev = new Float32Array(n);
+  let prev = 0;
+  for (let f = 0; f < ks.length; f++) {
+    for (let j = 0; j < n; j++) lev[j] *= 0.84;
+    if (ks[f] > 0.3 && prev <= 0.3) {
+      // half of them, chosen without repeats: a partial shuffle, which is the engine's rng.choice
+      // in spirit if not in its exact stream.
+      const bag = Array.from({ length: n }, (_, j) => j);
+      const take = Math.max(2, n >> 1);
+      for (let j = 0; j < take; j++) {
+        const pick = j + Math.floor(rng() * (n - j));
+        const t = bag[j]; bag[j] = bag[pick]; bag[pick] = t;
+        lev[bag[j]] = ks[f];
+      }
+    }
+    prev = ks[f];
+  }
+  return lev;
+}
+function pSlabs(ks, rng) {
+  let out = [];
+  for (let f = 0; f < ks.length; f++) {
+    const k = ks[f];
+    out = out.map(c => [c[0], c[1], c[2], c[3], c[4] * 0.87]).filter(c => c[4] > 0.03);
+    if (k > 0.3 && (!out.length || out[out.length - 1][4] < k * 0.75)) {
+      const many = 2 + (rng() < 0.5 ? 0 : 1);
+      for (let j = 0; j < many; j++) {
+        const px = rng(), py = rng();
+        const long = 0.3 + 0.55 * rng(), thin = 0.12 + 0.3 * rng();
+        const [dx, dy] = rng() < 0.5 ? [long, thin] : [thin, long];
+        out.push([px * (1 - dx), px * (1 - dx) + dx, py * (1 - dy), py * (1 - dy) + dy, k]);
+      }
+    }
+  }
+  return out;
+}
+// ---- the picture
+function pulsePicture(kind, L, i, w, h) {
+  const seed = L.seed | 0, ks = pulseKs(L, i + 1), k = ks[i];
+  const out = new Float32Array(w * h);
+  const cx = (w - 1) / 2, cy = (h - 1) / 2, half = Math.max(1, Math.hypot(cx, cy));
+  const scale = pulseDial(L, 'scale'), boil = pulseDial(L, 'boil');
+  const amount = Math.min(1.5, Math.max(0, L.amount == null ? 1 : +L.amount));
+  // r: 0 in the middle, 1 at the corners. Only the radial patterns want it, so it is built on ask.
+  const radial = () => {
+    const r = new Float32Array(w * h);
+    for (let j = 0; j < h; j++) for (let x = 0; x < w; x++) r[j * w + x] = Math.hypot(x - cx, j - cy) / half;
+    return r;
+  };
+  if (kind === 'grain') {
+    const rg = noiseRng(seed, 1, i);
+    for (let n = 0; n < out.length; n++) out[n] = Math.min(1, Math.max(0, 0.5 + (rg() - 0.5) * k));
+    return out;
+  }
+  if (kind === 'flash') { out.fill(k); return out; }
+  if (kind === 'bloom') {
+    const r = radial(), d = Math.max(0.05, k * 1.2);
+    for (let n = 0; n < out.length; n++) out[n] = Math.min(1, Math.max(0, (1 - r[n] / d) * k));
+    return out;
+  }
+  if (kind === 'burst') {
+    const r = radial(), rg = noiseRng(seed, 2, i);
+    for (const [pos, lvl] of pFronts(ks, 0.035, 0.9, 0.12))
+      for (let n = 0; n < out.length; n++)
+        out[n] = Math.max(out[n], Math.min(1, Math.max(0, 1 - Math.abs(r[n] - pos) / 0.28)) * lvl);
+    for (let n = 0; n < out.length; n++) out[n] *= rg();
+    return out;
+  }
+  if (kind === 'rings') {
+    const r = radial();
+    for (const [pos, lvl] of pFronts(ks, 0.03, 0.93, 0.1))
+      for (let n = 0; n < out.length; n++)
+        out[n] = Math.max(out[n], Math.min(1, Math.max(0, 1 - Math.abs(r[n] - pos) / 0.06)) * lvl);
+    return out;
+  }
+  if (kind === 'blocks') {
+    // The square IS the beat: its size is the envelope, so it opens from nothing on the hit and
+    // closes back to nothing as the hit lets go. It does not dim as well -- the size does the
+    // talking, and fading a shape that is already changing size says it twice.
+    const short = Math.max(1, Math.min(cx, cy)), soft = 2 / short, full = Math.max(cx, cy) / short;
+    for (let j = 0; j < h; j++) for (let x = 0; x < w; x++) {
+      const sq = Math.max(Math.abs(x - cx), Math.abs(j - cy)) / short;
+      out[j * w + x] = Math.min(1, Math.max(0, (k * full - sq) / soft));
+    }
+    return out;
+  }
+  if (kind === 'circle') {
+    const soft = 2 / half, at = pDisc(ks, soft);
+    if (at <= 0) return out;
+    const r = radial();
+    for (let n = 0; n < out.length; n++) out[n] = Math.min(1, Math.max(0, (at - r[n]) / soft));
+    return out;
+  }
+  if (kind === 'grid') {
+    const cols = w >= h ? 4 : 3, rows = Math.max(2, Math.round(cols * h / Math.max(1, w)));
+    const lev = pCells(ks, cols * rows, noiseRng(seed || 7, 3, 0));
+    for (let j = 0; j < h; j++) {
+      const ry = Math.floor(j * rows / h), fy = (j * rows / h) % 1;
+      for (let x = 0; x < w; x++) {
+        const fx = (x * cols / w) % 1;
+        const gap = fx > 0.03 && fx < 0.97 && fy > 0.03 && fy < 0.97;   // squares, not one lit field
+        out[j * w + x] = gap ? lev[ry * cols + Math.floor(x * cols / w)] : 0;
+      }
+    }
+    return out;
+  }
+  if (kind === 'slabs') {
+    for (const [x0, x1, y0, y1, lvl] of pSlabs(ks, noiseRng(seed || 7, 4, 0))) {
+      const a = Math.round(x0 * (w - 1)), b = Math.round(x1 * (w - 1));
+      const c = Math.round(y0 * (h - 1)), d = Math.round(y1 * (h - 1));
+      for (let j = c; j <= d; j++) for (let x = a; x <= b; x++)
+        out[j * w + x] = Math.max(out[j * w + x], lvl);
+    }
+    return out;
+  }
+  if (kind === 'wipe') {
+    // A band of light falling down the frame: every row is one value, and what travels is where the
+    // white is. It runs on its own clock, launched on each hit, so a fast count starts the fall
+    // again from the top instead of making the band jitter in place.
+    const HALF = 0.45, at = pTravel(ks, -HALF);
+    if (at > 1 + HALF) return out;
+    for (let j = 0; j < h; j++) {
+      const g = Math.min(1, Math.max(0, 1 - Math.abs(j / Math.max(1, h - 1) - at) / HALF));
+      out.fill(g, j * w, j * w + w);
+    }
+    return out;
+  }
+  if (kind === 'fall') {
+    const at = pTravel(ks, -0.5);
+    if (at > 1.6) return out;
+    const [cells, rate] = pulseFractal(scale, boil, 3.0, 0.05);
+    const v = pFbm(w, h, (i + 1) * rate, seed, 5, cells, -1.1, false, 1);
+    const cut = pCut(v, w, h, 0.72 * Math.min(1.5, Math.max(0.05, amount)), 0.07);
+    for (let j = 0; j < h; j++) {
+      const y01 = j / Math.max(1, h - 1);
+      // Thicker behind the front than ahead of it: weather arriving, not a ruled edge.
+      const band = Math.min(1, Math.max(0, (at - y01) / 0.30))
+                 * Math.min(1, Math.max(0, 1 - (at - y01 - 0.45) / 0.60));
+      if (band <= 0) continue;
+      for (let x = 0; x < w; x++) out[j * w + x] = cut[j * w + x] * band;
+    }
+    return out;
+  }
+  // clouds, smoke, veins: one clock ticking a frame at a time, so the field boils at its own pace
+  // and the beat only decides how much of it you are allowed to see.
+  const t = i + 1;
+  if (kind === 'smoke') {
+    const [cells, rate] = pulseFractal(scale, boil, 2.5, 0.045);
+    return pCut(pFbm(w, h, t * rate, seed, 5, cells, 1.2, false, 2.6), w, h, Math.min(1, 1.2 * k), 0.13);
+  }
+  if (kind === 'veins') {
+    const [cells, rate] = pulseFractal(scale, boil, 3.0, 0.06);
+    return pCut(pFbm(w, h, t * rate, seed, 4, cells, 0, true, 1), w, h, 0.35 * k, 0.07);
+  }
+  const [cells, rate] = pulseFractal(scale, boil, 3.0, 0.055);
+  return pCut(pFbm(w, h, t * rate, seed, 5, cells, 0, false, 1), w, h, 0.6 * k, 0.07);
+}
+// One frame of a pulse layer at the size it is going over. Kept by everything it depends on, so a
+// still stage redraws nothing and a playing one keeps the last few frames it drew.
+var pulseCache = new Map();
+function pulseKey(L, n, w, h) {
+  return [L.pulse, n, w, h, L.seed | 0, L.amount ?? 1, !!L.pinvert,
+          pulseDial(L, 'scale'), pulseDial(L, 'boil'), (L.env || []).length,
+          (L.env || [])[n % Math.max(1, (L.env || []).length)] ?? 0, L.envKey || ''].join('|');
+}
+function pulseFrame(L, n, w, h) {
+  w = Math.round(w || 0); h = Math.round(h || 0);
+  if (w < 2 || h < 2 || !L.pulse) return null;
+  const kind = pulseSpec(L.pulse).id || 'burst';
+  n = Math.max(0, n | 0);
+  const key = pulseKey(L, n, w, h);
+  const got = pulseCache.get(key);
+  if (got) return got;
+  const [dw, dh] = pulseDrawSize(kind, w, h);
+  const g = pulsePicture(kind, L, n, dw, dh);
+  const small = document.createElement('canvas');
+  small.width = dw; small.height = dh;
+  const sx = small.getContext('2d'), d = sx.createImageData(dw, dh), px = d.data;
+  const flip = !!L.pinvert;
+  for (let k = 0; k < g.length; k++) {
+    const v = Math.round(255 * Math.min(1, Math.max(0, flip ? 1 - g[k] : g[k])));
+    px[k * 4] = px[k * 4 + 1] = px[k * 4 + 2] = v;
+    px[k * 4 + 3] = 255;
+  }
+  sx.putImageData(d, 0, 0);
+  let cv = small;
+  if (dw !== w || dh !== h) {
+    cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const x = cv.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.drawImage(small, 0, 0, w, h);
+  }
+  cv.src = key;                      // matteAlpha keys its cache off .src, as it does for an <img>
+  if (pulseCache.size > 24) pulseCache.delete(pulseCache.keys().next().value);
+  pulseCache.set(key, cv);
+  return cv;
+}
 // ---- Noise: the kinds engine/noise.py draws, drawn again here
 // A noise layer has no file under it and never needed one. It used to have one: an mp4 at the
 // render's size and length, written by ffmpeg before any of it could be seen and extracted back to
@@ -3732,6 +4164,13 @@ function noiseLevel(L) {
   return L.level != null ? L.level : (p && p.level ? p.level.default : 0);
 }
 function noiseFlat(L) { return !!(noiseSpec(L.nkind) || {}).level; }
+// A solid is a colour, and black and white are two of them. With none set it is the grey the Level
+// dial says, which is what every solid in DWARP was until now -- so nothing already made moves.
+function noiseColours(L) { return !!(noiseSpec(L.nkind) || {}).colour; }
+function noiseColour(L) {
+  const v = String((L && L.colour) || '').trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(v) ? v : '';
+}
 // Each kind rests where that kind looks like itself: cells at blocks, lines at hairlines.
 function noiseScale(L) {
   const p = noiseSpec(L.nkind);
@@ -3830,15 +4269,17 @@ function noiseFrame(L, n, w, h) {
   // A flat layer is the same frame every frame, so it is not keyed by which one: one draw serves
   // the whole clip instead of filling the cache with copies of itself.
   const at = flat ? 0 : Math.max(0, n | 0);
-  const key = [kind, grain, scale, seed, at, w, h, flat ? level : 0].join('|');
+  const key = [kind, grain, scale, seed, at, w, h, flat ? level : 0,
+               flat ? noiseColour(L) : ''].join('|');
   const got = noiseCache.get(key);
   if (got) return got;
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   cv.src = key;                      // matteAlpha keys its cache off .src, as it does for an <img>
   if (flat) {
-    const v = Math.round(Math.min(1, Math.max(0, level)) * 255), x = cv.getContext('2d');
-    x.fillStyle = `rgb(${v},${v},${v})`;
+    const x = cv.getContext('2d'), col = noiseColour(L);
+    if (col) x.fillStyle = col;
+    else { const v = Math.round(Math.min(1, Math.max(0, level)) * 255); x.fillStyle = `rgb(${v},${v},${v})`; }
     x.fillRect(0, 0, w, h);
   } else if (kind === 'clouds') {
     noiseClouds(cv, L, at, w, h);
@@ -3862,19 +4303,24 @@ function noiseFrame(L, n, w, h) {
 // until they move, and a noise tile holding still would be the one thing in the panel you could
 // not judge -- 12 a second reads as grain and costs nothing at tile size.
 var noiseTileAt = 0, noiseTileTimer = 0;
-function noiseTiles() {
+function genTiles() {
   const box = $('layers'), on = box && $('layersBox') && !$('layersBox').hidden;
-  const cvs = on ? box.querySelectorAll('canvas[data-noise]') : [];
+  const cvs = on ? box.querySelectorAll('canvas[data-gen]') : [];
   if (!cvs.length) { clearInterval(noiseTileTimer); noiseTileTimer = 0; return; }
   if (!document.hidden) {
     for (const cv of cvs) {
-      const L = layers()[+cv.dataset.noise];
-      if (!L || !L.noise) continue;
-      const g = noiseFrame(L, noiseTileAt, cv.width, cv.height);
+      const L = layers()[+cv.dataset.gen];
+      if (!L) continue;
+      // A pulse tile runs on the layer's own frames rather than on the ticker's count, so a tile of
+      // a 120 bpm layer beats at 120 whatever the clip is doing -- which is what the tile is for.
+      const g = L.noise ? noiseFrame(L, noiseTileAt, cv.width, cv.height)
+              : L.pulse ? pulseFrame(L, noiseTileAt % Math.max(2, (L.env || []).length || 2),
+                                     cv.width, cv.height)
+              : null;
       if (g) cv.getContext('2d').drawImage(g, 0, 0);
     }
   }
-  if (!noiseTileTimer) noiseTileTimer = setInterval(() => { noiseTileAt++; noiseTiles(); }, 83);
+  if (!noiseTileTimer) noiseTileTimer = setInterval(() => { noiseTileAt++; genTiles(); }, 83);
 }
 // What a noise layer is made of, as dials: how far it swings either side of mid grey, and -- for
 // the kinds made of something bigger than a pixel -- how big that something is. The kind says
@@ -3882,19 +4328,20 @@ function noiseTiles() {
 function noiseRow(i, L) {
   const p = noiseSpec(L.nkind), sc = p && p.scale;
   // A solid has no grain to swing and nothing it is made of: how light it is, and that is all.
-  if (p && p.level) {
-    return `<span class="beat"><div class="bl">${
-      dial(i, 'level', p.level.label, noiseLevel(L), p.level.note, '', 'wide')}</div></span>`;
-  }
+  // A solid has no dials at all. It is one colour, the thumbnail IS that colour, and clicking the
+  // thumbnail is how you change it -- a number between black and white was a smaller way of saying
+  // the same thing, and a worse one now that the whole wheel is available.
+  if (p && p.level) return '';
   return `<span class="beat"><div class="bl">${
     dial(i, 'grain', 'grain', L.grain == null ? 1 : L.grain,
-      'How far the grain swings either side of mid grey \u2014 at 0 the layer is not there, at 100 it is black-to-white static',
+      'How far the grain swings either side of mid grey — at 0 the layer is not there, at 100 it is black-to-white static',
       '', sc ? '' : 'wide')}${
     sc ? dial(i, 'scale', sc.label, noiseScale(L), sc.note, '') : ''}</div></span>`;
 }
 function layerTile(L, i) {
-  if (L.noise) return `<canvas data-noise="${i}" width="192" height="108"></canvas>`;
-  if (L.pulse) return `<video src="${pulseTileSrc(L)}" autoplay muted loop playsinline></video>`;
+  // Both generated kinds are a canvas the ticker paints: nothing to fetch, nothing to decode,
+  // and a tile that is the layer rather than a recording of one.
+  if (L.noise || L.pulse) return `<canvas data-gen="${i}" width="192" height="108"></canvas>`;
   if (L.mask) {
     const [pw, ph] = maskPreviewSize();
     return `<video src="/api/masks/preview?${qs({ pattern: L.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video>`;
@@ -3915,7 +4362,7 @@ function numBox(lv, k, label, v, title, unit = '', cls = '') {
 function dial(i, k, label, v, title, unit = '', cls = '') {
   const n = Math.round((v || 0) * 100);
   return `<span class="num ${cls}${label ? '' : ' bare'}" data-lv="${i}" data-k="${k}" data-unit="${unit}" style="--f:${n}%"
-        title="${title} \u2014 drag sideways to change it, double-click for its default">
+        title="${title} — drag sideways to change it, double-click for its default">
       ${label ? `<b>${label}</b>` : ''}<i>${n}${unit}</i></span>`;
 }
 // What sets the speed of the pulse, and what that speed is. Three ways of answering one question
@@ -3936,7 +4383,11 @@ function beatRow(i, L) {
   // The die leads, wherever the beat is coming from, so the row starts the same way on all three
   // tabs instead of the first box moving when you switch between them. Read left to right it is
   // which take, how fast, how hard, how loose. One line, four boxes, the card's own four columns.
-  const die = !seedUsed(L) ? '' : `<button class="chip ico" data-pseed="${i}" title="Another take: a new seed for this layer — where a drifted hit lands, which cells light, where the slabs fall. The same seed always draws the same clip, so one you like comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg></button>`;
+  // The die used to sit here and only offer another take, which left you unable to say which one
+  // you were on or to go back to it. It is the number itself now, in the same column and the same
+  // width: drag it for the take next door, double-click to roll a fresh one.
+  const die = !seedUsed(L) ? '' : numBox(i, 'seed', 'seed', L.seed || 0,
+    'Which take of this layer you are on — where a drifted hit lands, which cells light, how the noise falls. The same seed always draws the same clip, so one you like comes back; double-click rolls a new one');
   // Drift belongs to the count and nowhere else: a sound has no grid to come off.
   const drift = dial(i, 'drift', 'drift', L.drift || 0,
     'How far each hit may wander off the count — at 0 it is a metronome, turned up they land early or late, with different weight, and now and then not at all');
@@ -4000,23 +4451,24 @@ function renderLayers() {
     const own = !beats(L)
       ? (L.noise ? noiseRow(i, L) : '')
       : stillBase() ? `<span class="beat"><div class="bl"><span class="snd s4"
-            title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length \u2014 flattened into frame 1</span></div></span>`
+            title="The source is a picture with no length, so there is one frame to lay this over. Give the picture a length and the beat has something to run across">no length — flattened into frame 1</span></div></span>`
       : beatRow(i, L) + pulseRow(i, L);
     const bottom = own + (L.matte && !L.mask
       ? `<span class="beat"><div class="bl">${levels(i, L)}</div></span>` : '');
     return `<div class="lay${L.matte ? ' is-matte' : ''}${L.hidden ? ' off' : ''}" data-i="${i}" title="${L.name || ''}">
       <span class="hd" draggable="true"
-            title="Drag to reorder \u2014 the order of the stack is the composite">
+            title="Drag to reorder — the order of the stack is the composite">
         <span class="nm">${L.name || (L.mask ? 'drawn matte' : 'layer')}</span>
-        ${!beats(L) ? '' : `<button class="chip ico${L.pinvert ? ' on' : ''}" data-pinv="${i}" title="Upside down: the beat rests at full and is punched out on every hit, instead of resting at nothing and arriving on it. The neutral blend turns over with it \u2014 screen for the light one, multiply for this"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2v15a7.5 7.5 0 0 1 0-15Z"/></svg></button>`}
+        ${!beats(L) ? '' : `<button class="chip ico${L.pinvert ? ' on' : ''}" data-pinv="${i}" title="Upside down: the beat rests at full and is punched out on every hit, instead of resting at nothing and arriving on it. The neutral blend turns over with it — screen for the light one, multiply for this"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2v15a7.5 7.5 0 0 1 0-15Z"/></svg></button>`}
         ${L.matte ? '' : `<button class="chip ico" data-matte="${i}" title="${i === layers().length - 1
-          ? 'Matte: use this layer as a luma matte for the source under it \u2014 its brightness becomes the source&#39;s alpha, and what it hides goes black'
-          : 'Matte: use this layer as a luma matte for the layer below it \u2014 its brightness becomes that layer&#39;s alpha'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
-        <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden \u2014 out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
+          ? 'Matte: use this layer as a luma matte for the source under it — its brightness becomes the source&#39;s alpha, and what it hides goes black'
+          : 'Matte: use this layer as a luma matte for the layer below it — its brightness becomes that layer&#39;s alpha'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2.5 2.5h19v19h-19v-19Zm9.5 4.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Z"/></svg></button>`}
+        <button class="eye${L.hidden ? ' off' : ''}" data-eye="${i}" title="${L.hidden ? 'Hidden — out of the preview and out of the render' : 'Hide this layer'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>${L.hidden ? '<path d="m3 3 18 18"/>' : ''}</svg></button>
         <button class="x" title="Remove">\u2715</button>
       </span>
-      <span class="tile${L.matte && L.invert ? ' inv' : ''}" data-swap="${i}"
-            title="Double-click to put a different video or picture in it">${
+      <span class="tile${L.matte && L.invert ? ' inv' : ''}${noiseColours(L) ? ' pick' : ''}" data-swap="${i}"
+            title="${noiseColours(L) ? `This solid is ${noiseColour(L) || greyHex(noiseLevel(L))} — click to pick a colour`
+                                     : 'Double-click to put a different video or picture in it'}">${
         layerTile(L, i)}<b class="band">${L.matte ? 'MATTE' : 'LAYER ' + (i + 1)}</b></span>
       <span class="side">
         <span class="ctl">${L.matte ? `
@@ -4047,14 +4499,15 @@ function renderLayers() {
         <span class="snd s3" id="stillLenV">${bs.pic ? `seconds · ${stillFrames()} frames`
           : 'no length — the picture is animated'}</span></div></span>` : ''}</div>` : '')(baseSrc()));
   $('layers').querySelectorAll('.lvl').forEach(bar => paintLvl(bar, layers()[+bar.dataset.lvl]));
-  noiseTiles();                        // a canvas comes back empty when the panel is redrawn
+  genTiles();                          // a canvas comes back empty when the panel is redrawn
   // The boxes that are not percentages paint themselves from what they are for.
   $('layers').querySelectorAll('.num[data-k="secs"]').forEach(el => paintNum(el, picSecs = secsNow()));
   $('layers').querySelectorAll('.num[data-k="bpm"]').forEach(el =>
     paintNum(el, (layers()[+el.dataset.lv] || {}).bpm || 120));
+  $('layers').querySelectorAll('.num[data-k="seed"]').forEach(el =>
+    paintNum(el, (layers()[+el.dataset.lv] || {}).seed || 0));
   $('layers').querySelectorAll('.tile img').forEach(im => im.onerror = () => im.remove());
   playTiles($('layers'));
-  pulseRates();                            // each pulse tile beats at its own speed
   paintTileFx();                           // and wears its own blur and opacity
   $('layerAdds').hidden = rows.length >= LAYER_MAX;
   // A beat over a single frame is one frame of it: not a pulse, and not worth offering. A picture
@@ -4126,6 +4579,12 @@ function rendering() {
 }
 function stageSource() {                   // not the older toSource(): that one is the Frame scrub
   if (rendering()) return;
+  // Text -> Video: the stack is the source, so touching it shows it -- the same yank to Source that
+  // happens over a clip. The stage may be the wordmark, with no frame element in it yet.
+  if (stackSrc()) {
+    if (view === 'src' && $('cvPlate')) return paintFrame();
+    view = 'src'; return clearStage();
+  }
   if (picMode()) { if (view !== 'src') { view = 'src'; setControlTabs(); } return paintFrame(); }
   if (!state.clip || state.t2v) return;
   if (clipMode() && view === 'src') return;
@@ -4138,6 +4597,7 @@ function repaintSource() {
   // The stack is playing in the browser: the flatten that just landed is for the render, and
   // showClip would stop the playback to show a file we are not watching.
   if (playing === 'live') return paintPlate();
+  if (stackSrc() && view === 'src') return $('cvPlate') ? paintFrame() : clearStage();
   if (picMode()) paintFrame();    // Image mode: the stage is the picture, and now it is the plate
   if (typeof showClip === 'function' && clipMode()) showClip();
   if (typeof paintPlate === 'function') paintPlate();
@@ -4147,9 +4607,24 @@ function repaintSource() {
 // same loop DepthDiff runs for its mask.
 var plateImgs = {}, plateLens = {}, plateWait = {}, plateLast = {};
 function plateLive() {
-  return !!$('cvPlate') && clipMode() && view === 'src' && layerJob().length > 0
-         && playing !== 'clip';
+  return !!$('cvPlate') && view === 'src' && playing !== 'clip'
+         && (clipMode() || stackMode()) && plateStack().length > 0;
 }
+// What the preview composites. Over a clip that is the render's own list -- the stack, with the clip
+// at the bottom. In Text -> Video there is no bottom to put it on, so it is the whole stack: what
+// gets flattened into frame 1 and what gets laid over every frame, together, which is the picture.
+function plateStack() {
+  if (state.t2v && !stillBase() && !isH3()) {
+    const all = layers().slice(0, LAYER_MAX).map(L => layerDefaults(L)).filter(L => !L.hidden);
+    return all.some(L => !L.matte) ? all : [];
+  }
+  return layerJob().map(L => layerDefaults(L));
+}
+// Which frame of it, on whichever timeline the stage is scrubbing.
+function plateFrame() { return clipMode() ? clipFrame : t2vFrame; }
+// And how big. Over a clip the base frame brings its own size; a stack standing on nothing has none
+// of its own, so it is drawn at the size the render will be.
+function plateSize() { return state.t2v && !stillBase() ? t2vDims(state.size) : null; }
 // An <img> while the stack is still, a <video> while it is playing: both draw, and both measure,
 // so everything below takes either.
 const srcW = x => x.naturalWidth || x.videoWidth || x.width || 0;
@@ -4158,6 +4633,7 @@ function layerFrame(L, n, w, h) {
   // Generated layers are drawn at the size of whatever they are going over, which is the frame the
   // base laid down -- there is no file to fetch and nothing to wait for.
   if (L.noise) return noiseFrame(L, n, w, h);
+  if (L.pulse) return pulseFrame(L, n, w, h);
   // Playing: the layer's own file is decoding in a <video> of its own, and that is this frame.
   if (liveDraw) { const v = liveVids[L.path]; if (v && v.readyState >= 2) return v; }
   const len = plateLens[L.path] || 0;
@@ -4283,11 +4759,13 @@ function needPaint() {
 }
 function paintPlate(soft) {
   if (!plateLive()) return;
-  const stack = layerJob().map(L => layerDefaults(L));
+  const stack = plateStack();
+  if (!stack.length) return;
+  const at = plateFrame(), dim = plateSize();
   // Asked for by a drag: if neither the stack nor the frame has moved since the last one, the
   // picture would come out identical. Anything that asks outright still draws -- the stage may have
   // been showing something else entirely.
-  const drawn = JSON.stringify(stack) + '|' + clipFrame;
+  const drawn = JSON.stringify(stack) + '|' + at;
   if (soft && drawn === plateDrawn) return;
   plateDrawn = drawn;
   // bottom-up, the same order the engine composites in; a matte belongs to the layer below it
@@ -4300,15 +4778,15 @@ function paintPlate(soft) {
   pairs.reverse();
   // A matte on the base is kept: what is under the base is black, the same black its opacity
   // fades into, so the matte punches the source out against it. (engine/layers.py pair_index.)
-  const base = layerFrame(pairs[0][0], clipFrame);
+  const base = layerFrame(pairs[0][0], at, dim && dim[0], dim && dim[1]);
   if (!base) return;
-  const cv = $('cvPlate'), w = srcW(base), h = srcH(base);
+  const cv = $('cvPlate'), w = dim ? dim[0] : srcW(base), h = dim ? dim[1] : srcH(base);
   if (!w || !h) return;
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const c = cv.getContext('2d');
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.fillStyle = '#000'; c.fillRect(0, 0, w, h);      // what the source fades into
-  const b0 = pairs[0][0], m0 = pairs[0][1], m0Img = m0 && layerFrame(m0, clipFrame, w, h);
+  const b0 = pairs[0][0], m0 = pairs[0][1], m0Img = m0 && layerFrame(m0, at, w, h);
   c.globalAlpha = b0.opacity;
   if (m0 && m0Img) {                                 // the source, cut out against the black below it
     const t = document.createElement('canvas'); t.width = w; t.height = h;
@@ -4322,11 +4800,11 @@ function paintPlate(soft) {
   }
   c.globalAlpha = 1;
   for (let n = 1; n < pairs.length; n++) {
-    const [L, M] = pairs[n], img = layerFrame(L, clipFrame, w, h);
+    const [L, M] = pairs[n], img = layerFrame(L, at, w, h);
     if (!img) continue;
     c.globalAlpha = L.opacity;
     c.globalCompositeOperation = CANVAS_MODE[L.mode] || L.mode;
-    const mImg = M && layerFrame(M, clipFrame, w, h);
+    const mImg = M && layerFrame(M, at, w, h);
     const soft = blurPx(L.blur, w, h);
     if (M && mImg) {
       const t = document.createElement('canvas'); t.width = w; t.height = h;
@@ -4447,21 +4925,28 @@ $('layers').addEventListener('dblclick', e => {
             : num.dataset.lv === 'base' ? baseLayer() : layers()[+num.dataset.lv];
     if (!L) return;
     if (num.dataset.k === 'secs') { picSecs = NUM_DEFAULT.secs; paintNum(num, picSecs); return commitSecs(); }
+    if (num.dataset.k === 'seed') {        // no default to return to, so "default" is another take
+      L.seed = 1 + Math.floor(Math.random() * 2147483646);
+      paintNum(num, L.seed); save();
+      pulseMoved(+num.dataset.lv);
+      return needBeat(+num.dataset.lv, true);   // a loose count is drawn from the seed as well
+    }
     L[num.dataset.k] = NUM_DEFAULT[num.dataset.k] ?? 0;
     paintNum(num, L[num.dataset.k]);
-    if (num.dataset.k === 'amount' || num.dataset.k === 'bpm' || num.dataset.k === 'drift') {
-      return needPulse(+num.dataset.lv, true);
-    }
     // A pulse's own dials rest where its pattern rests, as a noise layer's do below.
     if (beats(L) && (num.dataset.k === 'scale' || num.dataset.k === 'boil')) {
       L[num.dataset.k] = pulseDial({ pulse: L.pulse }, num.dataset.k);
       paintNum(num, L[num.dataset.k]);
-      return needPulse(+num.dataset.lv, true);
+    }
+    if (beats(L)) {
+      pulseMoved(+num.dataset.lv); paintSums(); save();
+      if (num.dataset.k === 'bpm' || num.dataset.k === 'drift') needBeat(+num.dataset.lv, true);
+      return;
     }
     // Scale has no one default: each kind rests where that kind looks like itself.
     if (num.dataset.k === 'scale') { L.scale = noiseScale({ nkind: L.nkind }); paintNum(num, L.scale); }
     if (num.dataset.k === 'level') { L.level = noiseLevel({ nkind: L.nkind }); paintNum(num, L.level); }
-    if (num.dataset.k === 'grain' || num.dataset.k === 'scale' || num.dataset.k === 'level') noiseTiles();
+    if (num.dataset.k === 'grain' || num.dataset.k === 'scale' || num.dataset.k === 'level') genTiles();
     paintPlate(); needPlate(); pushLayers(); paintSums(); save();
     return;
   }
@@ -4472,6 +4957,10 @@ $('layers').addEventListener('dblclick', e => {
   // file picker, and what you pick replaces the pattern without disturbing the blend, the beat or
   // the grain. There is no mp4 you could put in a noise layer that would still be noise.
   const row = layers()[+tile.dataset.swap];
+  // A solid is not a kind of noise. It is drawn by the same code because the machinery for a layer
+  // with no file is that code, but it is one flat colour and the noise picker has nothing in it
+  // that a solid could become -- so its thumbnail opens the colours instead, on a single click.
+  if (row && noiseColours(row)) return;
   if (row && row.pulse) return toggleMaskLib(true, +tile.dataset.swap, 'pulse');
   if (row && row.noise) return toggleMaskLib(true, +tile.dataset.swap, 'noise');
   if (row && row.mask) return toggleMaskLib(true, +tile.dataset.swap, 'matte');
@@ -4574,7 +5063,7 @@ function paintVidKey() {
     ...h3Vids().slice(0, vidRoom()).map((v, i) =>
       ({ tag: vidTag(i), c: v.mask ? '' : vidColour(i), what: v.mask ? 'the colour mask' : v.name }))];
   row.innerHTML = slots.map(s =>
-    `<b data-tag="${s.tag}"${s.c ? ` style="--key:${s.c}"` : ''} title="${s.what} \u2014 click to drop &lt;Video ${s.tag}&gt; in at the cursor">VIDEO ${s.tag}</b>`).join('');
+    `<b data-tag="${s.tag}"${s.c ? ` style="--key:${s.c}"` : ''} title="${s.what} — click to drop &lt;Video ${s.tag}&gt; in at the cursor">VIDEO ${s.tag}</b>`).join('');
 }
 $('vidKey').onclick = e => {
   const b = e.target.closest('[data-tag]');
@@ -4595,7 +5084,7 @@ function renderH3Vids() {
   // hands it - and so does the empty box, before there is anything in it to frame.
   $('h3Vids').innerHTML = rows.map((v, i) => {
     const c = vidColour(i);
-    return `<div class="ref" data-i="${i}" draggable="true" title="Drag to reorder \u2014 the order decides which colour the mask hands each video">${
+    return `<div class="ref" data-i="${i}" draggable="true" title="Drag to reorder — the order decides which colour the mask hands each video">${
     v.mask
       ? `<span class="tile keyed" style="--key:${MASK_GREY}" title="${maskLegend(i)}"><video src="/api/masks/preview?${qs({ pattern: v.mask, width: pw, height: ph })}" autoplay muted loop playsinline></video><b class="band">VIDEO ${vidTag(i)}</b></span>`
       : `<span class="tile${c ? ' keyed' : ''}"${c ? ` style="--key:${c}"` : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg><img src="/api/video/thumbnail?${qs({ path: v.path, frame: 0 })}" alt="" draggable="false"><b class="band">VIDEO ${vidTag(i)}</b></span>`
@@ -4607,8 +5096,8 @@ function renderH3Vids() {
   }).join('')
     + (rows.length >= room ? '' : `<div class="adds${rows.length ? '' : ' wide'}">
       <div class="clip-empty${rows.length ? ' slim' : ''}${nc ? ' keyed' : ''}"${nc ? ` style="--key:${nc}"` : ''} data-add="video" title="${
-        nc ? `The next video in H3's context \u2014 the mask sends ${MASK_COLOUR_NAMES[MASK_COLOURS.indexOf(nc)]} to whatever lands here. Click, drop a file, or drag a run in off the strip`
-           : `Another whole video in H3's context \u2014 click, drop a file, or drag a run in off the strip`}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
+        nc ? `The next video in H3's context — the mask sends ${MASK_COLOUR_NAMES[MASK_COLOURS.indexOf(nc)]} to whatever lands here. Click, drop a file, or drag a run in off the strip`
+           : `Another whole video in H3's context — click, drop a file, or drag a run in off the strip`}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>${rows.length ? 'add video' : 'a video, or a run'}</div>${
         MASK_PATTERNS.length && wf().masks ? `<div class="clip-empty${rows.length ? ' slim' : ''}" data-add="mask" title="A flat colour mask, drawn here, that says which video goes where"><span class="mini">${
           MASK_COLOURS.slice(0, 2).map(c => `<i style="background:${c}"></i>`).join('')}</span>colour mask</div>` : ''}
     </div>`);
@@ -4722,7 +5211,7 @@ function listDrag(host, list, sel = '.ref', after = renderH3) {
     // The tags are positions, so moving one renames the others, and a brief already written names
     // them by the old numbers. Say what the colours stand for now rather than let it go quiet.
     const m = host === $('h3Vids') ? h3Vids().findIndex(v => v.mask) : -1;
-    setStatus(m >= 0 ? `reordered \u2014 ${maskLegend(m).replace(/<\/?b>/g, '')}` : 'reordered', 'done');
+    setStatus(m >= 0 ? `reordered — ${maskLegend(m).replace(/<\/?b>/g, '')}` : 'reordered', 'done');
   }, true);
 }
 listDrag($('h3Vids'), h3Vids);
@@ -5160,8 +5649,23 @@ function paintSums() {
   // every guide that's on, whichever tab is open (they combine: DepthDiff = where to repaint, ControlNet =
   // what shape): "ControlNet depth + edge · DepthDiff luma"; none on = blank
   const cn = state.cn[state.mode] || 'both', nets = Object.keys(modeCfg().controlnets || {}).length;
-  set('guidance', [nets && cn !== 'off' && `ControlNet ${cn === 'both' ? 'depth + edge' : cn}`,
-                   state.dd.src !== 'off' && (!state.t2v || state.i2v) && `DepthDiff ${state.dd.src}`].filter(Boolean).join(' · '));
+  const guided = !state.t2v || t2vSrc();
+  set('guidance', [guided && nets && cn !== 'off' && `ControlNet ${cn === 'both' ? 'depth + edge' : cn}`,
+                   guided && state.dd.src !== 'off' && `DepthDiff ${state.dd.src}`].filter(Boolean).join(' · '));
+  paintGuideVis();
+}
+// Whether the Guidance card is there at all. In Video and Image -> Video the answer never changes;
+// in Text -> Video it is "has the stack become a picture yet", which an opacity drag can flip either
+// way -- so it is asked from paintSums, which every layer change already calls, rather than from
+// renderControls, which is far too big to run on a nudge.
+var guideWas = null;
+function paintGuideVis() {
+  if (!$('guideBox')) return;
+  const on = !state.t2v || t2vSrc();
+  $('guideBox').hidden = !on || isH3();
+  $('gTabs').hidden = !on;
+  if (state.t2v) { $('cnPane').hidden = !on || state.gtab !== 'cn'; $('ddPane').hidden = !on || state.gtab !== 'dd'; }
+  if (guideWas !== on) { guideWas = on; setControlTabs(); }   // and the Diff tab over the stage with it
 }
 ['input', 'change', 'click'].forEach(ev => document.querySelector('aside').addEventListener(ev, () => requestAnimationFrame(paintSums)));
 // Cards fold to their header; which ones are folded is remembered
@@ -5651,9 +6155,9 @@ const droppedMedia = e => [...(e.dataTransfer?.files || [])].find(
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
   const run = runDragData(e);
-  if (run) return void (run.clip || setStatus('drop it on a slot \u2014 Source, a reference, a layer, '
+  if (run) return void (run.clip || setStatus('drop it on a slot — Source, a reference, a layer, '
                                               + 'a video context or Motion', 'bad'));
-  if (droppedMedia(e)) setStatus('drop it on a slot \u2014 Source, a reference or a layer', 'bad');
+  if (droppedMedia(e)) setStatus('drop it on a slot — Source, a reference or a layer', 'bad');
 });
 
 // ---------------------------------------------------------------- controls
@@ -5890,17 +6394,15 @@ function renderControls() {
   // Text -> Video: no source to follow or mix — ControlNet, DepthDiff, Warp / Boil and Source mix step aside
   const camMode = state.t2v || camOn();    // the camera is what moves the paint, here or in Text / Image
   $('camBox').hidden = !camMode || isH3(); if (camMode && !isH3()) paintCam();
-  $('guideBox').hidden = (state.t2v && !state.i2v) || isH3();   // Text -> Video: nothing to guide by.
+  paintGuideVis();   // Text -> Video: something to guide by only once the stack covers the frame
   // H3: nothing is painted here, so there is no ControlNet or DepthDiff to steer it
   applyCards(); paintSums();
   if (state.t2v) {                         // no warp to boil or mix; Image -> Video keeps ControlNet / DepthDiff
     $('frameMode').hidden = !(state.i2v && adAllowed());   // Image mode: Warp · Motion
     $('srcMixBox').hidden = true;
     $('nextBox').hidden = false;           // Frame Lock: later frames hold what's there (a high Denoise every frame cooks)
-    if (state.i2v) $('gTabs').hidden = false;
-    else $('gTabs').hidden = $('cnPane').hidden = $('ddPane').hidden = true;
   } else {
-    $('gTabs').hidden = $('frameMode').hidden = false;
+    $('frameMode').hidden = false;
   }
   // the row: Warp · Boil · Motion for a video, Warp · Motion for a picture; Motion only on SD 1.5
   const fmB = f => $('frameMode').querySelector(`[data-f="${f}"]`);
@@ -6054,6 +6556,22 @@ function clipMode() { return !!state.clip && !state.t2v && (!viewRun || view ===
 function picMode() {
   return state.t2v && !viewRun && ((state.i2v && !!state.image) || (t2vPicture() && !!PLATE));
 }
+// Text -> Video has nothing in the input slot, so for a long time the Source tab had nothing to be
+// and showed whatever was last on the stage, usually a run. But there IS a source: the stack. It is
+// the only thing the render starts from, and the browser already knows how to composite it -- the
+// same loop that draws the stack over a clip. So Source is the stack, over the length the render
+// will have, scrubbing and playing like any other source.
+//
+// The whole stack, not the half the engine lays over each frame: the picture it flattens into frame
+// 1 and the overlays above it are both part of what goes in, and seeing them apart would be seeing
+// a frame that never exists.
+function stackSrc() { return !!state.t2v && !stillBase() && !isH3() && plateStack().length > 0; }
+function stackMode() { return stackSrc() && view === 'src' && !shapeMode(); }
+// Is there a picture to guide by? A still dropped into Image -> Video, or -- since the stack became
+// a picture in its own right -- a stack that covers the frame. Either way the engine is doing
+// img2img from frame 1 and carrying it on, so ControlNet and DepthDiff have something to read, and
+// the panel stops pretending there is nothing to steer.
+function t2vSrc() { return !!state.t2v && ((state.i2v && !!state.image) || t2vPicture()); }
 // The picture the render starts from: the plate when there is a stack over it, the picture itself
 // when there is not. One place, so the stage, the live Diff and the job cannot disagree.
 function picSource() {
@@ -6111,6 +6629,13 @@ function setupTransport() {
     return;
   }
   $('scrubRange').min = 0;                 // only the clip's own track is offset into the source
+  if (stackMode()) {                       // the stack's own track: the length the render will be
+    $('scrub').hidden = false;
+    t2vFrame = Math.max(0, Math.min(laneFrames() - 1, t2vFrame));
+    $('scrubRange').max = Math.max(1, laneFrames() - 1); $('scrubRange').value = t2vFrame;
+    return;
+  }
+  if (stackSrc() && !frames.length) { $('scrub').hidden = true; return; }   // off Source, no run: nothing to scrub
   if (clipMode() || oneFrameRun()) {
     $('scrub').hidden = false;
     // The track stays the whole clip -- how far it has got is the fill, and the playhead stops there
@@ -6227,7 +6752,7 @@ function updateEst() {
   if (state.t2v) {                         // Text -> Video: frame 1, a short start, the whole length
     const on = state.onN || 1, n = Math.floor((laneFrames() - 1) / on) + 1, ts = state.size;   // Preview at the Render size: a set seed gives the same frame 1 as Frame / Render
     const tn = Math.min(n, 12);
-    $('frameBtn').title = `frame 1 from ${state.i2v ? 'your image' : 'the prompt'} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
+    $('frameBtn').title = `frame 1 from ${state.i2v ? 'your image' : t2vSrc() ? 'the layer stack' : 'the prompt'} · ${state.size}px · ≈ ${fmtDur(spf(state.size) + 2)}`;
     $('testBtn').title = `the first ${tn} frames · ${ts}px · ≈ ${fmtDur(tn * spf(ts))}`;
     $('goBtn').title = `${n} frames${on > 1 ? ` (on ${on}s)` : ''} · ${state.size}px · ≈ ${fmtDur(n * spf(state.size))}`;
     return;
@@ -6342,11 +6867,11 @@ async function buildConfig(kind) {
     lora: loraOn(), lora_weight: state.loraW, embed_weight: state.embedW, ...styleRefJob(),
     // Seed: the lock decides between the chosen seed and a fresh roll for this run.
     seed: state.seedLock ? state.seed : randomSeed(),
-    controlnets: t2v && !state.i2v ? [] : adOn() && adI2V() ? [] : controlnets,     // Text -> Video: nothing to follow; Motion on a still: the module moves it
+    controlnets: t2v && !t2vSrc() ? [] : adOn() && adI2V() ? [] : controlnets,     // the prompt alone: nothing to follow; Motion on a still: the module moves it
     ...(adOn() ? { motion: motionPath(), motion_lora: motionLora(), motion_lora_weight: state.ad.loraW, motion_context: !!state.ad.context } : {}),
     depth_model: depthModel(),
     // DepthDiff: the source's luma / depth sets each pixel's share of the style strength
-    diff_source: t2v && !state.i2v ? 'off' : state.dd.src, diff_invert: state.dd.invert,
+    diff_source: t2v && !t2vSrc() ? 'off' : state.dd.src, diff_invert: state.dd.invert,
     diff_black: state.dd.black, diff_white: state.dd.white, diff_gamma: state.dd.gamma,
     diff_contrast: state.dd.contrast, diff_blur: state.dd.blur, diff_amount: state.dd.amount,
     ...(t2v ? { t2v_frames: t2vN, init_image: state.i2v || t2vPicture() ? picSource() : '', ...camJob() }
@@ -7227,13 +7752,13 @@ function toggleRunsPanel(open = $('runsPanel').hidden) {
 }
 $('manageRuns').onclick = () => toggleRunsPanel();
 async function loadRunsPanel() {
-  // The panel goes up before the disk is asked anything \u2014 with the runs it already knows if it has
+  // The panel goes up before the disk is asked anything — with the runs it already knows if it has
   // been open before, and saying what it is doing if it hasn't. Waiting on a thousand folders with a
   // blank screen reads as nothing happening at all.
   const first = !RS.loaded;
   paintRunsPanel(false);
   try { RS.list = (await api('/api/runs/catalog')).runs; RS.loaded = true; }
-  catch { $('runsPanel').innerHTML = '<div class="rs-head"><h3>Runs</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="rsClose">\u2715</button></div>';
+  catch { $('runsPanel').innerHTML = '<div class="rs-head"><h3>Runs</h3><div class="rs-info">This needs the new server — restart run.bat.</div><button class="logbtn close" id="rsClose">\u2715</button></div>';
           $('rsClose').onclick = () => toggleRunsPanel(false); return; }
   const have = new Set(RS.list.map(r => r.id)); [...RS.sel].forEach(id => have.has(id) || RS.sel.delete(id));
   paintRunsPanel(first); pollSizes(false); setTimeout(() => pollSizes(true), 1500);
@@ -7278,7 +7803,7 @@ function paintRsAct() {
     $('rsInfo').innerHTML = `<span>${shown.length === RS.list.length ? RS.list.length : `${shown.length} of ${RS.list.length}`} runs \u00b7 ${
       RS.done ? fmtBytes(all) : `${fmtBytes(all)}\u2026`}</span>${RS.note ? `<span class="ok">${RS.note}</span>` : ''}<span class="rs-btns"><button class="setbtn" id="rsAll">Select all</button></span>`;
     $('rsAll').onclick = () => { shown.forEach(r => RS.sel.add(r.id)); paintRsSel(); };
-    $('rsInfo').title = `${RS.list.length - hid} in the strip, ${hid} hidden${RS.done ? '' : ' \u2014 still counting sizes'}`;
+    $('rsInfo').title = `${RS.list.length - hid} in the strip, ${hid} hidden${RS.done ? '' : ' — still counting sizes'}`;
     return;
   }
   const anyHidden = ids.some(id => RS.list.find(r => r.id === id)?.hidden), anyShown = ids.some(id => !RS.list.find(r => r.id === id)?.hidden);
@@ -7290,7 +7815,7 @@ function paintRsAct() {
   $('rsAll').onclick = () => { shown.forEach(r => RS.sel.add(r.id)); paintRsSel(); };
   $('rsClear').onclick = () => { RS.sel.clear(); paintRsSel(); };
   $('rsDel').onclick = () => { RS.ask = true; paintRsSel(); };
-  if ($('rsHide')) { $('rsHide').onclick = () => rsVisibility(true); $('rsHide').title = 'Hide from the strip \u2014 the files stay on disk'; }
+  if ($('rsHide')) { $('rsHide').onclick = () => rsVisibility(true); $('rsHide').title = 'Hide from the strip — the files stay on disk'; }
   if ($('rsShow')) { $('rsShow').onclick = () => rsVisibility(false); $('rsShow').title = 'Put back in the strip'; }
   $('rsDel').title = 'Delete from disk';
 }
@@ -7380,7 +7905,7 @@ async function rsVisibility(hidden) {
 }
 async function rsDelete() {
   // The cards go the moment you confirm. The server only has to rename each folder into renders/.trash
-  // and a thread empties the bin behind it, so there is nothing here worth watching \u2014 and a run it
+  // and a thread empties the bin behind it, so there is nothing here worth watching — and a run it
   // could not take (one still rendering) comes straight back, selected, with the reason beside it.
   const ids = [...RS.sel], doomed = new Set(ids), was = RS.list;
   RS.ask = false; RS.sel.clear();              // a second Enter can't start it twice
@@ -7689,6 +8214,10 @@ function saveFrame() {
     return $('cvMask').toBlob(b => { const u = URL.createObjectURL(b); grab(u, `dwarp_${where}_diff.png`); setTimeout(() => URL.revokeObjectURL(u), 5000); });
   }
   if (clipMode()) return grab(clipFrameUrl('luma'), `dwarp_${clipName()}_source_${pad(clipFrame, 4)}.jpg`);
+  if (stackMode()) return $('cvPlate').toBlob(b => {     // composited here: the canvas is the file
+    const u = URL.createObjectURL(b); grab(u, `dwarp_stack_${pad(t2vFrame, 4)}.png`);
+    setTimeout(() => URL.revokeObjectURL(u), 5000);
+  });
   if (picMode()) return grab(picFrameUrl('luma'), 'dwarp_image_source.jpg');
   const n = frames[frameIdx];
   if (view === 'src') return grab(img(viewRun, 'init', n), `dwarp_run${viewRun}_source_${pad(n, 6)}.jpg`);
@@ -7697,7 +8226,7 @@ function saveFrame() {
 }
 function applyView() {
   if (!$('frame')) return;
-  const src = $('imgSrc'), div = $('divider'), f = $('frame'), clip = clipMode() || picMode();
+  const src = $('imgSrc'), div = $('divider'), f = $('frame'), clip = clipMode() || picMode() || stackMode();
   const ctl = view.startsWith('control_'), mask = view === 'mask';
   if (shapeMode()) {
     ['imgSrc', 'imgCtl', 'cvMask', 'divider'].forEach(id => { $(id).style.display = 'none'; });
@@ -7722,8 +8251,8 @@ function setControlTabs(layers = runLayers) {
   runLayers = layers;
   // Comfy Cloud has no DepthDiff: the guidance card is hidden there, so a Diff tab left over from an
   // SD session is a tab for a thing this workflow cannot do.
-  const noRun = !viewRun, dd = state.gtab === 'dd' && !isH3() && (!state.t2v || state.i2v);   // Text -> Video: a 3D run's depth; Image -> Video: the live Diff
-  const hasSrc = state.t2v ? state.i2v && !!state.image : !!state.clip;
+  const noRun = !viewRun, dd = state.gtab === 'dd' && !isH3() && (!state.t2v || t2vSrc());   // the prompt alone: a 3D run's depth; a picture to start from: the live Diff
+  const hasSrc = state.t2v ? t2vSrc() : !!state.clip;
   const entries = dd ? (hasSrc && state.dd.src !== 'off' ? [['mask', 'Diff']] : [])
                      : (noRun ? [] : layers.filter(l => (l.id !== 'control_diff' || state.t2v) && l.id !== 'control_shape' && l.id !== 'control_qr').map(l => [l.id, l.label]));   // no live Diff without a clip
   if (state.shape && !adOn() && !isH3()) entries.push(['shape', 'Shape']);   // Motion and H3 don't use the Shape: no tab for it
@@ -7773,9 +8302,12 @@ $('view').onclick = e => {
   [...$('view').children].forEach(b => b.classList.toggle('on', b === e.target));
   stopPlay(); carryPlayhead(wasClip); applyView(); setupTransport();
   if (shapeMode()) return showShape();
-  if (!viewRun && !clipMode() && !picMode()) return clearStage();   // off the Shape tab, no source: the placeholder
+  if (!viewRun && !clipMode() && !picMode() && !stackSrc()) return clearStage();   // off the Shape tab, no source: the placeholder
+  // Source in Text -> Video is the stack, not the run's own first frame: the tab means the input
+  // everywhere else, and a run on the stage does not change what the input is.
+  if (stackMode()) { if (!$('cvPlate')) return clearStage(); setupTransport(); return paintFrame(); }
   if (viewRun && shapePrevFoot) { setFoot(shapePrevFoot); shapePrevFoot = ''; }   // the run's own footer back
-  if ((frames.length || clipMode() || picMode()) && $('frame')) paintFrame();
+  if ((frames.length || clipMode() || picMode() || stackSrc()) && $('frame')) paintFrame();
 };
 function paintFrame() {
   if (shapeMode()) {
@@ -7783,6 +8315,13 @@ function paintFrame() {
     scrubReadout(shapeFrame / (state.shape.fps || 24), shapeFrame, state.shape.frames || 1);
     shapeLook();
     return;
+  }
+  // Text -> Video: the stack itself, composited here. Before picMode, which would show the half of
+  // it the render flattens -- a flat grey card where the beat should be.
+  if (stackMode()) {
+    t2vFrame = Math.max(0, Math.min(laneFrames() - 1, t2vFrame));
+    scrubReadout(t2vFrame / T2V_FPS, t2vFrame, laneFrames());
+    return paintPlate();
   }
   if (picMode()) {                         // Image mode, no run: the picture (and its live Diff)
     $('imgOut').src = picFrameUrl('luma');
@@ -7819,6 +8358,12 @@ $('scrubRange').oninput = e => {
   if (shapeMode()) { stopPlay(); shapeFrame = +e.target.value; paintFrame(); return; }
   if (singleShape() != null) {             // scrubbing away from a Frame result: back to the mask
     shapeFrame = +e.target.value; view = 'shape'; setControlTabs(); return showShape();
+  }
+  if (stackMode()) {                       // Text -> Video: scrub the stack
+    stopPlay();
+    t2vFrame = Math.max(0, Math.min(laneFrames() - 1, +e.target.value));
+    if (+e.target.value !== t2vFrame) e.target.value = t2vFrame;
+    paintFrame(); return;
   }
   if (oneFrameRun()) toSource();           // scrubbing away from a Frame result: back to Source
   if (clipMode()) {                        // clip view: scrub the source, up to the frame being made
@@ -8000,26 +8545,30 @@ function showPlateCv(on) {
   if (on) { cv.style.width = (im?.offsetWidth || cv.width) + 'px'; cv.style.height = (im?.offsetHeight || cv.height) + 'px'; }
 }
 function playLive() {
-  const stack = layerJob();
+  const stack = plateStack();
   if (!stack.length) return playClip();
-  const fps = state.clip?.source.fps || 24, n = state.clip?.source.frames || 1;
-  // layerJob puts the clip last -- it is the bottom of the stack. If it is a video it is also the
-  // clock, and the one thing that gets to be heard; a picture underneath leaves the clock to the page.
-  const master = liveVid(stack[stack.length - 1].path);
+  // Two timelines: a clip's own, or -- with no clip at all -- the length the render is going to be.
+  const t2v = stackMode();
+  const fps = t2v ? T2V_FPS : (state.clip?.source.fps || 24);
+  const n = t2v ? laneFrames() : (state.clip?.source.frames || 1);
+  // The stack puts the clip last -- it is the bottom. If it is a video it is also the clock, and the
+  // one thing that gets to be heard; a picture underneath leaves the clock to the page. So does Text
+  // -> Video, where the bottom is a solid and a pulse's own length is not the length of the render.
+  const master = t2v ? null : liveVid(stack[stack.length - 1].path);
   const want = new Set(stack.map(L => L.path));    // a layer dropped (or a pulse redrawn) leaves a
   for (const [path, v] of Object.entries(liveVids)) {    // decoder behind: let it go
     if (want.has(path)) continue;
     v.pause(); v.remove(); delete liveVids[path];
   }
   const vids = stack.map(L => liveVid(L.path)).filter(Boolean);
-  const from = clipFrame / fps, t0 = performance.now();
+  const from = (t2v ? t2vFrame : clipFrame) / fps, t0 = performance.now();
   const secs = () => master && !master.paused && master.readyState >= 2
     ? master.currentTime : (from + (performance.now() - t0) / 1000) % (n / fps);
   // The stack as it stands, every frame: a pulse redrawn while it plays is a new file, and it joins
   // in on the next one. The others are nudged back only when they have drifted -- a seek every frame
   // is a stutter every frame.
   const sync = at => {
-    for (const L of layerJob()) {
+    for (const L of plateStack()) {
       const v = liveVid(L.path);
       if (!v || v === master || v.readyState < 2) continue;
       if (v.paused) { v.muted = true; v.play().catch(() => {}); }
@@ -8031,12 +8580,15 @@ function playLive() {
     if (playing !== 'live') return;
     const at = secs();
     sync(at);
-    const f = Math.max(0, Math.min(n - 1, Math.floor(at * fps))), edge = clipEdge();
+    const f = Math.max(0, Math.min(n - 1, Math.floor(at * fps))), edge = t2v ? null : clipEdge();
     if (edge != null && f >= edge) {       // caught up with the render, as the clip playback does
       clipFrame = edge; $('scrubRange').value = edge; scrubReadout(clipSec(edge), edge, n);
       return stopPlay();
     }
-    if (f !== clipFrame) { clipFrame = f; $('scrubRange').value = f; scrubReadout(clipSec(f), f, n); }
+    if (f !== (t2v ? t2vFrame : clipFrame)) {
+      if (t2v) t2vFrame = f; else clipFrame = f;
+      $('scrubRange').value = f; scrubReadout(t2v ? f / fps : clipSec(f), f, n);
+    }
     paintPlate(true);
     requestAnimationFrame(tick);
   };
@@ -8100,7 +8652,7 @@ function paintMute() {
   const b = $('muteBtn'); if (!b) return;
   b.innerHTML = state.mute ? SPK_OFF : SPK_ON;
   b.classList.toggle('off', !!state.mute);
-  b.title = state.mute ? 'Muted \u2014 the stage plays silently' : 'Sound on \u2014 click to mute the stage';
+  b.title = state.mute ? 'Muted — the stage plays silently' : 'Sound on — click to mute the stage';
   // Whatever is playing right now, not just the next thing to start.
   const v = $('vidSrc');
   if (v && !v.dataset.quiet) v.muted = !!state.mute;
@@ -8130,6 +8682,7 @@ function togglePlay() {
   }
   // Diff is drawn per frame: scrub it. With a stack on, Source plays the stack itself (playLive),
   // so the dials stay live while it runs; without one it is the clip's own file.
+  if (stackMode()) return playLive();      // Text -> Video: the stack runs on the page's own clock
   if (clipMode()) { if (view === 'src') plateLive() ? playLive() : playClip(); return; }
   // A one-frame run has nothing to run through, and the transport under it is the clip's anyway
   // — scrubbing it drops back to Source. So does pressing play: what moves here is the source,
@@ -8149,13 +8702,18 @@ $('playBtn').onclick = togglePlay;
 // counts, not just the big ones -- a one-line box is still a box you are typing in.
 const typing = e => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
 addEventListener('keydown', e => {
+  if (stackMode() && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !typing(e)) {
+    const n = laneFrames();
+    t2vFrame = (t2vFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
+    $('scrubRange').value = t2vFrame; paintFrame(); return;
+  }
   if ((clipMode() || oneFrameRun()) && (e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !typing(e)) {
     if (oneFrameRun()) toSource();
     const n = state.clip.source.frames;
     clipFrame = (clipFrame + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
     $('scrubRange').value = clipFrame; paintFrame(); return;
   }
-  if (typing(e) || (!frames.length && !clipMode())) return;
+  if (typing(e) || (!frames.length && !clipMode() && !stackMode())) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     stopPlay(); frameIdx = (frameIdx + (e.code === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length;
@@ -8361,7 +8919,7 @@ $('shapeLibBtn').onclick = () => toggleShapeLib();
 async function loadShapeLib(intro) {
   clearTimeout(SL.timer);
   try { SL.data = await api('/api/shapes'); }
-  catch { $('shapeLib').innerHTML = '<div class="rs-head"><h3>Shape library</h3><div class="rs-info">This needs the new server \u2014 restart run.bat.</div><button class="logbtn close" id="slClose">\u2715</button></div>';
+  catch { $('shapeLib').innerHTML = '<div class="rs-head"><h3>Shape library</h3><div class="rs-info">This needs the new server — restart run.bat.</div><button class="logbtn close" id="slClose">\u2715</button></div>';
           $('slClose').onclick = () => toggleShapeLib(false); return; }
   paintShapeLib(intro);
   if (!SL.data.ready && !$('shapeLib').hidden) SL.timer = setTimeout(() => loadShapeLib(false), 1500);   // presets still being drawn
@@ -8386,7 +8944,7 @@ function paintShapeLib(intro) {
       <button class="logbtn close" id="slClose" title="Close (Esc)">\u2715</button>
     </div>
     ${list.length ? section('Stills', stills) + section('Loops', loops)
-      : `<p class="rs-empty">${yours ? 'None yet \u2014 Upload, or drop images / videos here.' : 'Drawing the presets\u2026'}</p>`}`;
+      : `<p class="rs-empty">${yours ? 'None yet — Upload, or drop images / videos here.' : 'Drawing the presets\u2026'}</p>`}`;
   $('slClose').onclick = () => toggleShapeLib(false);
   $('slUpload').onclick = () => $('shapeLibFile').click();
   if ($('slFolder')) $('slFolder').onclick = () => api('/api/shapes/open', { method: 'POST' }).catch(() => {});
@@ -8619,6 +9177,18 @@ var WORDMARK = '<div class="wordmark"><svg class="logo" viewBox="0 -730 3670 730
 function clearStage() {
   if (state.clip && !state.t2v) { viewRun = null; return showClip(); }   // with a clip loaded, the stage falls back to it
   stopPlay(); viewRun = null; frames = [];
+  // Text -> Video with a stack: that is the source, so the stage is never empty. Before picMode,
+  // which has only the flattened half of it to show.
+  if (stackSrc() && view !== 'shape') {
+    if (!$('frame')) { $('stage').innerHTML = ''; ensureFrameEl(); }
+    if (view !== 'mask') view = 'src';
+    setControlTabs(); setupTransport();
+    setFoot('the layer stack \u00b7 source');
+    paintFrame();
+    ['mp4Link', 'loadRun', 'copyPrompt', 'enhanceLink', 'animateLink'].forEach(id => $(id).classList.add('hide'));
+    $('outputs').innerHTML = ''; $('enh').hidden = true;
+    return;
+  }
   if (picMode()) {                         // the picture on the stage, with Source / Diff like a clip
     if (!$('frame')) { $('stage').innerHTML = ''; ensureFrameEl(); }
     if (view !== 'mask' && view !== 'shape') view = 'src';
@@ -9129,7 +9699,10 @@ function paintEnhanceSafe() { if (!$('enh').hidden) paintEnhance(); }
   MASK_PATTERNS = maskPats.patterns || []; MASK_READY = true;
   PULSE_PATTERNS = pulsePats.patterns || []; PULSE_DRAW = pulsePats.version || 0;
   NOISE_PATTERNS = noisePats.patterns || [];
-  if (layers().some(L => L.noise)) renderLayers();  // their dials were waiting on the kinds
+  if (layers().some(L => L.noise || L.pulse)) renderLayers();   // their dials were waiting on the kinds
+  // A pulse layer saved before it was generated has the mp4 it was drawn from and no envelope of
+  // its own, so it would come up black. One small fetch each and it is the layer it was.
+  freshenLayers();
   if (!$('maskLib').hidden) paintMaskLib();        // opened while it was still coming
   if (CLOUD_WF.length && !CLOUD_WF.some(w => w.id === state.comfyWf)) state.comfyWf = CLOUD_WF[0].id;
   // a measure still running from before this page loaded is picked up, not abandoned

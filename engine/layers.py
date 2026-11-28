@@ -108,22 +108,24 @@ def _source(i: int, width: int, height: int, fps: float, blur: float = 0.0) -> s
 def clean(layers) -> list[dict]:
     """The stack as the engine will read it: topmost first, every field present and in range.
 
-    A layer is usually a file, and then `path` is what it is. A noise layer is not: it has nothing
-    on disk and never did -- it is a kind, a grain and a size, and whichever compositor gets to it
-    draws it. That row carries `noise` instead of a path, and everything else about it (its blend,
-    its opacity, its blur, whether it is a matte) is the same as any other layer's.
+    A layer is usually a file, and then `path` is what it is. A GENERATED layer is not: it has
+    nothing on disk and never did -- noise is a kind, a grain and a size; a pulse is a pattern, an
+    envelope and a seed -- and whichever compositor gets to it draws it. Those rows carry `noise`
+    or `pulse` instead of a path, and everything else about them (blend, opacity, blur, whether it
+    is a matte) is the same as any other layer's.
     """
     out = []
     for raw in layers or []:
         if not isinstance(raw, dict):
             continue
-        gen = noise_settings(raw)
-        if not gen and not raw.get("path"):
+        gen, beat = noise_settings(raw), pulse_settings(raw)
+        if not gen and not beat and not raw.get("path"):
             continue
         mode = str(raw.get("mode") or "normal").lower().replace(" ", "").replace("-", "")
         out.append({
             "noise": gen,
-            "path": "" if gen else str(raw["path"]),
+            "pulse": beat,
+            "path": "" if (gen or beat) else str(raw["path"]),
             "mode": mode if mode in MODES else "normal",
             "opacity": _num(raw.get("opacity"), 0.0, 1.0, 1.0),
             "blur": _num(raw.get("blur"), 0.0, 1.0, 0.0),
@@ -138,7 +140,30 @@ def clean(layers) -> list[dict]:
 
 def label(L) -> str:
     """What to call a layer in a log: its file, or what a generated one is made of."""
-    return f"noise · {L['noise']['kind']}" if L.get("noise") else Path(L["path"]).name
+    if L.get("noise"):
+        return f"noise · {L['noise']['kind']}"
+    if L.get("pulse"):
+        return f"pulse · {L['pulse']['kind']}"
+    return Path(L["path"]).name
+
+
+def generated(L) -> bool:
+    """Is this row drawn rather than read? One question, asked in a dozen places."""
+    return bool(L.get("noise") or L.get("pulse"))
+
+
+def draw_gen(L, width: int, height: int, i: int):
+    """Frame `i` of a generated layer, as 0..1 greys (or h x w x 3 if it has a colour).
+
+    The one place that knows which generator a row names. Both of them take the same three things
+    -- a size and a frame number -- because neither has a size or a length of its own: a generated
+    layer is drawn at the size of whatever it is going over, at the moment it is composited.
+    """
+    if L.get("noise"):
+        from engine import noise
+        return noise.draw(width=width, height=height, i=i, **L["noise"])
+    from engine import pulse
+    return pulse.draw(width=width, height=height, i=i, **L["pulse"])
 
 
 def noise_settings(raw) -> dict | None:
@@ -149,6 +174,20 @@ def noise_settings(raw) -> dict | None:
     # An older save has `noise: true` beside an mp4 that was drawn for it. The settings are all
     # still on the row, so it is read as a generated layer and the stale file is simply not opened.
     return noise.settings(raw if raw.get("noise") is True else raw["noise"])
+
+
+def pulse_settings(raw) -> dict | None:
+    """The same, for a pulse layer: a pattern, an envelope, a seed and its own dials.
+
+    A pulse used to be an mp4 drawn before you could see any of it, so an older save has `pulse`
+    as the pattern's NAME beside the file that was drawn for it. The settings are all still on the
+    row, so it is read as a generated layer and the stale file is simply not opened -- the same
+    thing that happened to noise when it stopped being a file.
+    """
+    if not isinstance(raw, dict) or not raw.get("pulse"):
+        return None
+    from engine import pulse
+    return pulse.settings(raw["pulse"] if isinstance(raw.get("pulse"), dict) else raw)
 
 
 def pair_index(stack) -> list[tuple]:
@@ -206,6 +245,20 @@ def flatten(layers, dest: Path, *, width: int, height: int, frames: int, fps: fl
                 from engine import noise
                 inputs.extend(["-f", "lavfi", "-i",
                                noise.lavfi(width=width, height=height, fps=fps, **layer["noise"])])
+            elif layer["pulse"]:
+                # A pulse has no lavfi and cannot have one: there is no ffmpeg filter that draws a
+                # ring travelling out of the middle of the frame on a beat. So here, and ONLY here,
+                # it is drawn to a clip first and read back like any other input.
+                #
+                # This is the flatten -- it runs when you render or upload, once, for a stack that
+                # has a clip at the bottom. Nothing a dial does comes through here: the preview is
+                # drawn in the page and the painting modes draw it per frame below, neither of
+                # which touches a file. Moving the whole flatten onto the numpy compositor would
+                # retire this too; until then one clip at render time is the honest cost.
+                from engine import pulse
+                made = pulse.clip(dest.parent, width=width, height=height, frames=frames, fps=fps,
+                                  **layer["pulse"])
+                inputs.extend(["-stream_loop", "-1", "-i", made["path"]])
             else:
                 inputs.extend(["-stream_loop", "-1", "-i", layer["path"]])
         return idx[key]
@@ -339,7 +392,7 @@ def flatten_like_base(layers, dest: Path) -> Path:
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     base = pairs[0][0]                          # bottom-up, so the first pair is the base
-    if base["noise"]:
+    if generated(base):
         # Generated layers have no size of their own -- they are drawn at the size of what they are
         # going over. With nothing underneath there is nothing to take that from.
         raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
@@ -372,7 +425,7 @@ def plate(dest_dir: Path, layers, *, width: int = 0, height: int = 0, frames: in
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height and frames and fps):
-        if pairs[0][0]["noise"]:
+        if generated(pairs[0][0]):
             raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
         bw, bh, bn, bf = probe(pairs[0][0]["path"])
         width, height, frames, fps = width or bw, height or bh, frames or bn, fps or bf
@@ -397,7 +450,7 @@ def plate_still(dest_dir: Path, layers, *, width: int = 0, height: int = 0) -> d
     if not pairs:
         raise ValueError("a plate needs at least one layer that is not a matte")
     if not (width and height):
-        if pairs[0][0]["noise"]:
+        if generated(pairs[0][0]):
             raise ValueError("the bottom of the stack has to be a clip or a picture, not a generated layer")
         bw, bh, _, _ = probe(pairs[0][0]["path"])
         width, height = width or bw, height or bh
@@ -486,10 +539,9 @@ class FrameStack:
             # A generated layer has no frames to extract: it is drawn at the size of whatever it is
             # going over, at the moment that frame is composited. Nothing to decode, nothing on
             # disk, and a dial moved mid-render lands on the next frame like every other dial.
-            if L["noise"]:
+            if generated(L):
                 self.frames[k], self.off[k] = None, 0
-                g = L["noise"]
-                log(f"  noise · {g['kind']} · generated"
+                log(f"  {label(L)} · generated"
                     + (" · matte" if L["matte"] else f" · {L['mode']} {L['opacity'] * 100:.0f}%"))
                 continue
             one = copy(job)
@@ -515,14 +567,17 @@ class FrameStack:
         self.paths = [] if self.over else [self.dir / f"{i:06d}.jpg" for i in range(max(n, len(base)))]
         self.done: dict[int, str] = {}
 
-    def _frame(self, k, i: int, size=None, gen=None):
+    def _frame(self, k, i: int, size=None, row=None):
+        import numpy as np
         from PIL import Image
         got = None if k is None else self.frames[k]
         if got is None:                        # generated: drawn at the size of what it is over
-            from engine import noise
             w, h = size or (512, 512)
-            g = noise.draw(width=w, height=h, i=i, **(gen or self.stack[k]["noise"]))
-            return Image.fromarray((g * 255.0).astype("uint8"), "L").convert("RGB")
+            g = np.asarray(draw_gen(row if row is not None else self.stack[k], w, h, i))
+            px = (np.clip(g, 0.0, 1.0) * 255.0).astype("uint8")
+            # A generator may answer in colour -- a solid does -- and then it is already RGB.
+            return (Image.fromarray(px, "RGB") if px.ndim == 3
+                    else Image.fromarray(px, "L").convert("RGB"))
         return Image.open(got[(self.off[k] + i) % len(got)]).convert("RGB")
 
     def _live(self, stack=None) -> tuple:
@@ -547,17 +602,17 @@ class FrameStack:
             return keep
         live = clean(stack)
         pairs = pair_index(live)
-        if not pairs or (not self.over and live[pairs[0][0]]["noise"]):
+        if not pairs or (not self.over and generated(live[pairs[0][0]])):
             # Nothing to draw, or a generated layer has become the base. Out here the base is where
             # the size and the length come from, and a generated layer has neither.
             return keep
         have: dict = {}
         for k, L in enumerate(self.stack):
-            if not L["noise"]:
+            if not generated(L):
                 have.setdefault(L["path"], []).append(k)
         src, used = [], {}
         for L in live:
-            if L["noise"]:
+            if generated(L):
                 src.append(None)
                 continue
             pool, at = have.get(L["path"]) or [], used.get(L["path"], 0)
@@ -617,7 +672,7 @@ class FrameStack:
         # The matte's alpha: luma, levels, invert, then the feather -- in that order, so a hard
         # pattern can be given a soft edge without the levels clipping the softness back off.
         def alpha(mk, M):
-            m = np.asarray(soft(self._frame(src[mk], i, (w, h), M["noise"]), 0.0, w, h).convert("RGB"),
+            m = np.asarray(soft(self._frame(src[mk], i, (w, h), M), 0.0, w, h).convert("RGB"),
                            np.float32) / 255.0
             lum = 0.2126 * m[..., 0] + 0.7152 * m[..., 1] + 0.0722 * m[..., 2]
             b, wt = M["black"], M["white"]
@@ -645,7 +700,7 @@ class FrameStack:
         for n in range(first, len(pairs)):
             a, mk = pairs[n]
             L, M = live[a], (live[mk] if mk is not None else None)
-            top = np.asarray(soft(self._frame(src[a], i, (w, h), L["noise"]), L["blur"], w, h),
+            top = np.asarray(soft(self._frame(src[a], i, (w, h), L), L["blur"], w, h),
                              np.float32) / 255.0
             mixed = np.clip(_blend(acc, top, L["mode"]), 0.0, 1.0)
             mixed = acc + (mixed - acc) * L["opacity"]

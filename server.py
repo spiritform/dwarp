@@ -1033,6 +1033,35 @@ def build_app() -> FastAPI:
         except (TypeError, ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail=f"could not read that beat: {exc}") from None
 
+    @app.post("/api/layers/beat")
+    async def layers_beat(request: Request):
+        """One number per frame, 0..1: the beat, and nothing else.
+
+        The picture a pulse layer makes is drawn where it is composited -- in the page for the
+        preview, in numpy for the render -- so none of the dials that move the picture come
+        anywhere near the server. What cannot be worked out in the page is the beat itself when it
+        comes from a track, because that is an audio analysis; a count could be, but then the page
+        and the engine would each have their own idea of where the hits are, and a hit landing a
+        frame apart from itself is the one disagreement that would actually show.
+        """
+        body = await request.json()
+        from engine import pulse
+        try:
+            env = await asyncio.to_thread(
+                pulse.envelope,
+                max(1, min(8192, int(body.get("frames", 120)))),
+                max(1.0, min(120.0, float(body.get("fps", 24)))),
+                bpm=float(body.get("bpm", 120.0)), division=float(body.get("division", 1.0)),
+                audio=str(body.get("audio") or ""), band=str(body.get("band") or "all"),
+                start=float(body.get("start", 0.0)), gain=float(body.get("gain", 1.0)),
+                drift=float(body.get("drift", 0.0)), seed=int(body.get("seed", 0)))
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(422, detail=f"could not read that beat: "
+                                            f"{type(exc).__name__}: {exc}") from None
+        return {"env": env, "frames": len(env)}
+
     @app.post("/api/layers/pulse")
     async def layers_pulse(request: Request):
         """A pulse layer, cut to the size and length of whatever it is going over. Named after what
@@ -1055,8 +1084,14 @@ def build_app() -> FastAPI:
                 # Left out = that pattern's own default, which is not the same number for all of
                 # them: pulse.dial decides, so this does not hold a second copy of it.
                 scale=body.get("scale"), boil=body.get("boil"))
-        except (TypeError, ValueError, RuntimeError) as exc:
-            raise HTTPException(422, detail=f"could not make the pulse: {exc}") from None
+        except Exception as exc:
+            # Everything, not the three it used to name: anything else came back as a bare 500
+            # with "Internal Server Error" in it, which tells whoever is looking at the panel
+            # nothing at all. The traceback still goes to the console for the real answer.
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(422, detail=f"could not make the pulse: "
+                                            f"{type(exc).__name__}: {exc}") from None
 
     @app.get("/api/masks/preview")
     def mask_preview(pattern: str = "circle", width: int = 256, height: int = 144,

@@ -4,14 +4,82 @@ What changed in DWARP, newest first. Small styling tweaks are left out; the comm
 
 ## 2026-11-27
 
-- **The Source tab shows a Text → Video stack that has become the picture.** The Layers card has
-  said *frame 1 · then over* since the covering-stack rule went in, and the render really did
-  start from that flatten — but the stage never heard about it. Its test for "a single picture is
-  the source" still meant a picture you had dropped in, so Source had nothing to show and kept
-  whatever was on it, usually the last run. It shows the flattened picture now. What goes over the
-  picture is not in it: a pulse on `screen` is composited onto each frame as it is painted, so it
-  belongs to Output, and putting it into the Source preview would show a frame that never exists.
-  A stack that stops covering drops back to the placeholder instead of holding a still of itself.
+- **A pulse layer is generated, not rendered.** It was an mp4: pick Clouds and ffmpeg drew five
+  octaves of fractal noise over the whole clip, encoded it, and left a few hundred kilobytes on
+  disk — and then did it again for every nudge of Scale. For a layer whose entire content is a
+  formula and a beat. It is drawn where it is composited now, the way noise already was: in the
+  page for the preview, in numpy as the render paints each frame. **The dials move under your
+  hand**, nothing is written to disk, and the final frames are the composite — there is no clip in
+  between to be the wrong length or the wrong size.
+
+  What made that possible is that the patterns stopped being a stream. They used to carry state
+  forward — where a front had travelled to, which cells were lit, how far the band had fallen — so
+  frame 300 could only exist after the 299 before it, which is fine for a file written once and
+  useless for a playhead you drag. Every one of those is now replayed from frame 0 instead, and the
+  fractal lattice is keyed by its own step rather than handed down, so any frame can be drawn on
+  its own. All fourteen patterns, scrubbable.
+
+  The one thing still worth asking the engine is the **beat**: a count could be worked out in the
+  page, but then the page and the render would each have their own idea of where the hits are, and
+  a hit landing a frame apart from itself is the one disagreement you would actually see. So the
+  envelope — one number per frame — is fetched once when the count, the drift or the track
+  changes, and every dial that moves the picture stays local. The tile in the panel is the layer
+  itself now rather than a recording of it, so it beats at whatever the layer beats at.
+
+  Layers you already have carry on working: the stale mp4 is simply not opened, and the envelope
+  is fetched for them when the page loads. One mp4 remains, in one place — Video mode's flatten is
+  an ffmpeg filtergraph and there is no filter that draws a ring travelling out of the middle of
+  the frame on a beat, so a pulse under a clip is still drawn to a clip there. That happens when
+  you render, once, and nothing a dial does goes near it.
+
+- **A solid is a colour.** It was black, white and the greys between — which is what a floor for a
+  stack usually wants to be, but not always. **Click its thumbnail** and twenty-four squares open
+  under it: neutrals, then warm, cool and the far end of the wheel, each row running dark to light
+  so a row is a ramp rather than an assortment. One square for *no colour* (back to a grey) and one
+  for *any* colour, which hands off to the system picker and follows the wheel as you move around
+  it.
+
+  The Level dial is gone with it. A number between black and white was a smaller way of saying the
+  same thing, and a worse one now that the whole wheel is there — the thumbnail is the colour, so
+  it is also how you change it. And a solid's thumbnail no longer opens the noise picker: it is
+  drawn by that code because the machinery for a layer with no file is that code, but a solid is
+  not a kind of noise and there is nothing in that gallery it could become.
+
+  The colour carries through all three compositors, so what the panel shows is what the render
+  paints. A solid saved before this keeps the grey it had until you click it.
+
+- **A pulse layer's seed is a number you can read.** It was a die you could press: it rolled another
+  take and gave you no way to say which one you were on, or to go back to the one before. It is the
+  seed itself now, in the same column and the same width as the die was — drag it for the take next
+  door, double-click to roll a fresh one. A new pulse layer arrives on a take of its own rather than
+  on the engine's fallback, so two Clouds layers in one stack are two different clouds.
+
+- **A pulse that cannot be drawn says so.** Two requests for the same clip arrive whenever a dial is
+  nudged back to where it was a moment ago — and they shared one part file, so two ffmpegs wrote it
+  and whichever finished first moved it into place while the other still had it open. On Windows
+  that is a PermissionError, which reached the panel as *Internal Server Error* with nothing in it.
+  Each draw gets a part file of its own now, and the one that loses the race throws its copy away,
+  since the name is the contents. Anything else that goes wrong comes back named, with the
+  traceback on the console.
+
+- **In Text → Video, Source is the layer stack — playing.** The input slot is empty there, so the
+  Source tab had nothing to be and showed whatever was last on the stage, usually the previous run.
+  But there was a source all along: the stack is the only thing the render starts from. It is
+  composited in the browser now, the same way a stack over a clip already was, on a track as long as
+  the render will be — scrub it, press play, step it with the arrows, save a frame of it. The whole
+  stack, not half of it: the part the engine flattens into frame 1 and the part it lays over every
+  frame are both what goes in, and a preview of either on its own is a frame that never exists. Move
+  a dial and the picture moves under your hand; change the length or the size and the track and the
+  canvas follow. Picking a run no longer takes the tab away — Source means the input, whatever is
+  on the stage, exactly as it does over a clip.
+
+- **A stack that covers the frame can be guided.** It became the picture the render starts from a
+  few days ago, which quietly made Text → Video an img2img job — but the panel still said there was
+  nothing to steer and sent the engine an empty ControlNet list. The Guidance card is there now
+  whenever the stack covers the frame, with ControlNet, DepthDiff and the live Diff tab over the
+  stage, all reading the picture the stack makes. A stack that is only an overlay still has nothing
+  under it, so the card steps aside again. **Check the card before your next render:** ControlNet
+  comes up at whatever it was last set to for that model, which may not be *off*.
 
 - **Scale and boil, on the pulse patterns made of fractal noise.** Clouds, Smoke, Fall and Veins
   were four fixed fields — the cell count and the rate they churned at were numbers in the

@@ -62,6 +62,7 @@ PATTERNS = [
     # "fill it in" would be the larger lie. `flat` is what keeps it out of the noise picker, where
     # a frame of one colour is not an answer to the question being asked.
     {"id": "solid", "label": "Solid", "base": "black", "scale": None, "flat": True,
+     "colour": True,
      "level": {"label": "level", "default": 0.0,
                "note": "Black at the bottom of the dial, white at the top, every grey between"},
      "note": "One flat level, the whole frame. The thing to put underneath a stack that has "
@@ -110,7 +111,26 @@ def settings(row) -> dict:
             # Only a solid reads this, and only a solid is asked for it: the dial a kind does not
             # have is not drawn, so it has no value of its own to carry either.
             "level": level_default(kind) if level is None else min(1.0, max(0.0, float(level))),
+            # A solid is a colour, and black and white are two of them. Left off it is the grey the
+            # level dial says, which is what every solid ever made was; set, it is that colour, and
+            # the level has nothing left to decide. Opacity is still how much of it there is.
+            "colour": colour(row.get("colour")),
             "seed": int(row.get("seed") or 0) & 0x7FFFFFFF}
+
+
+def colour(raw) -> str:
+    """#rrggbb, or "" for a solid that is still a grey. One place decides what counts as one."""
+    v = str(raw or "").strip().lower()
+    if len(v) == 4 and v.startswith("#") and all(c in "0123456789abcdef" for c in v[1:]):
+        v = "#" + "".join(c + c for c in v[1:])          # #abc is a colour too
+    ok = len(v) == 7 and v.startswith("#") and all(c in "0123456789abcdef" for c in v[1:])
+    return v if ok else ""
+
+
+def rgb(v: str) -> tuple:
+    """A colour as three 0..1 floats."""
+    v = colour(v) or "#000000"
+    return tuple(int(v[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
 
 
 def feature_px(scale: float, width: int, height: int) -> int:
@@ -162,8 +182,13 @@ def _clouds(width: int, height: int, cells: float, z: float, seed: int) -> np.nd
 
 
 def draw(kind: str, width: int, height: int, *, i: int = 0, grain: float = 1.0,
-         scale: float = -1.0, seed: int = 0, level: float = 0.0) -> np.ndarray:
-    """Frame `i` as 0..1 greys, mid grey at rest, drawn from nothing but these arguments."""
+         scale: float = -1.0, seed: int = 0, level: float = 0.0,
+         colour: str = "") -> np.ndarray:
+    """Frame `i` as 0..1 greys, mid grey at rest, drawn from nothing but these arguments.
+
+    A solid with a colour on it comes back as h x w x 3 instead; everything downstream of here
+    takes either, because a generated layer was always turned into an RGB frame anyway.
+    """
     kind = spec(kind)["id"]
     if scale < 0:
         scale = scale_default(kind)
@@ -171,7 +196,11 @@ def draw(kind: str, width: int, height: int, *, i: int = 0, grain: float = 1.0,
     if kind == "solid":
         # One level, every pixel, every frame. Grain says nothing here: there is nothing to swing,
         # and what a solid is for is to be the thing underneath. Its opacity is how much of it
-        # there is and its level is how light it is, which is the whole of it.
+        # there is, and its colour -- or, with none, its level -- is what it is.
+        if globals()["colour"](colour):
+            out = np.empty((height, width, 3), dtype=np.float32)
+            out[..., :] = np.asarray(rgb(colour), dtype=np.float32)
+            return out
         return np.full((height, width), min(1.0, max(0.0, float(level))), dtype=np.float32)
     if kind == "clouds":
         # The lattice is counted off the finest detail rather than set outright: `cells` is how many
@@ -208,13 +237,18 @@ def _expand(gain: float) -> str:
 
 
 def lavfi(kind: str, width: int, height: int, fps: float, *, grain: float = 1.0,
-          scale: float = -1.0, seed: int = 0, level: float = 0.0) -> str:
+          scale: float = -1.0, seed: int = 0, level: float = 0.0, colour: str = "") -> str:
     """This layer as a generated ffmpeg input, ready to hand to `-f lavfi -i`."""
     kind = spec(kind)["id"]
     if scale < 0:
         scale = scale_default(kind)
     fps = max(1.0, float(fps))
     if kind == "solid":
+        want = globals()["colour"](colour)
+        if want:
+            # No format=gray on this one, for the obvious reason: the flatten's own _source puts it
+            # into gbrp after the scale, so the colour survives all the way to the blend.
+            return f"color=c=0x{want[1:]}:s={width}x{height}:r={fps:.6f}"
         v = int(round(min(1.0, max(0.0, float(level))) * 255.0))
         return (f"color=c=0x{v:02x}{v:02x}{v:02x}:s={width}x{height}:r={fps:.6f},format=gray")
     seed = int(seed) & 0x7FFFFFFF

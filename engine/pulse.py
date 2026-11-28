@@ -11,10 +11,24 @@ same array, so nothing below here knows or cares which you used.
 The base of every pattern is what it looks like *off* the beat, and it is chosen so the layer
 disappears under its own blend mode when nothing is happening: black under screen, mid grey under
 overlay. A pulse layer at rest should cost you nothing.
+
+Nothing here is written to disk for a render. A pulse layer used to be an mp4 drawn at the render's
+size and length before you could see any of it, so a nudge of the scale dial was fractal noise over
+the whole clip and then an x264 encode after it -- seconds of waiting, and a few hundred kilobytes
+left on disk, for a layer whose entire content is a formula. `draw` below makes frame `i` out of
+nothing but its arguments instead, and whichever compositor is doing the compositing calls it:
+
+  * the page draws it into a canvas, so the dials move under your hand at the frame rate;
+  * the local render draws it with numpy, inside the per-frame stack, as it paints each frame.
+
+The one thing that is NOT recomputed per frame is the envelope. It costs an audio analysis when the
+beat comes from a track, and it is one number per frame either way, so it is worked out once when
+the beat changes and carried on the layer from then on. Everything a dial moves is the picture.
 """
 from __future__ import annotations
 
 import hashlib
+import itertools
 import os
 import json
 import subprocess
@@ -36,7 +50,7 @@ FRACTAL_DIALS = {
 }
 
 # Each pattern is one idea of what a hit looks like. Data, so another one is an entry here and a
-# branch in _frame -- the panel draws whatever this list says.
+# branch in _picture -- the panel draws whatever this list says.
 PATTERNS = [
     {"id": "burst", "label": "Burst", "base": "black",
      "note": "Static inside a ring that opens out of the middle on every hit and fades as it goes."},
@@ -79,7 +93,7 @@ PATTERNS = [
 BY_ID = {p["id"]: p for p in PATTERNS}
 
 DRAW_MAX = 768          # the long side these are painted at before being scaled back up
-DRAW_VERSION = 5        # bump when _frame changes shape, so an old cache is not handed back
+DRAW_VERSION = 6        # bump when a draw changes shape, so an old preview is not handed back
 
 
 def spec(kind: str) -> dict:
@@ -273,21 +287,20 @@ def _up(lat: np.ndarray, w: int, h: int, ox: float = 0.0, oy: float = 0.0) -> np
     return (top * (1.0 - ty)[:, None] + bot * ty[:, None]).astype(np.float32)
 
 
-def _lattice(st: dict, key: str, gh: int, gw: int, z: float, rng) -> np.ndarray:
-    """An octave's lattice at time z: two draws of it, lerped. Noise that boils, not noise that
-    flickers -- a fresh field every frame is static however smooth it is in space."""
-    i, f = int(np.floor(z)), float(z - np.floor(z))
-    cur = st.get(key)
-    if cur is None or cur[0] != i:
-        # one step on: what was ahead is now behind, and only the new face has to be drawn
-        a = cur[2] if cur is not None and cur[0] == i - 1 else rng.random((gh, gw), dtype=np.float32)
-        st[key] = (i, a, rng.random((gh, gw), dtype=np.float32))
-    _, a, b = st[key]
-    f = f * f * (3.0 - 2.0 * f)
-    return a * (1.0 - f) + b * f
+def _face(seed: int, o: int, i: int, gh: int, gw: int) -> np.ndarray:
+    """One octave's lattice at one step of its own clock.
+
+    Drawn from the seed and the step rather than carried forward from the frame before. That is the
+    whole difference between a layer that has to be rendered and one that can be generated: a
+    streamed lattice can only give you frame 300 after it has drawn the 299 before it, which is
+    fine for a file written once and useless for a dial you are dragging. (engine/noise._lat is the
+    same trick for the same reason.)
+    """
+    rng = np.random.default_rng((int(seed) & 0x7FFFFFFF, 0x5021, int(o), max(0, int(i))))
+    return rng.random((gh, gw), dtype=np.float32)
 
 
-def _fbm(st: dict, w: int, h: int, z: float, rng, *, octaves: int = 3, cells: float = 3.0,
+def _fbm(w: int, h: int, z: float, seed: int, *, octaves: int = 3, cells: float = 3.0,
          drift: float = 0.0, ridged: bool = False, tall: float = 1.0) -> np.ndarray:
     """Octaves of value noise, each at half the amplitude and twice the frequency, as 0..1.
 
@@ -304,7 +317,11 @@ def _fbm(st: dict, w: int, h: int, z: float, rng, *, octaves: int = 3, cells: fl
     for o in range(octaves):
         gw = max(2, int(round(g)))
         gh = max(2, int(round(g * h / max(1, w) / max(0.1, tall))))
-        lat = _lattice(st, f"o{o}", gh, gw, z * (1.0 + 0.35 * o), rng)
+        zo = z * (1.0 + 0.35 * o)                  # each octave on its own clock: they part as they boil
+        i0 = int(np.floor(zo))
+        f = float(zo - i0)
+        f = f * f * (3.0 - 2.0 * f)                # cells, not facets
+        lat = _face(seed, o, i0, gh, gw) * (1.0 - f) + _face(seed, o, i0 + 1, gh, gw) * f
         v = _up(lat, w, h, oy=-drift * z * (o + 1))
         out += amp * ((1.0 - np.abs(v * 2.0 - 1.0)) if ridged else v)
         tot += amp
@@ -328,19 +345,174 @@ def _cut(v: np.ndarray, cover: float, soft: float) -> np.ndarray:
     return np.clip((v - thr) / max(1e-3, soft) + 0.5, 0.0, 1.0).astype(np.float32)
 
 
-def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
-           scale: float = 0.5, boil: float = 0.5) -> np.ndarray:
-    """One frame as 0..1 greys, at the drawing size."""
+# ---------------------------------------------------------------- the bookkeeping, replayed
+# Most of these patterns remember something between frames: where a front has travelled to, which
+# cells are still lit, how far the band has fallen. That used to live in a `carry` list threaded
+# through a loop, which meant frame 300 could only be drawn after the 299 before it -- fine for a
+# file written once, useless for a dial you are dragging and a playhead you are scrubbing.
+#
+# Every one of those is a cheap recurrence starting from a known state at frame 0, so any frame can
+# be reached by running it again. A few hundred float operations next to a frame of fractal noise
+# is nothing, and it buys the whole difference between a layer that is rendered and one that is
+# generated.
+def _ks(env, amount: float, n: int) -> list:
+    """The envelope through Swing, frame by frame. A short envelope loops, the way a short layer
+    does: the length belongs to the render, not to whatever the beat was drawn for."""
+    a = min(1.5, max(0.0, float(amount)))
+    if not len(env):
+        return [0.0] * n
+    m = len(env)
+    return [max(0.0, min(1.0, float(env[j % m]))) * a for j in range(n)]
+
+
+def _fronts(ks, step: float, decay: float, gap: float) -> list:
+    """Fronts travelling outward from the middle: one launched on a hit, the rest carrying on and
+    fading. Burst uses them as a window on static, Rings draws them as light."""
+    out: list = []
+    for k in ks:
+        out = [c for c in ((pos + step, lvl * decay) for pos, lvl in out)
+               if c[0] < 1.6 and c[1] > 0.02]
+        if k > 0.25 and (not out or out[-1][0] > gap):
+            out.append((0.0, k))
+    return out
+
+
+def _disc(ks, soft: float) -> float:
+    """Circle's one disc: how big it is now. A hit takes the frame back over rather than nesting a
+    second disc inside the first, and the close is quicker than the open."""
+    size, way, prev = -1.0, -1.0, 0.0
+    for k in ks:
+        if k > 0.25 and prev <= 0.25:           # the EDGE of a hit, not every frame of one
+            size, way = 0.03, 1.0
+        elif way > 0:
+            size += 0.11                        # ~9 frames from nothing to past the corners
+            if size > 1.0 + soft:               # the corners are covered: turn around here
+                way = -1.0
+        else:
+            size -= 0.30                        # closing is nearly three times quicker
+        prev = k
+    return size
+
+
+def _wipe_at(ks, half: float) -> float:
+    """Where the middle of Wipe's band has fallen to. It travels on its own clock rather than the
+    beat's, launched on each hit, so a fast count starts the fall again from the top."""
+    pos, prev = 9.0, 0.0
+    for k in ks:
+        pos = -half if (k > 0.25 and prev <= 0.25) else pos + 0.16
+        prev = k
+    return pos
+
+
+def _fall_at(ks) -> float:
+    """The same travel, for the front Fall's noise is seen through."""
+    pos, prev = 9.0, 0.0
+    for k in ks:
+        pos = -0.5 if (k > 0.25 and prev <= 0.25) else pos + 0.16
+        prev = k
+    return pos
+
+
+def _cells(ks, n: int, rng) -> list:
+    """Grid's cells: a hit lights half of them at random and they fade on their own clock."""
+    lev = [0.0] * n
+    prev = 0.0
+    for k in ks:
+        for j in range(n):
+            lev[j] *= 0.84
+        if k > 0.3 and prev <= 0.3:
+            for j in rng.choice(n, size=max(2, n // 2), replace=False):
+                lev[int(j)] = k
+        prev = k
+    return lev
+
+
+def _slabs(ks, rng) -> list:
+    """Slabs' rectangles: a few thrown at the frame on every hit, held and then gone."""
+    out: list = []
+    for k in ks:
+        out = [c for c in ((x0, x1, y0, y1, lvl * 0.87) for x0, x1, y0, y1, lvl in out)
+               if c[4] > 0.03]
+        if k > 0.3 and (not out or out[-1][4] < k * 0.75):
+            for _ in range(2 + int(rng.integers(0, 2))):
+                px, py = float(rng.random()), float(rng.random())
+                long_, thin = 0.3 + 0.55 * float(rng.random()), 0.12 + 0.3 * float(rng.random())
+                dx, dy = (long_, thin) if rng.random() < 0.5 else (thin, long_)
+                out.append((px * (1.0 - dx), px * (1.0 - dx) + dx,
+                            py * (1.0 - dy), py * (1.0 - dy) + dy, k))
+    return out
+
+
+def _grit(seed: int, tag: int, i: int, h: int, w: int) -> np.ndarray:
+    """Per-pixel random for one frame, from the seed and the frame number. Grain and Burst used to
+    draw theirs off a stream shared with everything else in the clip; keyed like this, the frame
+    you scrubbed to is the frame that gets drawn."""
+    return np.random.default_rng((int(seed) & 0x7FFFFFFF, int(tag), max(0, int(i)))
+                                 ).random((h, w), dtype=np.float32)
+
+
+def settings(row) -> dict:
+    """A pulse layer row as the generators read it. One place decides what a missing field means.
+
+    The envelope comes WITH the row rather than being worked out here: it is one number per frame
+    and it costs an audio analysis when the beat comes from a track, so it is computed once when
+    the beat changes and carried on the layer from then on. Everything else here is the picture,
+    which is what the dials move.
+    """
+    row = row if isinstance(row, dict) else {}
+    kind = spec(row.get("pulse") or row.get("kind"))["id"]
+    out = {"kind": kind,
+           "env": [round(max(0.0, min(1.0, float(v))), 4) for v in (row.get("env") or [])],
+           "amount": min(1.5, max(0.0, float(row.get("amount", 1.0) or 0.0))),
+           # `pinvert` wins: on a LAYER row `invert` already means the matte's level-invert, and
+           # the pulse's own flip has to have a name of its own. A settings dict has only `invert`.
+           "invert": bool(row.get("pinvert") if row.get("pinvert") is not None else row.get("invert")),
+           "seed": int(row.get("seed") or 0) & 0x7FFFFFFF}
+    for n in dials(kind):
+        out[n] = dial(kind, n, row.get(n))
+    return out
+
+
+# ---------------------------------------------------------------- the picture, frame by frame
+def draw(kind: str, width: int, height: int, *, i: int = 0, env=(), amount: float = 1.0,
+         invert: bool = False, scale: float = -1.0, boil: float = -1.0,
+         seed: int = 0) -> np.ndarray:
+    """Frame `i` as 0..1 greys, drawn from nothing but these arguments.
+
+    Nothing is written to disk. The page draws this into a canvas so the dials move under your
+    hand, and the render draws it inside the per-frame stack -- the same picture, from the same
+    numbers, with no file between them.
+    """
+    p = spec(kind)
+    kind = p["id"]
+    w, h = max(2, int(width)), max(2, int(height))
+    i = max(0, int(i))
+    scale = dial(kind, "scale", None if scale < 0 else scale)
+    boil = dial(kind, "boil", None if boil < 0 else boil)
+    amount = min(1.5, max(0.0, float(amount)))
+    ks = _ks(env, amount, i + 1)
+    k = ks[-1]
+    # float32 out of every branch, whatever it did inside: a Python float in a np.maximum quietly
+    # promotes the whole frame to float64, and the compositors expect one dtype.
+    g = np.asarray(_picture(kind, ks, k, w, h, i, amount, scale, boil, int(seed) & 0x7FFFFFFF),
+                   dtype=np.float32)
+    # Upside down: what was light at the hit is dark, and what was nothing at rest is everything.
+    # Since a pattern drawn on black is its own alpha, inverting it inverts that too -- the layer is
+    # fully there between hits and is punched out on them. The neutral blend turns over with it:
+    # screen for the light one, multiply for this.
+    return (1.0 - g).astype(np.float32) if invert else g
+
+
+def _picture(kind, ks, k, w, h, i, amount, scale, boil, seed) -> np.ndarray:
     y, x = np.ogrid[0:h, 0:w]
     cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
     half = max(1.0, float(np.hypot(cx, cy)))
     r = np.hypot(x - cx, y - cy) / half                  # 0 in the middle, 1 at the corners
-    k = max(0.0, min(1.0, e)) * amount
 
     if kind == "grain":
         # Mid grey at rest: overlay and soft light leave the picture alone, and the static swings
         # either side of it rather than only brightening.
-        return np.clip(0.5 + (rng.random((h, w), dtype=np.float32) - 0.5) * k, 0.0, 1.0)
+        return np.clip(0.5 + (_grit(seed, 1, i, h, w) - 0.5) * k, 0.0, 1.0)
     if kind == "flash":
         return np.full((h, w), k, dtype=np.float32)
     if kind == "bloom":
@@ -349,13 +521,10 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
     if kind == "burst":
         # The noise texture that expands: static, cut to a ring opening out of the middle. Each hit
         # launches a new front, and what is left of the last one keeps travelling.
-        carry[:] = [c for c in ((pos + 0.035, lvl * 0.9) for pos, lvl in carry) if c[0] < 1.6 and c[1] > 0.02]
-        if k > 0.25 and (not carry or carry[-1][0] > 0.12):
-            carry.append((0.0, k))
         ring = np.zeros((h, w), dtype=np.float32)
-        for pos, lvl in carry:
+        for pos, lvl in _fronts(ks, 0.035, 0.9, 0.12):
             ring = np.maximum(ring, np.clip(1.0 - np.abs(r - pos) / 0.28, 0.0, 1.0) * lvl)
-        return (ring * rng.random((h, w), dtype=np.float32)).astype(np.float32)
+        return (ring * _grit(seed, 2, i, h, w)).astype(np.float32)
     if kind == "blocks":
         # The square IS the beat: its size is the envelope, so it opens from nothing on the hit and
         # closes back to nothing as the hit lets go -- 0 to the whole frame and back, once a beat,
@@ -374,49 +543,23 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
         # One disc, out of the middle, until it is past the corners -- `r` is measured to the
         # corner, so a size of 1.0 is a frame exactly covered. The edge is the one pixel it takes
         # not to be a staircase, and nothing else: white inside, black outside, which is what makes
-        # it hold up as a matte where Bloom's falloff does not. One, not a stack: a hit that lands
-        # while one is still travelling restarts it rather than nesting inside it, because two
-        # flat-white discs would read as the larger one alone and the hit would be invisible.
+        # it hold up as a matte where Bloom's falloff does not.
         soft = 2.0 / half
-        if not carry:
-            carry.append([-1.0, 0.0, -1.0])         # size, what the envelope last was, which way
-        st = carry[0]
-        was, st[1] = st[1], k
-        # The EDGE of a hit, not every frame of one. A hit sits above this line for several frames
-        # as it lets go, and restarting on each of them pinned the disc at a dot that never grew.
-        if k > 0.25 and was <= 0.25:
-            st[0], st[2] = 0.03, 1.0                # a new hit takes the frame back over
-        elif st[2] > 0:
-            st[0] += 0.11                           # ~9 frames from nothing to past the corners
-            if st[0] > 1.0 + soft:                  # the corners are covered: turn around here,
-                st[2] = -1.0                        # or the next hit arrives before it can close
-        else:
-            # Closing is nearly three times quicker than opening. It has to go somewhere -- cutting
-            # from a white frame to a black one in a single frame is a pop you feel more than see --
-            # but a close that takes as long as the open reads as a second, slower pulse of its own.
-            st[0] -= 0.30
-        if st[0] <= 0.0:
+        at = _disc(ks, soft)
+        if at <= 0.0:
             return np.zeros((h, w), dtype=np.float32)
         # Flat white, never the hit's own level. The size is what carries the beat here, so dimming
         # the disc as well says it twice and leaves the moment it covers the frame an 88% grey field
-        # instead of a white one. Swing still decides whether a hit fires at all, through the gate
-        # above; what it must not do is decide how white the white is.
-        return np.clip((st[0] - r) / soft, 0.0, 1.0).astype(np.float32)
+        # instead of a white one.
+        return np.clip((at - r) / soft, 0.0, 1.0).astype(np.float32)
     if kind == "grid":
         # The frame cut into a few big cells. A hit lights half of them at random and they fade
         # on their own clock, so the pattern never repeats while the count does.
         cols = 4 if w >= h else 3
         rows = max(2, int(round(cols * h / max(1, w))))
         n = cols * rows
-        if len(carry) != n + 1:                     # the last slot is what the envelope was doing
-            carry[:] = [0.0] * (n + 1)
-        was, carry[n] = carry[n], k
-        for i in range(n):
-            carry[i] *= 0.84
-        if k > 0.3 and was <= 0.3:                  # the edge of a hit, not every frame of one
-            for i in rng.choice(n, size=max(2, n // 2), replace=False):
-                carry[int(i)] = k
-        lev = np.asarray(carry[:n], dtype=np.float32).reshape(rows, cols)
+        lev = np.asarray(_cells(ks, n, np.random.default_rng(seed or 7)),
+                         dtype=np.float32).reshape(rows, cols)
         out = lev[np.arange(h) * rows // h][:, np.arange(w) * cols // w]
         # a gutter between the cells, so what you see is squares and not one lit field
         fx, fy = (np.arange(w) * cols / w) % 1.0, (np.arange(h) * rows / h) % 1.0
@@ -425,19 +568,10 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
     if kind == "slabs":
         # Rectangles thrown at the frame: a few on every hit, somewhere else each time, held for a
         # moment and then gone. Hard edges and flat white, so what moves is the arrangement.
-        carry[:] = [c for c in ((x0, x1, y0, y1, lvl * 0.87) for x0, x1, y0, y1, lvl in carry)
-                    if c[4] > 0.03]
-        if k > 0.3 and (not carry or carry[-1][4] < k * 0.75):
-            for _ in range(2 + int(rng.integers(0, 2))):
-                a, b = float(rng.random()), float(rng.random())
-                long_, thin = 0.3 + 0.55 * float(rng.random()), 0.12 + 0.3 * float(rng.random())
-                dx, dy = (long_, thin) if rng.random() < 0.5 else (thin, long_)
-                carry.append((a * (1.0 - dx), a * (1.0 - dx) + dx,
-                              b * (1.0 - dy), b * (1.0 - dy) + dy, k))
         fx = (x / max(1.0, w - 1.0)).astype(np.float32)
         fy = (y / max(1.0, h - 1.0)).astype(np.float32)
         out = np.zeros((h, w), dtype=np.float32)
-        for x0, x1, y0, y1, lvl in carry:
+        for x0, x1, y0, y1, lvl in _slabs(ks, np.random.default_rng(seed or 7)):
             band = ((fx >= x0) & (fx <= x1)) & ((fy >= y0) & (fy <= y1))
             out = np.maximum(out, band.astype(np.float32) * lvl)
         return out
@@ -446,58 +580,36 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
         # Straight across, so every row is one value and what travels is where the white is -- a
         # point on the frame goes black, white as the band arrives, black again once it is past,
         # and white once more on the next hit.
-        #
-        # It travels on its own clock rather than the beat's, launched on each hit, so a fast count
-        # starts the fall again from the top instead of making the band jitter in place.
         HALF = 0.45                                 # how deep the band is, as a share of the frame
-        if not carry:
-            carry.append([9.0, 0.0])                # where the middle of the band is, and what the
-        st = carry[0]                               # envelope last was
-        was, st[1] = st[1], k
-        if k > 0.25 and was <= 0.25:
-            st[0] = -HALF                           # just above the ceiling, not yet showing
-        else:
-            # ~12 frames from above the ceiling to below the floor, which is a beat at 120. Slower
-            # than this and the next hit restarts the fall before the bottom of the frame ever
-            # lights, which is not a wipe -- it is the top half flashing.
-            st[0] += 0.16
-        if st[0] > 1.0 + HALF:
+        at = _wipe_at(ks, HALF)
+        if at > 1.0 + HALF:
             return np.zeros((h, w), dtype=np.float32)
         y01 = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]   # 0 at the ceiling
         # A linear ramp off the middle of the band. Not a curve: a straight fall is what reads as a
         # wipe, where anything eased reads as a glow travelling.
-        g = np.clip(1.0 - np.abs(y01 - st[0]) / HALF, 0.0, 1.0)
+        g = np.clip(1.0 - np.abs(y01 - at) / HALF, 0.0, 1.0)
         return np.repeat(g, w, axis=1).astype(np.float32)
     if kind == "fall":
         # Wipe's travel with Smoke's field inside it. The noise boils on its own clock as it does
         # there; what lets you see it is a band falling from the ceiling, launched on each hit.
-        if not carry:
-            carry.append({"t": 0.0, "pos": 9.0, "was": 0.0})
-        st = carry[0]
-        st["t"] = t = st["t"] + 1.0
-        was, st["was"] = st["was"], k
-        if k > 0.25 and was <= 0.25:
-            st["pos"] = -0.5
-        else:
-            st["pos"] += 0.16
-        if st["pos"] > 1.6:
+        at = _fall_at(ks)
+        if at > 1.6:
             return np.zeros((h, w), dtype=np.float32)
         # Negative drift: _fbm slides each octave by -drift*z, so Smoke climbs and this falls. The
         # texture has to move with the front or the band looks like a window dragged over a field
         # that is going the other way.
         cells, rate = _fractal(scale, boil, 3.0, 0.05)
-        v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells, drift=-1.1)
+        v = _fbm(w, h, (i + 1.0) * rate, seed, octaves=5, cells=cells, drift=-1.1)
         y01 = (np.arange(h, dtype=np.float32) / max(1.0, h - 1.0))[:, None]
         # Thicker behind the front than ahead of it, so it reads as weather arriving rather than a
         # ruled edge: the leading side is the short ramp, the trailing side the long one.
-        lead = np.clip((st["pos"] - y01) / 0.30, 0.0, 1.0)
-        tail = np.clip(1.0 - (st["pos"] - y01 - 0.45) / 0.60, 0.0, 1.0)
+        lead = np.clip((at - y01) / 0.30, 0.0, 1.0)
+        tail = np.clip(1.0 - (at - y01 - 0.45) / 0.60, 0.0, 1.0)
         band = lead * tail
         if float(band.max()) <= 0.0:
             # _cut takes a SHARE of a field, by quantile. Handed nothing it puts the threshold at 0
             # and every pixel comes back at exactly mid grey -- so the frames before the band has
-            # arrived would be a flat grey field rather than black. Smoke never meets this because
-            # its own field is never identically zero.
+            # arrived would be a flat grey field rather than black.
             return np.zeros((h, w), dtype=np.float32)
         # Cut the field, THEN window it. Cutting the masked field instead lets the black outside the
         # band own the quantile, and what little shows comes back as hard blobs.
@@ -509,14 +621,10 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
         # The three noise layers. One clock ticking a frame at a time, so the field boils at its
         # own pace and the beat only decides how much of it you are allowed to see: at rest the
         # threshold sits above the brightest part of the noise, which is how these stay black.
-        if not carry:
-            carry.append({"t": 0.0})
-        st = carry[0]
-        st["t"] = t = st["t"] + 1.0
+        t = i + 1.0
         if kind == "clouds":
             cells, rate = _fractal(scale, boil, 3.0, 0.055)
-            v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells)
-            return _cut(v, 0.6 * k, 0.07)
+            return _cut(_fbm(w, h, t * rate, seed, octaves=5, cells=cells), 0.6 * k, 0.07)
         if kind == "smoke":
             # A pulse of it, filling the frame and drawing back. Clouds opens to 60% of the frame
             # and stops; this one takes all of it, so the hit ends on white rather than on a lot of
@@ -524,24 +632,20 @@ def _frame(kind: str, e: float, w: int, h: int, amount: float, rng, carry: list,
             #
             # The 1.2 is headroom. The envelope's own peak is not reliably 1.0 (a follower rounds
             # the top off a hit), so asking for exactly the envelope would leave a frame that never
-            # quite closed over -- the same thing that kept Circle at 88% grey.
+            # quite closed over.
             #
             # Stretched taller than it is wide, and drifting up: an even field reads as foam.
             cells, rate = _fractal(scale, boil, 2.5, 0.045)
-            v = _fbm(st, w, h, t * rate, rng, octaves=5, cells=cells, drift=1.2, tall=2.6)
+            v = _fbm(w, h, t * rate, seed, octaves=5, cells=cells, drift=1.2, tall=2.6)
             # A wide soft edge, where Clouds takes a narrow one. The threshold IS the silhouette
-            # here, so a sharp cut gives torn paper and a wide one gives something with air in it --
-            # the difference between blobs and smoke, at the same coverage.
+            # here, so a sharp cut gives torn paper and a wide one gives something with air in it.
             return _cut(v, min(1.0, 1.2 * k), 0.13)
         cells, rate = _fractal(scale, boil, 3.0, 0.06)
-        v = _fbm(st, w, h, t * rate, rng, octaves=4, cells=cells, ridged=True)
+        v = _fbm(w, h, t * rate, seed, octaves=4, cells=cells, ridged=True)
         return _cut(v, 0.35 * k, 0.07)
     # rings: the same fronts, drawn as light rather than used as a window
-    carry[:] = [c for c in ((pos + 0.03, lvl * 0.93) for pos, lvl in carry) if c[0] < 1.6 and c[1] > 0.02]
-    if k > 0.25 and (not carry or carry[-1][0] > 0.1):
-        carry.append((0.0, k))
     out = np.zeros((h, w), dtype=np.float32)
-    for pos, lvl in carry:
+    for pos, lvl in _fronts(ks, 0.03, 0.93, 0.1):
         out = np.maximum(out, np.clip(1.0 - np.abs(r - pos) / 0.06, 0.0, 1.0) * lvl)
     return out
 
@@ -562,7 +666,10 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     signal = list(env) if env else envelope(frames, fps, seed=seed, **sound)
-    signal = [float(v) for v in signal[:frames]] + [0.0] * max(0, frames - len(signal))
+    # A short envelope loops rather than running out into silence, the way draw() reads it and the
+    # way a short layer loops under a long one.
+    signal = ([float(signal[j % len(signal)]) for j in range(frames)] if signal
+              else [0.0] * frames)
 
     asked = {"scale": scale, "boil": boil}
     vals = {n: dial(p["id"], n, asked.get(n)) for n in dials(p["id"])}
@@ -583,25 +690,26 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
         # being written passes that check happily. The flatten then opened a clip that was half a
         # clip -- "Invalid data found when processing input", from a layer that was fine seconds
         # later. os.replace is atomic, so a reader sees either nothing or the whole thing.
-        tmp = out.with_name(out.name + ".part.mp4")   # still an mp4: ffmpeg reads the container off the name
+        # One name per draw, not one per clip. Two requests for the same clip arrive whenever a
+        # dial is nudged back to where it was a moment ago, and they used to share a part file:
+        # two ffmpegs writing it, and whichever finished first hit os.replace while the other
+        # still had the handle open -- which on Windows is a PermissionError, i.e. a 500 with
+        # nothing in it. They get a file each now, and the loser throws its copy away.
+        tmp = out.with_name(f"{out.name}.{os.getpid()}-{next(_PART)}.part.mp4")   # still an mp4: ffmpeg reads the container off the name
         cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gray",
                "-s", f"{dw}x{dh}", "-r", f"{fps:.4f}", "-i", "-"]
         if (dw, dh) != (width, height):
             cmd += ["-vf", f"scale={width}:{height}:flags=bicubic"]
         cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "16", "-preset", "veryfast", str(tmp)]
         pipe = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        rng = np.random.default_rng(int(seed) or 7)
-        carry: list = []
         try:
             for i in range(frames):
-                g = _frame(p["id"], signal[i], dw, dh, amount, rng, carry, **vals)
-                # Upside down: what was light at the hit is dark, and what was nothing at rest is
-                # everything. Since a pattern drawn on black is its own alpha, inverting it inverts
-                # that too -- the layer is fully there between hits and is punched out on them. The
-                # neutral blend turns over with it: screen for the light one, multiply for this.
-                if invert:
-                    g = 1.0 - g
-                pipe.stdin.write((np.clip(g, 0.0, 1.0) * 255.0).astype(np.uint8).tobytes())
+                g = draw(p["id"], dw, dh, i=i, env=signal, amount=amount, invert=invert,
+                         seed=int(seed), **vals)
+                try:
+                    pipe.stdin.write((np.clip(g, 0.0, 1.0) * 255.0).astype(np.uint8).tobytes())
+                except OSError:
+                    break           # ffmpeg is gone; its stderr below says why, as a RuntimeError
         finally:
             pipe.stdin.close()
             err = pipe.stderr.read().decode("utf-8", "replace")
@@ -609,12 +717,22 @@ def clip(dest_dir: Path, *, kind: str = "burst", width: int = 768, height: int =
         if pipe.returncode or not (tmp.is_file() and tmp.stat().st_size):
             tmp.unlink(missing_ok=True)
             raise RuntimeError(f"ffmpeg could not write the pulse: {err.strip()[:200] or 'no output'}")
-        os.replace(tmp, out)
+        try:
+            os.replace(tmp, out)
+        except OSError:
+            # The name is the contents, so whatever is already there is this clip: keep it and
+            # drop the copy. Only a failure with nothing in its place is worth raising.
+            tmp.unlink(missing_ok=True)
+            if not (out.is_file() and out.stat().st_size):
+                raise
     return {"path": str(out), "name": out.name, "pattern": p["id"], "label": p["label"],
             "base": ("white" if invert else p["base"]), "invert": bool(invert),
             "width": width, "height": height, "frames": frames,
             "fps": round(fps, 3), "amount": round(amount, 3), "env": [round(v, 3) for v in signal],
             "dials": {n: round(v, 3) for n, v in vals.items()}}
+
+
+_PART = itertools.count()   # one part-file name per draw; see clip() below
 
 
 PREVIEW_W, PREVIEW_H, PREVIEW_FRAMES, PREVIEW_BPM = 256, 144, 48, 120.0
